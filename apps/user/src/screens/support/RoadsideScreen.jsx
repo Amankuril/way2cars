@@ -6,7 +6,7 @@ import { Screen, Header, T, Field, Button, Chip, Notice, Panel, EmptyState } fro
 import { colors } from '@shared/theme/tokens';
 import { ROADSIDE } from '@shared/lib/labels';
 import { api } from '../../api';
-import { currentPosition } from '../../services/location';
+import { currentPosition } from '@shared/native/app/location';
 
 export function RoadsideScreen({ route, navigation }) {
   const { bookingId } = route.params;

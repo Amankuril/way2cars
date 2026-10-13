@@ -3,21 +3,27 @@ import { View, FlatList, TextInput, KeyboardAvoidingView } from 'react-native';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Send } from 'lucide-react-native';
-import { Header, T, IconButton, Loading, ErrorState, Pill, cn } from '@shared/native';
-import { colors } from '@shared/theme/tokens';
-import { dateTime } from '@shared/lib/format';
-import { TICKET_STATUS } from '@shared/lib/labels';
-import { api } from '../../api';
+import { Header } from '../Layout';
+import { T } from '../Text';
+import { IconButton } from '../Button';
+import { Loading, ErrorState, Pill } from '../Feedback';
+import { cn } from '../cn';
+import { colors } from '../../theme/tokens';
+import { dateTime } from '../../lib/format';
+import { TICKET_STATUS } from '../../lib/labels';
+import { useApp } from '../app/AppContext';
 
-/** Conversation with support. Polls every 10s while open (no extra realtime infrastructure). */
+/** Conversation with support. Polls every 10s while open. */
 export function TicketScreen({ route }) {
   const { id } = route.params;
+  const { api, realm } = useApp();
   const qc = useQueryClient();
   const [text, setText] = useState('');
   const list = useRef(null);
-  const q = useQuery({ queryKey: ['ticket', id], queryFn: () => api.get(`/api/v1/user/support/tickets/${id}`), refetchInterval: 10_000 });
+  const path = `/api/v1/${realm}/support/tickets/${id}`;
+  const q = useQuery({ queryKey: ['ticket', id], queryFn: () => api.get(path), refetchInterval: 10_000 });
   const send = useMutation({
-    mutationFn: () => api.post(`/api/v1/user/support/tickets/${id}/messages`, { body: text.trim() }),
+    mutationFn: () => api.post(`${path}/messages`, { body: text.trim() }),
     onSuccess: (t) => { setText(''); qc.setQueryData(['ticket', id], t); qc.invalidateQueries({ queryKey: ['tickets'] }); },
   });
   const t = q.data;
@@ -33,7 +39,7 @@ export function TicketScreen({ route }) {
             contentContainerClassName="p-4"
             onContentSizeChange={() => list.current?.scrollToEnd({ animated: false })}
             renderItem={({ item: m }) => {
-              const mine = m.from.realm === 'user';
+              const mine = m.from.realm === realm;
               return (
                 <View className={cn('mb-3 max-w-[85%]', mine ? 'self-end' : 'self-start')}>
                   <View className={cn('rounded-lg px-3.5 py-2.5', mine ? 'bg-brand-500' : 'border border-line bg-surface')}>

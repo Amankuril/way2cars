@@ -1,14 +1,17 @@
 import { useEffect, useState } from 'react';
 import { View } from 'react-native';
 import { useMutation } from '@tanstack/react-query';
-import { Screen, Header, T, Button, OtpInput, useToast } from '@shared/native';
-import { maskPhone } from '@shared/lib/format';
-import { api } from '../../api';
-import { useAuth } from '../../auth/AuthContext';
+import { Screen, Header } from '../Layout';
+import { T } from '../Text';
+import { Button } from '../Button';
+import { OtpInput } from '../OtpInput';
+import { useToast } from '../Feedback';
+import { maskPhone } from '../../lib/format';
+import { useApp } from '../app/AppContext';
 
 export function OtpScreen({ route }) {
   const { phone } = route.params;
-  const { completeLogin } = useAuth();
+  const { api, realm, auth } = useApp();
   const toast = useToast();
   const [code, setCode] = useState('');
   const [error, setError] = useState(null);
@@ -21,17 +24,15 @@ export function OtpScreen({ route }) {
   }, [wait]);
 
   const verify = useMutation({
-    mutationFn: () => api.post('/api/v1/auth/user/otp/verify', { phone, code }),
-    onSuccess: (data) => completeLogin(data),
+    mutationFn: () => api.post(`/api/v1/auth/${realm}/otp/verify`, { phone, code }),
+    onSuccess: (data) => auth.completeLogin(data),
     onError: (e) => { setError(e.message); setCode(''); },
   });
   const resend = useMutation({
-    mutationFn: () => api.post('/api/v1/auth/user/otp/request', { phone }),
+    mutationFn: () => api.post(`/api/v1/auth/${realm}/otp/request`, { phone }),
     onSuccess: (d) => { setWait(d.resendAfterSeconds); toast('A new code is on its way.'); },
     onError: (e) => { toast(e.message, 'danger'); if (e.details?.retryAfterSeconds) setWait(e.details.retryAfterSeconds); },
   });
-
-  // Auto-submit once a full code is entered.
   useEffect(() => {
     if (code.length === 6 && !verify.isPending) verify.mutate();
   }, [code]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -46,11 +47,7 @@ export function OtpScreen({ route }) {
           {error ? <T variant="bodySm" tone="danger" className="mt-3">{error}</T> : null}
         </View>
         <View className="mt-6 flex-row items-center">
-          {wait > 0 ? (
-            <T variant="bodySm" tone="subtle">Resend code in {wait}s</T>
-          ) : (
-            <Button title="Resend code" variant="ghost" size="sm" className="-ml-4" loading={resend.isPending} onPress={() => resend.mutate()} />
-          )}
+          {wait > 0 ? <T variant="bodySm" tone="subtle">Resend code in {wait}s</T> : <Button title="Resend code" variant="ghost" size="sm" className="-ml-4" loading={resend.isPending} onPress={() => resend.mutate()} />}
         </View>
       </View>
     </Screen>

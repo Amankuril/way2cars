@@ -1,12 +1,15 @@
 import { View } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
-import { Screen, Header, T, Loading, ErrorState } from '@shared/native';
-import { dateLong } from '@shared/lib/format';
-import { api } from '../../api';
+import { Screen, Header } from '../Layout';
+import { T } from '../Text';
+import { Loading, ErrorState } from '../Feedback';
+import { useApp } from '../app/AppContext';
+import { dateLong } from '../../lib/format';
 
 /** Renders CMS pages from structured blocks (no HTML → no injection surface). */
 export function CmsPageScreen({ route }) {
   const { slug } = route.params;
+  const { api } = useApp();
   const q = useQuery({ queryKey: ['cms', slug], queryFn: () => api.get(`/api/v1/public/pages/${slug}`), staleTime: 60 * 60_000 });
   return (
     <Screen bg="surface" header={<Header title={q.data?.title || ''} />} scroll={!q.isLoading && !q.error}>

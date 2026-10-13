@@ -1,12 +1,14 @@
 import { useCallback, useState } from 'react';
-import { pickImage, uploadAsset } from '../services/media';
+import { pickImage, uploadAsset } from './media';
+import { useApp } from './AppContext';
 
 /**
- * Manages a set of upload slots: { [key]: { state, uri, fileId, error } }.
- * take(key, purpose) opens the camera/gallery and uploads; failed uploads can be retried.
+ * Manages upload slots: { [key]: { state, uri, fileId, error } }.
+ * take(key, purpose, { source, front }) opens the camera/gallery and uploads.
  */
-export function useUploader() {
-  const [slots, setSlots] = useState({});
+export function useUploader(initial = {}) {
+  const { api, realm } = useApp();
+  const [slots, setSlots] = useState(initial);
   const set = (key, patch) => setSlots((s) => ({ ...s, [key]: { ...s[key], ...patch } }));
 
   const take = useCallback(async (key, purpose, { source = 'camera', front = false } = {}) => {
@@ -15,20 +17,22 @@ export function useUploader() {
       asset = await pickImage({ source, front });
     } catch (e) {
       set(key, { state: 'error', error: e.message });
-      return;
+      return null;
     }
-    if (!asset) return;
+    if (!asset) return null;
     set(key, { state: 'uploading', uri: asset.uri, error: null });
     try {
-      const f = await uploadAsset(asset, purpose);
-      set(key, { state: 'done', fileId: f.id });
+      const f = await uploadAsset(api, realm, asset, purpose);
+      set(key, { state: 'done', fileId: f.id, url: f.url });
+      return f;
     } catch (e) {
       set(key, { state: 'error', error: e.message });
+      return null;
     }
-  }, []);
+  }, [api, realm]);
 
   const ids = (keys) => keys.map((k) => slots[k]?.fileId).filter(Boolean);
   const busy = Object.values(slots).some((s) => s.state === 'uploading');
   const remove = (key) => setSlots(({ [key]: _gone, ...rest }) => rest);
-  return { slots, take, ids, busy, remove };
+  return { slots, setSlots, take, ids, busy, remove };
 }

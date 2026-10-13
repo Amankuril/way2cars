@@ -5,9 +5,11 @@ import { NavigationContainer, DefaultTheme } from '@react-navigation/native';
 import { QueryClient, QueryClientProvider, focusManager, onlineManager } from '@tanstack/react-query';
 import NetInfo from '@react-native-community/netinfo';
 import { AppState } from 'react-native';
-import { ToastProvider, T } from '@shared/native';
+import { ToastProvider, T, AppProvider } from '@shared/native';
 import { colors } from '@shared/theme/tokens';
-import { AuthProvider } from './auth/AuthContext';
+import { AuthProvider, useAuth } from './auth/AuthContext';
+import { api } from './api';
+import { openLink } from './navigation/links';
 import { TripPlanProvider } from './hooks/useTripPlan';
 import { RootNavigator } from './navigation/RootNavigator';
 
@@ -38,18 +40,31 @@ function OfflineBanner() {
   );
 }
 
+const BRAND = {
+  headline: 'Self-drive cars,\nready when you are.',
+  tagline: 'Sign in with your mobile number. We’ll send a one-time code.',
+};
+
+/** Exposes this app's API client, realm and auth to shared screens. */
+function AppBridge({ children }) {
+  const auth = useAuth();
+  return <AppProvider value={{ api, realm: 'user', auth, openLink, brand: BRAND }}>{children}</AppProvider>;
+}
+
 export function App() {
   return (
     <SafeAreaProvider>
       <QueryClientProvider client={queryClient}>
         <ToastProvider>
           <AuthProvider>
-            <TripPlanProvider>
-              <NavigationContainer theme={navTheme}>
-                <RootNavigator />
-              </NavigationContainer>
-              <OfflineBanner />
-            </TripPlanProvider>
+            <AppBridge>
+              <TripPlanProvider>
+                <NavigationContainer theme={navTheme}>
+                  <RootNavigator />
+                </NavigationContainer>
+                <OfflineBanner />
+              </TripPlanProvider>
+            </AppBridge>
           </AuthProvider>
         </ToastProvider>
       </QueryClientProvider>

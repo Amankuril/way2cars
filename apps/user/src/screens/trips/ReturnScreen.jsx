@@ -5,8 +5,8 @@ import { Plus, Trash2 } from 'lucide-react-native';
 import { Screen, Header, T, Button, Section, Panel, Field, Loading, ErrorState, Notice, PhotoTile, Chip, IconButton, useToast } from '@shared/native';
 import { dateTime } from '@shared/lib/format';
 import { api } from '../../api';
-import { useUploader } from '../../hooks/useUploader';
-import { currentPosition } from '../../services/location';
+import { useUploader } from '@shared/native';
+import { currentPosition } from '@shared/native/app/location';
 import { InspectionForm, validateInspection, inspectionPayload, emptyInspection } from '../../components/InspectionForm';
 
 export function ReturnScreen({ route, navigation }) {

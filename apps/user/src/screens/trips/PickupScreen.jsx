@@ -6,8 +6,8 @@ import { Screen, Header, T, Button, Section, Panel, Field, Loading, ErrorState, 
 import { colors } from '@shared/theme/tokens';
 import { money, dateTime } from '@shared/lib/format';
 import { api } from '../../api';
-import { useUploader } from '../../hooks/useUploader';
-import { currentPosition } from '../../services/location';
+import { useUploader } from '@shared/native';
+import { currentPosition } from '@shared/native/app/location';
 import { InspectionForm, validateInspection, inspectionPayload, emptyInspection } from '../../components/InspectionForm';
 
 export function PickupScreen({ route, navigation }) {

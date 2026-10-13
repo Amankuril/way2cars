@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { api, setSessionExpiredHandler } from '../api';
-import { registerForPush, unregisterPush } from '../services/push';
+import { registerForPush, unregisterPush } from '@shared/native/app/push';
 
 const AuthCtx = createContext(null);
 export const useAuth = () => useContext(AuthCtx);
@@ -25,7 +25,7 @@ export function AuthProvider({ children }) {
         if (r?.account) {
           setAccount(r.account);
           setStatus('signedIn');
-          registerForPush();
+          registerForPush(api, 'user');
         } else setStatus('signedOut');
       })
       .catch(() => setStatus('signedOut'));
@@ -39,7 +39,7 @@ export function AuthProvider({ children }) {
       await api.acceptLogin(data);
       setAccount(data.account);
       setStatus('signedIn');
-      registerForPush();
+      registerForPush(api, 'user');
     },
     async refreshAccount() {
       const me = await api.get('/api/v1/user/me');
@@ -47,7 +47,7 @@ export function AuthProvider({ children }) {
       return me;
     },
     async signOut() {
-      await unregisterPush();
+      await unregisterPush(api, 'user');
       await api.logout();
       signOutLocal();
     },

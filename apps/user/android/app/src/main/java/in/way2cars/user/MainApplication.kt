@@ -1,4 +1,4 @@
-package in.way2cars.user
+package `in`.way2cars.user
 
 import android.app.Application
 import com.facebook.react.PackageList

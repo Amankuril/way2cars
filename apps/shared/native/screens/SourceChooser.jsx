@@ -1,8 +1,9 @@
 import { View } from 'react-native';
 import { Camera, Image as ImageIcon } from 'lucide-react-native';
-import { Sheet, ListItem } from '@shared/native';
+import { Sheet } from '../Feedback';
+import { ListItem } from '../Rows';
 
-/** Camera or gallery choice for document uploads. */
+/** Camera or gallery choice for document/photo uploads. */
 export function SourceChooser({ visible, onClose, onPick }) {
   return (
     <Sheet visible={visible} onClose={onClose} title="Add photo">

@@ -7,3 +7,6 @@ export { Pill, Notice, Loading, EmptyState, ErrorState, Skeleton, Sheet, Confirm
 export { ListItem, KeyValue, Chip, Segmented, Avatar, Rating, Stepper } from './Rows';
 export { OtpInput } from './OtpInput';
 export { Logo, PhotoTile } from './Media';
+export { AppProvider, useApp } from './app/AppContext';
+export { useUploader } from './app/useUploader';
+export { PlaceSearchSheet } from './PlaceSearchSheet';

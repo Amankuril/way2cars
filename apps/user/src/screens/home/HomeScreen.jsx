@@ -11,7 +11,7 @@ import { useTripPlan } from '../../hooks/useTripPlan';
 import { useCategories, usePublicConfig, useUnreadCount } from '../../hooks/queries';
 import { TripTimesSheet } from '../../components/TripTimesSheet';
 import { VehicleCard } from '../../components/VehicleCard';
-import { currentPosition } from '../../services/location';
+import { currentPosition } from '@shared/native/app/location';
 
 export function HomeScreen({ navigation }) {
   const { account } = useAuth();

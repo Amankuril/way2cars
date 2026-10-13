@@ -2,12 +2,16 @@ import { useMemo, useState } from 'react';
 import { View, Pressable } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
 import { ChevronDown, ChevronUp } from 'lucide-react-native';
-import { Screen, Header, T, Field, Loading, ErrorState, Section, Panel } from '@shared/native';
-import { colors } from '@shared/theme/tokens';
-import { api } from '../../api';
+import { Screen, Header, Section, Panel } from '../Layout';
+import { T } from '../Text';
+import { Field } from '../Field';
+import { Loading, ErrorState } from '../Feedback';
+import { useApp } from '../app/AppContext';
+import { colors } from '../../theme/tokens';
 
 export function FaqScreen() {
-  const q = useQuery({ queryKey: ['faqs'], queryFn: () => api.get('/api/v1/public/faqs', { audience: 'user' }), staleTime: 60 * 60_000 });
+  const { api, realm } = useApp();
+  const q = useQuery({ queryKey: ['faqs', realm], queryFn: () => api.get('/api/v1/public/faqs', { audience: realm === 'vendor' ? 'vendor' : 'user' }), staleTime: 60 * 60_000 });
   const [open, setOpen] = useState(null);
   const [search, setSearch] = useState('');
   const groups = useMemo(() => {

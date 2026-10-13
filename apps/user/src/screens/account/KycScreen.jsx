@@ -8,8 +8,8 @@ import { dateLong } from '@shared/lib/format';
 import { ID_PROOF, KYC_STATUS } from '@shared/lib/labels';
 import { api } from '../../api';
 import { useAuth } from '../../auth/AuthContext';
-import { useUploader } from '../../hooks/useUploader';
-import { SourceChooser } from '../../components/SourceChooser';
+import { useUploader } from '@shared/native';
+import { SourceChooser } from '@shared/native/screens';
 
 const pickDate = (value, { minimumDate, maximumDate }, onSet) =>
   DateTimePickerAndroid.open({ value, mode: 'date', minimumDate, maximumDate, onChange: (e, d) => e.type === 'set' && d && onSet(d) });
