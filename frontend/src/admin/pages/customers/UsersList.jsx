@@ -1,16 +1,16 @@
 import { Link } from 'react-router';
 import { Users } from 'lucide-react';
-import { ADMIN } from '@/lib/api.js';
+import { ADMIN } from '@/admin/lib/api.js';
 import { money, dateTime, dateLong, maskPhone } from '@shared/lib/format.js';
-import { USER_STATUS, KYC_STATUS } from '@/lib/labels.js';
-import { useListQuery, useSearchState } from '@/lib/hooks.js';
-import { compact, fmtNumber } from '@/lib/utils.js';
-import { PageHeader } from '@/components/PageHeader.jsx';
-import { DataTable } from '@/components/DataTable.jsx';
-import { Pagination } from '@/components/Pagination.jsx';
-import { FilterBar, FilterSelect, SearchInput } from '@/components/Filters.jsx';
-import { StatusPill } from '@/components/StatusPill.jsx';
-import { EmptyState } from '@/components/EmptyState.jsx';
+import { USER_STATUS, KYC_STATUS } from '@/admin/lib/labels.js';
+import { useListQuery, useSearchState } from '@/admin/lib/hooks.js';
+import { compact, fmtNumber } from '@/admin/lib/utils.js';
+import { PageHeader } from '@/admin/components/PageHeader.jsx';
+import { DataTable } from '@/admin/components/DataTable.jsx';
+import { Pagination } from '@/admin/components/Pagination.jsx';
+import { FilterBar, FilterSelect, SearchInput } from '@/admin/components/Filters.jsx';
+import { StatusPill } from '@/admin/components/StatusPill.jsx';
+import { EmptyState } from '@/admin/components/EmptyState.jsx';
 
 export default function UsersList() {
   const [s, set] = useSearchState({ page: 1, q: '', status: '', kyc: '' });

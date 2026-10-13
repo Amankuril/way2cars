@@ -1,18 +1,18 @@
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { HelpCircle, Pencil, Plus, Trash2 } from 'lucide-react';
-import { api, ADMIN } from '@/lib/api.js';
-import { AUDIENCE } from '@/lib/labels.js';
-import { useAction } from '@/lib/hooks.js';
-import { errorMessage, fieldErrorMap } from '@/lib/utils.js';
-import { PageHeader } from '@/components/PageHeader.jsx';
-import { Button, IconButton } from '@/components/Button.jsx';
-import { ConfirmDialog, Modal } from '@/components/Modal.jsx';
-import { Field, Input, Textarea, Select, Switch } from '@/components/Form.jsx';
-import { FilterBar, FilterSelect, SearchInput } from '@/components/Filters.jsx';
-import { StatusPill, Tag } from '@/components/StatusPill.jsx';
-import { EmptyState, ErrorState } from '@/components/EmptyState.jsx';
-import { SkeletonText } from '@/components/Skeleton.jsx';
+import { api, ADMIN } from '@/admin/lib/api.js';
+import { AUDIENCE } from '@/admin/lib/labels.js';
+import { useAction } from '@/admin/lib/hooks.js';
+import { errorMessage, fieldErrorMap } from '@/admin/lib/utils.js';
+import { PageHeader } from '@/admin/components/PageHeader.jsx';
+import { Button, IconButton } from '@/admin/components/Button.jsx';
+import { ConfirmDialog, Modal } from '@/admin/components/Modal.jsx';
+import { Field, Input, Textarea, Select, Switch } from '@/admin/components/Form.jsx';
+import { FilterBar, FilterSelect, SearchInput } from '@/admin/components/Filters.jsx';
+import { StatusPill, Tag } from '@/admin/components/StatusPill.jsx';
+import { EmptyState, ErrorState } from '@/admin/components/EmptyState.jsx';
+import { SkeletonText } from '@/admin/components/Skeleton.jsx';
 
 function FaqForm({ faq, categories, onClose }) {
   const isNew = !faq._id;

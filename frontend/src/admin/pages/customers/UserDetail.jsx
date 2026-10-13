@@ -2,22 +2,22 @@ import { useState } from 'react';
 import { Link, useParams } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
 import { Ban, CircleCheck, RotateCcw, WalletCards } from 'lucide-react';
-import { api, ADMIN } from '@/lib/api.js';
+import { api, ADMIN } from '@/admin/lib/api.js';
 import { money, dateTime, dateLong, maskPhone } from '@shared/lib/format.js';
-import { USER_STATUS, KYC_STATUS, KYC_SUBMISSION_STATUS, BOOKING_STATUS, LEDGER_TYPE, ID_PROOF } from '@/lib/labels.js';
-import { useAction } from '@/lib/hooks.js';
-import { ageFrom, errorMessage, fmtNumber, humanize, toPaise } from '@/lib/utils.js';
-import { useAuth } from '@/auth/AuthContext.jsx';
-import { PageHeader } from '@/components/PageHeader.jsx';
-import { Panel, KeyValue } from '@/components/Panel.jsx';
-import { StatusPill } from '@/components/StatusPill.jsx';
-import { Button, ButtonLink } from '@/components/Button.jsx';
-import { ConfirmDialog, Modal } from '@/components/Modal.jsx';
-import { Field, MoneyInput, Textarea } from '@/components/Form.jsx';
-import { DetailSkeleton } from '@/components/Skeleton.jsx';
-import { ErrorState } from '@/components/EmptyState.jsx';
-import { MiniTable } from '@/components/MiniTable.jsx';
-import { HistoryList } from '@/components/HistoryList.jsx';
+import { USER_STATUS, KYC_STATUS, KYC_SUBMISSION_STATUS, BOOKING_STATUS, LEDGER_TYPE, ID_PROOF } from '@/admin/lib/labels.js';
+import { useAction } from '@/admin/lib/hooks.js';
+import { ageFrom, errorMessage, fmtNumber, humanize, toPaise } from '@/admin/lib/utils.js';
+import { useAuth } from '@/admin/auth/AuthContext.jsx';
+import { PageHeader } from '@/admin/components/PageHeader.jsx';
+import { Panel, KeyValue } from '@/admin/components/Panel.jsx';
+import { StatusPill } from '@/admin/components/StatusPill.jsx';
+import { Button, ButtonLink } from '@/admin/components/Button.jsx';
+import { ConfirmDialog, Modal } from '@/admin/components/Modal.jsx';
+import { Field, MoneyInput, Textarea } from '@/admin/components/Form.jsx';
+import { DetailSkeleton } from '@/admin/components/Skeleton.jsx';
+import { ErrorState } from '@/admin/components/EmptyState.jsx';
+import { MiniTable } from '@/admin/components/MiniTable.jsx';
+import { HistoryList } from '@/admin/components/HistoryList.jsx';
 
 const ACTIONS = {
   approve: { title: 'Approve this account?', description: 'The renter can start booking cars.', label: 'Approve account', tone: 'success' },

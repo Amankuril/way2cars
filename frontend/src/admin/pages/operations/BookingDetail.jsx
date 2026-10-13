@@ -2,25 +2,25 @@ import { useState } from 'react';
 import { Link, useParams } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
 import { Ban, Download, FileText, CircleSlash, Satellite, ExternalLink } from 'lucide-react';
-import { api, ADMIN, downloadFile } from '@/lib/api.js';
+import { api, ADMIN, downloadFile } from '@/admin/lib/api.js';
 import { money, dateTime, duration, dateLong } from '@shared/lib/format.js';
 import {
   BOOKING_STATUS, PAYMENT_STATUS, REFUND_STATUS, KYC_STATUS, CLAIM_STATUS, SETTLEMENT_OUTSTANDING, PAYMENT_PURPOSE, REFUND_REASON,
   REALM_LABEL, CHECKLIST, PHOTO_ANGLE, FUEL, TRANSMISSION, fuelLabel, statusInfo,
-} from '@/lib/labels.js';
-import { useAction } from '@/lib/hooks.js';
-import { cn, toPaise, toRupeesInput, humanize, errorMessage } from '@/lib/utils.js';
-import { useAuth } from '@/auth/AuthContext.jsx';
-import { PageHeader } from '@/components/PageHeader.jsx';
-import { Panel, KeyValue, AmountRows } from '@/components/Panel.jsx';
-import { StatusPill, Tag } from '@/components/StatusPill.jsx';
-import { Button } from '@/components/Button.jsx';
-import { ConfirmDialog, Modal } from '@/components/Modal.jsx';
-import { Field, MoneyInput, Textarea } from '@/components/Form.jsx';
-import { DetailSkeleton } from '@/components/Skeleton.jsx';
-import { ErrorState, EmptyState } from '@/components/EmptyState.jsx';
-import { SecureImage } from '@/components/SecureImage.jsx';
-import { useToast } from '@/components/Toast.jsx';
+} from '@/admin/lib/labels.js';
+import { useAction } from '@/admin/lib/hooks.js';
+import { cn, toPaise, toRupeesInput, humanize, errorMessage } from '@/admin/lib/utils.js';
+import { useAuth } from '@/admin/auth/AuthContext.jsx';
+import { PageHeader } from '@/admin/components/PageHeader.jsx';
+import { Panel, KeyValue, AmountRows } from '@/admin/components/Panel.jsx';
+import { StatusPill, Tag } from '@/admin/components/StatusPill.jsx';
+import { Button } from '@/admin/components/Button.jsx';
+import { ConfirmDialog, Modal } from '@/admin/components/Modal.jsx';
+import { Field, MoneyInput, Textarea } from '@/admin/components/Form.jsx';
+import { DetailSkeleton } from '@/admin/components/Skeleton.jsx';
+import { ErrorState, EmptyState } from '@/admin/components/EmptyState.jsx';
+import { SecureImage } from '@/admin/components/SecureImage.jsx';
+import { useToast } from '@/admin/components/Toast.jsx';
 
 const CANCELLABLE = ['pending_payment', 'pending_vendor_approval', 'confirmed'];
 

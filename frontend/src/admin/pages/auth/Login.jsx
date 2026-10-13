@@ -4,12 +4,12 @@ import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { ArrowLeft, Eye, EyeOff, Lock, ShieldCheck, TriangleAlert, Info } from 'lucide-react';
-import { useAuth } from '@/auth/AuthContext.jsx';
-import { FullPageLoader } from '@/auth/guards.jsx';
-import { Button } from '@/components/Button.jsx';
-import { Field, Input } from '@/components/Form.jsx';
-import { useDocumentTitle } from '@/lib/hooks.js';
-import { applyFieldErrors, errorMessage } from '@/lib/utils.js';
+import { useAuth } from '@/admin/auth/AuthContext.jsx';
+import { FullPageLoader } from '@/admin/auth/guards.jsx';
+import { Button } from '@/admin/components/Button.jsx';
+import { Field, Input } from '@/admin/components/Form.jsx';
+import { useDocumentTitle } from '@/admin/lib/hooks.js';
+import { applyFieldErrors, errorMessage } from '@/admin/lib/utils.js';
 
 const credsSchema = z.object({
   email: z.string().trim().min(1, 'Enter your work email').email('Enter a valid email address'),

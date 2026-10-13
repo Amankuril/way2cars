@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { api, ADMIN, onSessionExpired } from '@/lib/api.js';
+import { api, ADMIN, onSessionExpired } from '@/admin/lib/api.js';
 
 const AuthContext = createContext(null);
 const SETUP_KEY = 'w2c.admin.mfaSetupRequired';

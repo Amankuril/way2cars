@@ -1,4 +1,4 @@
-import { cn } from '@/lib/utils.js';
+import { cn } from '@/admin/lib/utils.js';
 
 export function Skeleton({ className }) {
   return <div className={cn('animate-pulse rounded-sm bg-ink-100', className || 'h-4 w-full')} aria-hidden="true" />;

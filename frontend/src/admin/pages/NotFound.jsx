@@ -1,7 +1,7 @@
 import { Compass } from 'lucide-react';
-import { PageHeader } from '@/components/PageHeader.jsx';
-import { EmptyState } from '@/components/EmptyState.jsx';
-import { ButtonLink } from '@/components/Button.jsx';
+import { PageHeader } from '@/admin/components/PageHeader.jsx';
+import { EmptyState } from '@/admin/components/EmptyState.jsx';
+import { ButtonLink } from '@/admin/components/Button.jsx';
 
 export default function NotFound() {
   return (

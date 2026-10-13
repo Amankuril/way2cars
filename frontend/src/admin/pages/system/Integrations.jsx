@@ -1,12 +1,12 @@
 import { useQuery } from '@tanstack/react-query';
 import { MessageSquare, KeyRound, CreditCard, BellRing, Mail, Map, Satellite, RefreshCw } from 'lucide-react';
-import { api, ADMIN } from '@/lib/api.js';
-import { fmtNumber, humanize } from '@/lib/utils.js';
-import { PageHeader } from '@/components/PageHeader.jsx';
-import { Button } from '@/components/Button.jsx';
-import { StatusPill } from '@/components/StatusPill.jsx';
-import { ErrorState } from '@/components/EmptyState.jsx';
-import { Skeleton } from '@/components/Skeleton.jsx';
+import { api, ADMIN } from '@/admin/lib/api.js';
+import { fmtNumber, humanize } from '@/admin/lib/utils.js';
+import { PageHeader } from '@/admin/components/PageHeader.jsx';
+import { Button } from '@/admin/components/Button.jsx';
+import { StatusPill } from '@/admin/components/StatusPill.jsx';
+import { ErrorState } from '@/admin/components/EmptyState.jsx';
+import { Skeleton } from '@/admin/components/Skeleton.jsx';
 
 function Card({ icon: Icon, title, description, status, children }) {
   return (

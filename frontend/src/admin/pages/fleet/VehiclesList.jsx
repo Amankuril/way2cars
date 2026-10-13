@@ -1,16 +1,16 @@
 import { Link } from 'react-router';
 import { Car, Star } from 'lucide-react';
-import { ADMIN } from '@/lib/api.js';
+import { ADMIN } from '@/admin/lib/api.js';
 import { money, dateTime } from '@shared/lib/format.js';
-import { VEHICLE_APPROVAL, VEHICLE_STATUS } from '@/lib/labels.js';
-import { useCatalog, useListQuery, useSearchState } from '@/lib/hooks.js';
-import { compact, shortId } from '@/lib/utils.js';
-import { PageHeader } from '@/components/PageHeader.jsx';
-import { DataTable, CellStack } from '@/components/DataTable.jsx';
-import { Pagination } from '@/components/Pagination.jsx';
-import { FilterBar, FilterSelect, SearchInput, FilterChip } from '@/components/Filters.jsx';
-import { StatusPill, Tag } from '@/components/StatusPill.jsx';
-import { EmptyState } from '@/components/EmptyState.jsx';
+import { VEHICLE_APPROVAL, VEHICLE_STATUS } from '@/admin/lib/labels.js';
+import { useCatalog, useListQuery, useSearchState } from '@/admin/lib/hooks.js';
+import { compact, shortId } from '@/admin/lib/utils.js';
+import { PageHeader } from '@/admin/components/PageHeader.jsx';
+import { DataTable, CellStack } from '@/admin/components/DataTable.jsx';
+import { Pagination } from '@/admin/components/Pagination.jsx';
+import { FilterBar, FilterSelect, SearchInput, FilterChip } from '@/admin/components/Filters.jsx';
+import { StatusPill, Tag } from '@/admin/components/StatusPill.jsx';
+import { EmptyState } from '@/admin/components/EmptyState.jsx';
 
 export default function VehiclesList() {
   const [s, set] = useSearchState({ page: 1, approval: '', status: '', cityId: '', q: '', featured: '', vendorId: '' });

@@ -1,17 +1,17 @@
 #!/usr/bin/env bash
-# Pull latest main, install, rebuild the admin panel and restart the API.
+# Pull latest main, install, rebuild the web frontend (/, /admin, /user, /vendor) and restart the API.
 #   ~/way2cars/deploy/deploy.sh
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
 echo "Deploying WAY2CARS…"
 git pull --ff-only origin main
-npm ci --workspace @way2cars/backend --workspace @way2cars/admin --include-workspace-root
+npm ci --workspace @way2cars/backend --workspace @way2cars/frontend --include-workspace-root
 
-# Admin panel → Nginx
-npm run build -w @way2cars/admin
-sudo mkdir -p /var/www/way2cars/admin
-sudo rsync -a --delete apps/admin/dist/ /var/www/way2cars/admin/
+# Web frontend → Nginx (one SPA build serves /, /admin, /user and /vendor)
+npm run build -w @way2cars/frontend
+sudo mkdir -p /var/www/way2cars/web
+sudo rsync -a --delete frontend/dist/ /var/www/way2cars/web/
 
 # API
 (cd backend && npm run db:indexes)

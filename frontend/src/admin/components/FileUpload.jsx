@@ -1,7 +1,7 @@
 import { useId, useRef, useState } from 'react';
 import { ImagePlus, Trash2, Upload } from 'lucide-react';
-import { uploadFile } from '@/lib/api.js';
-import { cn, errorMessage } from '@/lib/utils.js';
+import { uploadFile } from '@/admin/lib/api.js';
+import { cn, errorMessage } from '@/admin/lib/utils.js';
 import { Button } from './Button.jsx';
 
 const MAX_MB = 8;

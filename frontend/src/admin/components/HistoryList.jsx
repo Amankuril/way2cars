@@ -1,6 +1,6 @@
 import { dateTime } from '@shared/lib/format.js';
-import { REALM_LABEL } from '@/lib/labels.js';
-import { humanize } from '@/lib/utils.js';
+import { REALM_LABEL } from '@/admin/lib/labels.js';
+import { humanize } from '@/admin/lib/utils.js';
 
 /** Audit trail rendered as a vertical timeline. items: [{ action, actor: { realm, label }, reason, at }] */
 export function HistoryList({ items, empty = 'No recorded activity yet.' }) {

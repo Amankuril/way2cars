@@ -1,18 +1,18 @@
 import { useState } from 'react';
 import { ShieldCheck, ShieldOff } from 'lucide-react';
-import { api, ADMIN } from '@/lib/api.js';
+import { api, ADMIN } from '@/admin/lib/api.js';
 import { dateTime } from '@shared/lib/format.js';
-import { ROLE_LABEL } from '@/lib/nav.js';
-import { errorMessage } from '@/lib/utils.js';
-import { useAuth } from '@/auth/AuthContext.jsx';
-import { PageHeader } from '@/components/PageHeader.jsx';
-import { Panel, KeyValue } from '@/components/Panel.jsx';
-import { Button } from '@/components/Button.jsx';
-import { Field, Input } from '@/components/Form.jsx';
-import { StatusPill } from '@/components/StatusPill.jsx';
-import { ConfirmDialog } from '@/components/Modal.jsx';
-import { MfaEnrol } from '@/components/MfaEnrol.jsx';
-import { useToast } from '@/components/Toast.jsx';
+import { ROLE_LABEL } from '@/admin/lib/nav.js';
+import { errorMessage } from '@/admin/lib/utils.js';
+import { useAuth } from '@/admin/auth/AuthContext.jsx';
+import { PageHeader } from '@/admin/components/PageHeader.jsx';
+import { Panel, KeyValue } from '@/admin/components/Panel.jsx';
+import { Button } from '@/admin/components/Button.jsx';
+import { Field, Input } from '@/admin/components/Form.jsx';
+import { StatusPill } from '@/admin/components/StatusPill.jsx';
+import { ConfirmDialog } from '@/admin/components/Modal.jsx';
+import { MfaEnrol } from '@/admin/components/MfaEnrol.jsx';
+import { useToast } from '@/admin/components/Toast.jsx';
 import { passwordProblem } from './Admins.jsx';
 
 function ChangePassword() {

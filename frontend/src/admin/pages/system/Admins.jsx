@@ -1,20 +1,20 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { KeyRound, Plus, ShieldOff, UserCog } from 'lucide-react';
-import { api, ADMIN } from '@/lib/api.js';
+import { api, ADMIN } from '@/admin/lib/api.js';
 import { dateTime, dateLong } from '@shared/lib/format.js';
-import { ADMIN_STATUS } from '@/lib/labels.js';
-import { ROLE_LABEL } from '@/lib/nav.js';
-import { useAction } from '@/lib/hooks.js';
-import { errorMessage, fieldErrorMap } from '@/lib/utils.js';
-import { useAuth } from '@/auth/AuthContext.jsx';
-import { PageHeader } from '@/components/PageHeader.jsx';
-import { DataTable } from '@/components/DataTable.jsx';
-import { Button } from '@/components/Button.jsx';
-import { ConfirmDialog, Modal } from '@/components/Modal.jsx';
-import { Field, Input, Select } from '@/components/Form.jsx';
-import { StatusPill, Tag } from '@/components/StatusPill.jsx';
-import { EmptyState } from '@/components/EmptyState.jsx';
+import { ADMIN_STATUS } from '@/admin/lib/labels.js';
+import { ROLE_LABEL } from '@/admin/lib/nav.js';
+import { useAction } from '@/admin/lib/hooks.js';
+import { errorMessage, fieldErrorMap } from '@/admin/lib/utils.js';
+import { useAuth } from '@/admin/auth/AuthContext.jsx';
+import { PageHeader } from '@/admin/components/PageHeader.jsx';
+import { DataTable } from '@/admin/components/DataTable.jsx';
+import { Button } from '@/admin/components/Button.jsx';
+import { ConfirmDialog, Modal } from '@/admin/components/Modal.jsx';
+import { Field, Input, Select } from '@/admin/components/Form.jsx';
+import { StatusPill, Tag } from '@/admin/components/StatusPill.jsx';
+import { EmptyState } from '@/admin/components/EmptyState.jsx';
 
 const ROLE_HINT = {
   super_admin: 'Everything, including settings and admin accounts.',

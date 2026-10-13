@@ -1,6 +1,6 @@
 import { useEffect, useId, useState } from 'react';
 import { Search, X } from 'lucide-react';
-import { cn } from '@/lib/utils.js';
+import { cn } from '@/admin/lib/utils.js';
 import { Select } from './Form.jsx';
 
 export function FilterBar({ children, className, actions }) {

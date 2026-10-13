@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { X, TriangleAlert } from 'lucide-react';
 import { Button } from './Button.jsx';
 import { Field, Textarea } from './Form.jsx';
-import { cn, errorMessage } from '@/lib/utils.js';
+import { cn, errorMessage } from '@/admin/lib/utils.js';
 
 const FOCUSABLE = 'a[href],button:not([disabled]),textarea:not([disabled]),input:not([disabled]),select:not([disabled]),[tabindex]:not([tabindex="-1"])';
 

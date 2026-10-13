@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from './api.js';
-import { useToast } from '@/components/Toast.jsx';
+import { useToast } from '@/admin/components/Toast.jsx';
 
 /**
  * Filter + pagination state kept in the URL so lists are shareable and survive reloads.

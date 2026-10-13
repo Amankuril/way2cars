@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { FileText, ImageOff, Lock, ExternalLink, ZoomIn } from 'lucide-react';
-import { fetchBlob, openFileInNewTab } from '@/lib/api.js';
-import { cn, errorMessage } from '@/lib/utils.js';
+import { fetchBlob, openFileInNewTab } from '@/admin/lib/api.js';
+import { cn, errorMessage } from '@/admin/lib/utils.js';
 import { useToast } from './Toast.jsx';
 import { Modal } from './Modal.jsx';
 import { Spinner } from './Button.jsx';

@@ -1,8 +1,8 @@
 import { Navigate, useLocation } from 'react-router';
 import { ShieldAlert } from 'lucide-react';
 import { useAuth } from './AuthContext.jsx';
-import { EmptyState } from '@/components/EmptyState.jsx';
-import { Spinner } from '@/components/Button.jsx';
+import { EmptyState } from '@/admin/components/EmptyState.jsx';
+import { Spinner } from '@/admin/components/Button.jsx';
 
 export function FullPageLoader({ label = 'Loading WAY2CARS Admin…' }) {
   return (

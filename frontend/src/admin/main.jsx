@@ -1,12 +1,10 @@
-import { StrictMode } from 'react';
-import { createRoot } from 'react-dom/client';
+import { useEffect } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import '@fontsource-variable/manrope';
-import './index.css';
 import App from './App.jsx';
-import { AuthProvider } from '@/auth/AuthContext.jsx';
-import { ToastProvider } from '@/components/Toast.jsx';
+import { AuthProvider } from '@/admin/auth/AuthContext.jsx';
+import { ToastProvider } from '@/admin/components/Toast.jsx';
 
+/** Admin panel root (mounted by src/main.jsx for /admin/*). Router basename is /admin (see App.jsx). */
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
@@ -19,8 +17,12 @@ const queryClient = new QueryClient({
   },
 });
 
-createRoot(document.getElementById('root')).render(
-  <StrictMode>
+export default function AdminRoot() {
+  useEffect(() => {
+    document.title = 'WAY2CARS Admin';
+    document.querySelector('meta[name=robots]')?.setAttribute('content', 'noindex, nofollow');
+  }, []);
+  return (
     <QueryClientProvider client={queryClient}>
       <ToastProvider>
         <AuthProvider>
@@ -28,5 +30,5 @@ createRoot(document.getElementById('root')).render(
         </AuthProvider>
       </ToastProvider>
     </QueryClientProvider>
-  </StrictMode>,
-);
+  );
+}

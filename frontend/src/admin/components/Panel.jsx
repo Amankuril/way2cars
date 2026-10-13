@@ -1,4 +1,4 @@
-import { cn } from '@/lib/utils.js';
+import { cn } from '@/admin/lib/utils.js';
 
 /** White surface panel with optional header (title, description, actions). */
 export function Panel({ title, description, actions, children, className, bodyClassName, flush = false, as: Tag = 'section' }) {

@@ -1,16 +1,16 @@
 import { useState } from 'react';
 import { Send, CircleCheck, Smartphone } from 'lucide-react';
-import { api, ADMIN } from '@/lib/api.js';
+import { api, ADMIN } from '@/admin/lib/api.js';
 import { dateTime } from '@shared/lib/format.js';
-import { useAction, useCatalog, useListQuery } from '@/lib/hooks.js';
-import { errorMessage, fieldErrorMap, fmtNumber } from '@/lib/utils.js';
-import { useAuth } from '@/auth/AuthContext.jsx';
-import { PageHeader } from '@/components/PageHeader.jsx';
-import { Panel } from '@/components/Panel.jsx';
-import { Button } from '@/components/Button.jsx';
-import { ConfirmDialog } from '@/components/Modal.jsx';
-import { Field, Input, Textarea, Select } from '@/components/Form.jsx';
-import { MiniTable } from '@/components/MiniTable.jsx';
+import { useAction, useCatalog, useListQuery } from '@/admin/lib/hooks.js';
+import { errorMessage, fieldErrorMap, fmtNumber } from '@/admin/lib/utils.js';
+import { useAuth } from '@/admin/auth/AuthContext.jsx';
+import { PageHeader } from '@/admin/components/PageHeader.jsx';
+import { Panel } from '@/admin/components/Panel.jsx';
+import { Button } from '@/admin/components/Button.jsx';
+import { ConfirmDialog } from '@/admin/components/Modal.jsx';
+import { Field, Input, Textarea, Select } from '@/admin/components/Form.jsx';
+import { MiniTable } from '@/admin/components/MiniTable.jsx';
 
 const EMPTY = { title: '', body: '', link: '', cityId: '' };
 

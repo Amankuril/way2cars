@@ -1,17 +1,17 @@
 import { Link } from 'react-router';
 import { Plus, TicketPercent } from 'lucide-react';
-import { ADMIN } from '@/lib/api.js';
+import { ADMIN } from '@/admin/lib/api.js';
 import { money, dateTime } from '@shared/lib/format.js';
-import { CAMPAIGN } from '@/lib/labels.js';
-import { useListQuery, useSearchState } from '@/lib/hooks.js';
-import { compact, fmtNumber } from '@/lib/utils.js';
-import { PageHeader } from '@/components/PageHeader.jsx';
-import { DataTable, CellStack } from '@/components/DataTable.jsx';
-import { Pagination } from '@/components/Pagination.jsx';
-import { FilterBar, FilterSelect } from '@/components/Filters.jsx';
-import { StatusPill, Tag } from '@/components/StatusPill.jsx';
-import { EmptyState } from '@/components/EmptyState.jsx';
-import { ButtonLink } from '@/components/Button.jsx';
+import { CAMPAIGN } from '@/admin/lib/labels.js';
+import { useListQuery, useSearchState } from '@/admin/lib/hooks.js';
+import { compact, fmtNumber } from '@/admin/lib/utils.js';
+import { PageHeader } from '@/admin/components/PageHeader.jsx';
+import { DataTable, CellStack } from '@/admin/components/DataTable.jsx';
+import { Pagination } from '@/admin/components/Pagination.jsx';
+import { FilterBar, FilterSelect } from '@/admin/components/Filters.jsx';
+import { StatusPill, Tag } from '@/admin/components/StatusPill.jsx';
+import { EmptyState } from '@/admin/components/EmptyState.jsx';
+import { ButtonLink } from '@/admin/components/Button.jsx';
 
 export function couponValue(c) {
   if (c.type === 'percent') return `${(c.valueBps || 0) / 100}% off${c.maxDiscountPaise ? ` · up to ${money(c.maxDiscountPaise)}` : ''}`;

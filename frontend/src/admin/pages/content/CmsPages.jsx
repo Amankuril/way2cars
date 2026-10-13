@@ -1,10 +1,10 @@
 import { Link } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
-import { api, ADMIN } from '@/lib/api.js';
+import { api, ADMIN } from '@/admin/lib/api.js';
 import { dateTime } from '@shared/lib/format.js';
-import { PageHeader } from '@/components/PageHeader.jsx';
-import { DataTable } from '@/components/DataTable.jsx';
-import { StatusPill } from '@/components/StatusPill.jsx';
+import { PageHeader } from '@/admin/components/PageHeader.jsx';
+import { DataTable } from '@/admin/components/DataTable.jsx';
+import { StatusPill } from '@/admin/components/StatusPill.jsx';
 
 export const PAGE_NAMES = {
   'privacy-policy': 'Privacy policy',

@@ -1,6 +1,6 @@
 import { Inbox, TriangleAlert } from 'lucide-react';
 import { Button } from './Button.jsx';
-import { errorMessage } from '@/lib/utils.js';
+import { errorMessage } from '@/admin/lib/utils.js';
 
 export function EmptyState({ icon: Icon = Inbox, title, description, action, compact = false }) {
   return (

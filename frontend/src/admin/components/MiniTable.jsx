@@ -1,4 +1,4 @@
-import { cn } from '@/lib/utils.js';
+import { cn } from '@/admin/lib/utils.js';
 
 /** Compact table for use inside a Panel (flush). columns: [{ key, header, cell(row), align }] */
 export function MiniTable({ columns, rows, empty, rowKey = (r, i) => r.id || i }) {

@@ -2,22 +2,22 @@ import { useState } from 'react';
 import { Link, useParams } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
 import { CircleCheck, CircleX, Ban, RotateCcw, Star, Landmark } from 'lucide-react';
-import { api, ADMIN } from '@/lib/api.js';
+import { api, ADMIN } from '@/admin/lib/api.js';
 import { money, dateTime, dateLong, maskPhone } from '@shared/lib/format.js';
-import { VENDOR_STATUS, KYC_STATUS, KYC_SUBMISSION_STATUS, BANK_STATUS, BOOKING_STATUS, VEHICLE_APPROVAL, VEHICLE_STATUS, ID_PROOF } from '@/lib/labels.js';
-import { useAction } from '@/lib/hooks.js';
-import { fmtNumber } from '@/lib/utils.js';
-import { useAuth } from '@/auth/AuthContext.jsx';
-import { PageHeader } from '@/components/PageHeader.jsx';
-import { Panel, KeyValue, AmountRows } from '@/components/Panel.jsx';
-import { StatusPill } from '@/components/StatusPill.jsx';
-import { Button, ButtonLink } from '@/components/Button.jsx';
-import { ConfirmDialog } from '@/components/Modal.jsx';
-import { DetailSkeleton } from '@/components/Skeleton.jsx';
-import { ErrorState } from '@/components/EmptyState.jsx';
-import { SecureFileLink } from '@/components/SecureImage.jsx';
-import { MiniTable } from '@/components/MiniTable.jsx';
-import { HistoryList } from '@/components/HistoryList.jsx';
+import { VENDOR_STATUS, KYC_STATUS, KYC_SUBMISSION_STATUS, BANK_STATUS, BOOKING_STATUS, VEHICLE_APPROVAL, VEHICLE_STATUS, ID_PROOF } from '@/admin/lib/labels.js';
+import { useAction } from '@/admin/lib/hooks.js';
+import { fmtNumber } from '@/admin/lib/utils.js';
+import { useAuth } from '@/admin/auth/AuthContext.jsx';
+import { PageHeader } from '@/admin/components/PageHeader.jsx';
+import { Panel, KeyValue, AmountRows } from '@/admin/components/Panel.jsx';
+import { StatusPill } from '@/admin/components/StatusPill.jsx';
+import { Button, ButtonLink } from '@/admin/components/Button.jsx';
+import { ConfirmDialog } from '@/admin/components/Modal.jsx';
+import { DetailSkeleton } from '@/admin/components/Skeleton.jsx';
+import { ErrorState } from '@/admin/components/EmptyState.jsx';
+import { SecureFileLink } from '@/admin/components/SecureImage.jsx';
+import { MiniTable } from '@/admin/components/MiniTable.jsx';
+import { HistoryList } from '@/admin/components/HistoryList.jsx';
 
 const STEPS = [
   ['profile', 'Profile'],

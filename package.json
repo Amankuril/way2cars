@@ -2,12 +2,18 @@
   "name": "way2cars",
   "private": true,
   "version": "0.1.0",
-  "engines": { "node": ">=20.19", "npm": ">=10" },
-  "workspaces": ["backend", "apps/admin"],
+  "engines": {
+    "node": ">=20.19",
+    "npm": ">=10"
+  },
+  "workspaces": [
+    "backend",
+    "frontend"
+  ],
   "scripts": {
     "dev:backend": "npm run dev -w @way2cars/backend",
-    "dev:admin": "npm run dev -w @way2cars/admin",
-    "build:admin": "npm run build -w @way2cars/admin",
+    "dev:frontend": "npm run dev -w @way2cars/frontend",
+    "build:frontend": "npm run build -w @way2cars/frontend",
     "test": "npm test --workspaces --if-present",
     "lint": "npm run lint --workspaces --if-present"
   }

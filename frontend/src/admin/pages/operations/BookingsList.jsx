@@ -1,17 +1,17 @@
 import { Link } from 'react-router';
 import { CalendarRange } from 'lucide-react';
-import { ADMIN } from '@/lib/api.js';
+import { ADMIN } from '@/admin/lib/api.js';
 import { money, dateTime, duration } from '@shared/lib/format.js';
-import { BOOKING_STATUS, PAYMENT_STATUS } from '@/lib/labels.js';
-import { useCatalog, useListQuery, useSearchState } from '@/lib/hooks.js';
-import { istDayStart, istDayEndExclusive, compact, shortId } from '@/lib/utils.js';
-import { PageHeader } from '@/components/PageHeader.jsx';
-import { DataTable, CellStack } from '@/components/DataTable.jsx';
-import { Pagination } from '@/components/Pagination.jsx';
-import { FilterBar, FilterSelect, SearchInput, FilterChip } from '@/components/Filters.jsx';
-import { DateRangePicker } from '@/components/DateRangePicker.jsx';
-import { StatusPill } from '@/components/StatusPill.jsx';
-import { EmptyState } from '@/components/EmptyState.jsx';
+import { BOOKING_STATUS, PAYMENT_STATUS } from '@/admin/lib/labels.js';
+import { useCatalog, useListQuery, useSearchState } from '@/admin/lib/hooks.js';
+import { istDayStart, istDayEndExclusive, compact, shortId } from '@/admin/lib/utils.js';
+import { PageHeader } from '@/admin/components/PageHeader.jsx';
+import { DataTable, CellStack } from '@/admin/components/DataTable.jsx';
+import { Pagination } from '@/admin/components/Pagination.jsx';
+import { FilterBar, FilterSelect, SearchInput, FilterChip } from '@/admin/components/Filters.jsx';
+import { DateRangePicker } from '@/admin/components/DateRangePicker.jsx';
+import { StatusPill } from '@/admin/components/StatusPill.jsx';
+import { EmptyState } from '@/admin/components/EmptyState.jsx';
 
 export default function BookingsList() {
   const [s, set] = useSearchState({ page: 1, status: '', ref: '', from: '', to: '', cityId: '', userId: '', vendorId: '', vehicleId: '' });

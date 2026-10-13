@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import { Copy, QrCode } from 'lucide-react';
-import { api, ADMIN } from '@/lib/api.js';
-import { errorMessage } from '@/lib/utils.js';
-import { useAuth } from '@/auth/AuthContext.jsx';
+import { api, ADMIN } from '@/admin/lib/api.js';
+import { errorMessage } from '@/admin/lib/utils.js';
+import { useAuth } from '@/admin/auth/AuthContext.jsx';
 import { Button } from './Button.jsx';
 import { Field, Input } from './Form.jsx';
 import { useToast } from './Toast.jsx';

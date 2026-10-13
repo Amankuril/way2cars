@@ -1,5 +1,5 @@
 import { useNavigate } from 'react-router';
-import { cn } from '@/lib/utils.js';
+import { cn } from '@/admin/lib/utils.js';
 import { Skeleton } from './Skeleton.jsx';
 import { EmptyState, ErrorState } from './EmptyState.jsx';
 
@@ -58,7 +58,7 @@ export function DataTable({ columns, rows, loading, error, onRetry, rowKey = (r)
                           ? (e) => {
                               if (e.target.closest('a,button,input,select,label,textarea')) return;
                               if (window.getSelection()?.toString()) return;
-                              if (e.metaKey || e.ctrlKey) window.open(`${import.meta.env.BASE_URL.replace(/\/$/, '')}${href}`, '_blank');
+                              if (e.metaKey || e.ctrlKey) window.open(`/admin${href}`, '_blank');
                               else navigate(href);
                             }
                           : undefined

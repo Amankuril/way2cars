@@ -1,5 +1,5 @@
 import { ChevronLeft, ChevronRight } from 'lucide-react';
-import { fmtNumber } from '@/lib/utils.js';
+import { fmtNumber } from '@/admin/lib/utils.js';
 
 /** "21–40 of 312" with previous / next. meta = { page, limit, total, pages } from the API. */
 export function Pagination({ meta, onPage, className = '' }) {

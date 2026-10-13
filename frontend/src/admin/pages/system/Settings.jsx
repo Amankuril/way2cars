@@ -1,16 +1,16 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Plus, Trash2 } from 'lucide-react';
-import { api, ADMIN } from '@/lib/api.js';
+import { api, ADMIN } from '@/admin/lib/api.js';
 import { dateTime } from '@shared/lib/format.js';
-import { useAction } from '@/lib/hooks.js';
-import { cn, errorMessage } from '@/lib/utils.js';
-import { PageHeader } from '@/components/PageHeader.jsx';
-import { Button, IconButton } from '@/components/Button.jsx';
-import { Field, Input, MoneyInput, PercentInput, AffixInput, Switch, FormSection, StickySaveBar } from '@/components/Form.jsx';
-import { DetailSkeleton } from '@/components/Skeleton.jsx';
-import { ErrorState } from '@/components/EmptyState.jsx';
-import { ConfirmDialog } from '@/components/Modal.jsx';
+import { useAction } from '@/admin/lib/hooks.js';
+import { cn, errorMessage } from '@/admin/lib/utils.js';
+import { PageHeader } from '@/admin/components/PageHeader.jsx';
+import { Button, IconButton } from '@/admin/components/Button.jsx';
+import { Field, Input, MoneyInput, PercentInput, AffixInput, Switch, FormSection, StickySaveBar } from '@/admin/components/Form.jsx';
+import { DetailSkeleton } from '@/admin/components/Skeleton.jsx';
+import { ErrorState } from '@/admin/components/EmptyState.jsx';
+import { ConfirmDialog } from '@/admin/components/Modal.jsx';
 
 /**
  * Every editable setting. unit: rupees (stored as paise), pct (stored as bps), mult (bps, ×10000 = 1×),

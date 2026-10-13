@@ -4,18 +4,18 @@ import { useQuery } from '@tanstack/react-query';
 import {
   Users, Building2, Car, CalendarRange, IndianRupee, ShieldCheck, LifeBuoy, Siren, Wallet, Hammer, Undo2, ChevronRight, RefreshCw,
 } from 'lucide-react';
-import { api, ADMIN } from '@/lib/api.js';
+import { api, ADMIN } from '@/admin/lib/api.js';
 import { money } from '@shared/lib/format.js';
-import { BOOKING_STATUS, VENDOR_STATUS, statusInfo } from '@/lib/labels.js';
-import { PageHeader } from '@/components/PageHeader.jsx';
-import { Panel, StatTile } from '@/components/Panel.jsx';
-import { Skeleton } from '@/components/Skeleton.jsx';
-import { ErrorState } from '@/components/EmptyState.jsx';
-import { Button } from '@/components/Button.jsx';
-import { Tabs } from '@/components/Tabs.jsx';
-import { DailyChart, fillDays, compactRupees } from '@/components/Charts.jsx';
-import { useAuth } from '@/auth/AuthContext.jsx';
-import { cn, fmtNumber, istToday } from '@/lib/utils.js';
+import { BOOKING_STATUS, VENDOR_STATUS, statusInfo } from '@/admin/lib/labels.js';
+import { PageHeader } from '@/admin/components/PageHeader.jsx';
+import { Panel, StatTile } from '@/admin/components/Panel.jsx';
+import { Skeleton } from '@/admin/components/Skeleton.jsx';
+import { ErrorState } from '@/admin/components/EmptyState.jsx';
+import { Button } from '@/admin/components/Button.jsx';
+import { Tabs } from '@/admin/components/Tabs.jsx';
+import { DailyChart, fillDays, compactRupees } from '@/admin/components/Charts.jsx';
+import { useAuth } from '@/admin/auth/AuthContext.jsx';
+import { cn, fmtNumber, istToday } from '@/admin/lib/utils.js';
 
 const ACTIVE = ['confirmed', 'ongoing', 'return_pending'];
 

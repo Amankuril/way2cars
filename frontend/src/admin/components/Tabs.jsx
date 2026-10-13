@@ -1,5 +1,5 @@
 import { useRef } from 'react';
-import { cn, fmtNumber } from '@/lib/utils.js';
+import { cn, fmtNumber } from '@/admin/lib/utils.js';
 
 /**
  * Underline tabs (role="tablist") with arrow-key navigation.

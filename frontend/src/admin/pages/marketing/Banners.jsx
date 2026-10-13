@@ -1,18 +1,18 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Image as ImageIcon, Pencil, Plus, Trash2 } from 'lucide-react';
-import { api, ADMIN } from '@/lib/api.js';
+import { api, ADMIN } from '@/admin/lib/api.js';
 import { dateTime } from '@shared/lib/format.js';
-import { useAction, useCatalog } from '@/lib/hooks.js';
-import { cn, errorMessage, fieldErrorMap, fromIstDateTime, istDateTimeInput } from '@/lib/utils.js';
-import { PageHeader } from '@/components/PageHeader.jsx';
-import { Button, IconButton } from '@/components/Button.jsx';
-import { ConfirmDialog, Modal } from '@/components/Modal.jsx';
-import { Field, Input, Switch } from '@/components/Form.jsx';
-import { ImageUpload } from '@/components/FileUpload.jsx';
-import { StatusPill, Tag } from '@/components/StatusPill.jsx';
-import { EmptyState, ErrorState } from '@/components/EmptyState.jsx';
-import { Skeleton } from '@/components/Skeleton.jsx';
+import { useAction, useCatalog } from '@/admin/lib/hooks.js';
+import { cn, errorMessage, fieldErrorMap, fromIstDateTime, istDateTimeInput } from '@/admin/lib/utils.js';
+import { PageHeader } from '@/admin/components/PageHeader.jsx';
+import { Button, IconButton } from '@/admin/components/Button.jsx';
+import { ConfirmDialog, Modal } from '@/admin/components/Modal.jsx';
+import { Field, Input, Switch } from '@/admin/components/Form.jsx';
+import { ImageUpload } from '@/admin/components/FileUpload.jsx';
+import { StatusPill, Tag } from '@/admin/components/StatusPill.jsx';
+import { EmptyState, ErrorState } from '@/admin/components/EmptyState.jsx';
+import { Skeleton } from '@/admin/components/Skeleton.jsx';
 
 const blank = { title: '', subtitle: '', image: null, link: '', couponCode: '', cityIds: [], startsAt: '', endsAt: '', sortOrder: '0', isActive: true };
 

@@ -1,6 +1,6 @@
 import { forwardRef } from 'react';
 import { Link } from 'react-router';
-import { cn } from '@/lib/utils.js';
+import { cn } from '@/admin/lib/utils.js';
 
 export function Spinner({ className }) {
   return (

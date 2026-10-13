@@ -2,7 +2,7 @@ import { useEffect } from 'react';
 import { Link } from 'react-router';
 import { ArrowLeft } from 'lucide-react';
 import { usePageTitle } from './PageTitle.jsx';
-import { useDocumentTitle } from '@/lib/hooks.js';
+import { useDocumentTitle } from '@/admin/lib/hooks.js';
 
 /**
  * Consistent page header: optional back link, title (+ status/meta), description, actions at right.

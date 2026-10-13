@@ -1,20 +1,20 @@
 import { useState } from 'react';
 import { Link } from 'react-router';
 import { Star, EyeOff, Eye } from 'lucide-react';
-import { api, ADMIN } from '@/lib/api.js';
+import { api, ADMIN } from '@/admin/lib/api.js';
 import { dateTime, maskPhone } from '@shared/lib/format.js';
-import { REVIEW_STATUS } from '@/lib/labels.js';
-import { useAction, useListQuery, useSearchState } from '@/lib/hooks.js';
-import { compact, humanize } from '@/lib/utils.js';
-import { useAuth } from '@/auth/AuthContext.jsx';
-import { PageHeader } from '@/components/PageHeader.jsx';
-import { DataTable } from '@/components/DataTable.jsx';
-import { Pagination } from '@/components/Pagination.jsx';
-import { FilterBar, FilterSelect } from '@/components/Filters.jsx';
-import { StatusPill, Tag } from '@/components/StatusPill.jsx';
-import { EmptyState } from '@/components/EmptyState.jsx';
-import { Button } from '@/components/Button.jsx';
-import { ConfirmDialog } from '@/components/Modal.jsx';
+import { REVIEW_STATUS } from '@/admin/lib/labels.js';
+import { useAction, useListQuery, useSearchState } from '@/admin/lib/hooks.js';
+import { compact, humanize } from '@/admin/lib/utils.js';
+import { useAuth } from '@/admin/auth/AuthContext.jsx';
+import { PageHeader } from '@/admin/components/PageHeader.jsx';
+import { DataTable } from '@/admin/components/DataTable.jsx';
+import { Pagination } from '@/admin/components/Pagination.jsx';
+import { FilterBar, FilterSelect } from '@/admin/components/Filters.jsx';
+import { StatusPill, Tag } from '@/admin/components/StatusPill.jsx';
+import { EmptyState } from '@/admin/components/EmptyState.jsx';
+import { Button } from '@/admin/components/Button.jsx';
+import { ConfirmDialog } from '@/admin/components/Modal.jsx';
 
 const NEGATIVE = ['late_handover', 'dirty_car', 'mechanical_issue', 'not_as_described'];
 

@@ -1,5 +1,5 @@
-import { cn } from '@/lib/utils.js';
-import { statusInfo } from '@/lib/labels.js';
+import { cn } from '@/admin/lib/utils.js';
+import { statusInfo } from '@/admin/lib/labels.js';
 
 const TONES = {
   neutral: 'bg-ink-100 text-ink-700',

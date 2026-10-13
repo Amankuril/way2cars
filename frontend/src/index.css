@@ -53,3 +53,195 @@
   scrollbar-width: thin;
   scrollbar-color: theme('colors.ink.200') transparent;
 }
+
+/* ------------------------------------------------------------------------------------------
+ * React Native layout semantics for src/mobile/rn.jsx (user + vendor web apps).
+ * In @layer components so Tailwind utilities (flex-1, shrink, items-center…) override them,
+ * exactly like NativeWind classes override RN defaults. Keep the class names literal: Tailwind
+ * purges unused @layer classes by scanning src/.
+ * ---------------------------------------------------------------------------------------- */
+@layer components {
+  /* RN <View>: column flexbox, stretch, no shrink, no min-content floor, relative positioning. */
+  .rn-view {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    align-content: flex-start;
+    flex-basis: auto;
+    flex-shrink: 0;
+    min-width: 0;
+    min-height: 0;
+    position: relative;
+    border-width: 0;
+    border-style: solid;
+    margin: 0;
+    padding: 0;
+  }
+  /* RN <Text> (outermost): block that wraps, keeps \n, never forces its parent wider. */
+  .rn-text {
+    display: block;
+    position: relative;
+    min-width: 0;
+    flex-shrink: 1;
+    margin: 0;
+    padding: 0;
+    font-size: 14px;
+    white-space: pre-wrap;
+    overflow-wrap: break-word;
+    border: 0 solid;
+  }
+  /* <Text> inside <Text> is inline, as in RN. */
+  .rn-text-nested {
+    display: inline;
+    white-space: inherit;
+  }
+  .rn-text-1 {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .rn-text-clamp {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+  .rn-pressable {
+    cursor: pointer;
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+    outline-offset: -2px;
+  }
+  /* Disabled pressables give no press feedback and swallow nothing (RN: no responder). */
+  .rn-disabled {
+    cursor: default;
+    pointer-events: none;
+  }
+  .rn-box-none {
+    pointer-events: none;
+  }
+  .rn-box-none > * {
+    pointer-events: auto;
+  }
+  .rn-box-only > * {
+    pointer-events: none;
+  }
+  .rn-image {
+    display: block;
+    flex-shrink: 0;
+    min-width: 0;
+    max-width: none;
+    object-fit: cover;
+  }
+  .rn-input {
+    display: block;
+    min-width: 0;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    font: inherit;
+    color: inherit;
+    font-size: 14px;
+    outline: none;
+    resize: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .rn-input::placeholder {
+    color: var(--rn-ph, #98a5ac);
+    opacity: 1;
+  }
+  /* RN ScrollView: grows/shrinks inside its parent and scrolls its own content. */
+  .rn-scroll {
+    flex-grow: 1;
+    flex-shrink: 1;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+  .rn-scroll::-webkit-scrollbar {
+    display: none;
+  }
+  .rn-scroll-y {
+    overflow-x: hidden;
+    overflow-y: auto;
+  }
+  .rn-scroll-x {
+    overflow-x: auto;
+    overflow-y: hidden;
+  }
+  .rn-scroll-x > .rn-scroll-content {
+    flex-direction: row;
+    width: max-content;
+    min-width: 100%;
+  }
+  .rn-scroll-static {
+    overflow: visible;
+  }
+  .rn-snap {
+    scroll-snap-type: x mandatory;
+  }
+  .rn-snap > .rn-scroll-content > * {
+    scroll-snap-align: start;
+  }
+  .rn-modal {
+    position: absolute;
+    inset: 0;
+    pointer-events: auto;
+    z-index: 10;
+  }
+}
+
+/* Mouse users get a thin scrollbar in the phone frame (touch devices keep RN's hidden bars). */
+@media (hover: hover) and (pointer: fine) {
+  .rn-scroll:hover {
+    scrollbar-width: thin;
+    scrollbar-color: theme('colors.ink.200') transparent;
+  }
+}
+
+@keyframes rn-slide-in-right {
+  from { transform: translateX(28%); opacity: 0.4; }
+  to { transform: none; opacity: 1; }
+}
+@keyframes rn-slide-in-up {
+  from { transform: translateY(100%); }
+  to { transform: none; }
+}
+@keyframes rn-slide-out-down {
+  from { transform: none; }
+  to { transform: translateY(100%); }
+}
+@keyframes rn-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes rn-fade-out {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+@keyframes rn-spin {
+  to { transform: rotate(360deg); }
+}
+.rn-anim-push { animation: rn-slide-in-right 220ms cubic-bezier(0.2, 0.8, 0.2, 1); }
+.rn-anim-push-up { animation: rn-slide-in-up 260ms cubic-bezier(0.2, 0.8, 0.2, 1); }
+.rn-anim-slide-in { animation: rn-slide-in-up 260ms cubic-bezier(0.2, 0.8, 0.2, 1); }
+.rn-anim-slide-out { animation: rn-slide-out-down 200ms ease-in forwards; }
+.rn-anim-fade-in { animation: rn-fade-in 180ms ease-out; }
+.rn-anim-fade-out { animation: rn-fade-out 180ms ease-in forwards; }
+.rn-spinner { animation: rn-spin 0.8s linear infinite; }
+@media (prefers-reduced-motion: reduce) {
+  .rn-anim-push, .rn-anim-push-up, .rn-anim-slide-in, .rn-anim-slide-out, .rn-anim-fade-in, .rn-anim-fade-out { animation: none; }
+}
+
+/* lucide icons are flex items in RN rows; RN never shrinks them. */
+[data-mobile-frame] svg {
+  flex-shrink: 0;
+}
+
+/* Tailwind's core `overline` utility (text-decoration) shares its name with the .overline label
+   style above and drew a line over every admin sidebar heading. Labels never want the decoration. */
+.overline {
+  text-decoration-line: none;
+}

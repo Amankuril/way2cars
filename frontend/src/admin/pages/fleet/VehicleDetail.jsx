@@ -2,22 +2,22 @@ import { useState } from 'react';
 import { Link, useParams } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
 import { CircleCheck, CircleX, Star, TriangleAlert, Ban, RotateCcw, CalendarRange } from 'lucide-react';
-import { api, ADMIN } from '@/lib/api.js';
+import { api, ADMIN } from '@/admin/lib/api.js';
 import { money, dateTime, dateLong, maskPhone } from '@shared/lib/format.js';
-import { VEHICLE_APPROVAL, VEHICLE_STATUS, VENDOR_STATUS, BOOKING_STATUS, FUEL, TRANSMISSION, FEATURES, INSURANCE } from '@/lib/labels.js';
-import { useAction } from '@/lib/hooks.js';
-import { humanize, fmtNumber } from '@/lib/utils.js';
-import { useAuth } from '@/auth/AuthContext.jsx';
-import { PageHeader } from '@/components/PageHeader.jsx';
-import { Panel, KeyValue, AmountRows } from '@/components/Panel.jsx';
-import { StatusPill, Tag } from '@/components/StatusPill.jsx';
-import { Button } from '@/components/Button.jsx';
-import { ConfirmDialog } from '@/components/Modal.jsx';
-import { Checkbox, Field, Input, Switch } from '@/components/Form.jsx';
-import { DetailSkeleton } from '@/components/Skeleton.jsx';
-import { ErrorState } from '@/components/EmptyState.jsx';
-import { SecureFileLink } from '@/components/SecureImage.jsx';
-import { MiniTable } from '@/components/MiniTable.jsx';
+import { VEHICLE_APPROVAL, VEHICLE_STATUS, VENDOR_STATUS, BOOKING_STATUS, FUEL, TRANSMISSION, FEATURES, INSURANCE } from '@/admin/lib/labels.js';
+import { useAction } from '@/admin/lib/hooks.js';
+import { humanize, fmtNumber } from '@/admin/lib/utils.js';
+import { useAuth } from '@/admin/auth/AuthContext.jsx';
+import { PageHeader } from '@/admin/components/PageHeader.jsx';
+import { Panel, KeyValue, AmountRows } from '@/admin/components/Panel.jsx';
+import { StatusPill, Tag } from '@/admin/components/StatusPill.jsx';
+import { Button } from '@/admin/components/Button.jsx';
+import { ConfirmDialog } from '@/admin/components/Modal.jsx';
+import { Checkbox, Field, Input, Switch } from '@/admin/components/Form.jsx';
+import { DetailSkeleton } from '@/admin/components/Skeleton.jsx';
+import { ErrorState } from '@/admin/components/EmptyState.jsx';
+import { SecureFileLink } from '@/admin/components/SecureImage.jsx';
+import { MiniTable } from '@/admin/components/MiniTable.jsx';
 
 const DOCS = [
   { key: 'rc', label: 'Registration certificate (RC)' },

@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useMemo, useRef, useState } from 'react';
 import { CircleCheck, CircleX, Info, X } from 'lucide-react';
-import { cn, errorMessage } from '@/lib/utils.js';
+import { cn, errorMessage } from '@/admin/lib/utils.js';
 
 const ToastContext = createContext(null);
 const ICONS = { success: CircleCheck, error: CircleX, info: Info };

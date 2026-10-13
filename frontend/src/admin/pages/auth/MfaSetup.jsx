@@ -1,8 +1,8 @@
 import { useNavigate } from 'react-router';
 import { ShieldCheck } from 'lucide-react';
-import { MfaEnrol } from '@/components/MfaEnrol.jsx';
-import { useAuth } from '@/auth/AuthContext.jsx';
-import { useDocumentTitle } from '@/lib/hooks.js';
+import { MfaEnrol } from '@/admin/components/MfaEnrol.jsx';
+import { useAuth } from '@/admin/auth/AuthContext.jsx';
+import { useDocumentTitle } from '@/admin/lib/hooks.js';
 
 /** Forced enrolment when the backend requires MFA for every admin (ADMIN_REQUIRE_MFA). */
 export default function MfaSetup() {

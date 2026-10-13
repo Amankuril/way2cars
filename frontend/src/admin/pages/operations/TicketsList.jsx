@@ -1,17 +1,17 @@
 import { Link } from 'react-router';
 import { LifeBuoy, Siren } from 'lucide-react';
-import { ADMIN } from '@/lib/api.js';
+import { ADMIN } from '@/admin/lib/api.js';
 import { ago, dateTime } from '@shared/lib/format.js';
-import { ADMIN_TICKET_STATUS, PRIORITY, TICKET_CATEGORY, ROADSIDE_STAGE, REALM_LABEL } from '@/lib/labels.js';
-import { useListQuery, useSearchState } from '@/lib/hooks.js';
-import { compact } from '@/lib/utils.js';
-import { PageHeader } from '@/components/PageHeader.jsx';
-import { DataTable } from '@/components/DataTable.jsx';
-import { Pagination } from '@/components/Pagination.jsx';
-import { FilterBar, FilterSelect } from '@/components/Filters.jsx';
-import { StatusPill } from '@/components/StatusPill.jsx';
-import { EmptyState } from '@/components/EmptyState.jsx';
-import { Checkbox } from '@/components/Form.jsx';
+import { ADMIN_TICKET_STATUS, PRIORITY, TICKET_CATEGORY, ROADSIDE_STAGE, REALM_LABEL } from '@/admin/lib/labels.js';
+import { useListQuery, useSearchState } from '@/admin/lib/hooks.js';
+import { compact } from '@/admin/lib/utils.js';
+import { PageHeader } from '@/admin/components/PageHeader.jsx';
+import { DataTable } from '@/admin/components/DataTable.jsx';
+import { Pagination } from '@/admin/components/Pagination.jsx';
+import { FilterBar, FilterSelect } from '@/admin/components/Filters.jsx';
+import { StatusPill } from '@/admin/components/StatusPill.jsx';
+import { EmptyState } from '@/admin/components/EmptyState.jsx';
+import { Checkbox } from '@/admin/components/Form.jsx';
 
 export default function TicketsList() {
   const [s, set] = useSearchState({ page: 1, status: '', category: '', priority: '', mine: '' });
