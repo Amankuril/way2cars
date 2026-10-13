@@ -1,0 +1,7 @@
+{
+  "name": "@way2cars/shared",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Dependency-free code shared by the WAY2CARS apps: design tokens, API client, formatting, labels. Native UI kit lives in ./native and requires the host app's react-native.",
+  "main": "lib/index.js"
+}

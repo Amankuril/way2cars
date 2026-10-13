@@ -1,0 +1,58 @@
+import { useEffect, useState } from 'react';
+import { View } from 'react-native';
+import { useMutation } from '@tanstack/react-query';
+import { Screen, Header, T, Button, OtpInput, useToast } from '@shared/native';
+import { maskPhone } from '@shared/lib/format';
+import { api } from '../../api';
+import { useAuth } from '../../auth/AuthContext';
+
+export function OtpScreen({ route }) {
+  const { phone } = route.params;
+  const { completeLogin } = useAuth();
+  const toast = useToast();
+  const [code, setCode] = useState('');
+  const [error, setError] = useState(null);
+  const [wait, setWait] = useState(route.params.resendAfterSeconds || 30);
+
+  useEffect(() => {
+    if (wait <= 0) return undefined;
+    const t = setTimeout(() => setWait((w) => w - 1), 1000);
+    return () => clearTimeout(t);
+  }, [wait]);
+
+  const verify = useMutation({
+    mutationFn: () => api.post('/api/v1/auth/user/otp/verify', { phone, code }),
+    onSuccess: (data) => completeLogin(data),
+    onError: (e) => { setError(e.message); setCode(''); },
+  });
+  const resend = useMutation({
+    mutationFn: () => api.post('/api/v1/auth/user/otp/request', { phone }),
+    onSuccess: (d) => { setWait(d.resendAfterSeconds); toast('A new code is on its way.'); },
+    onError: (e) => { toast(e.message, 'danger'); if (e.details?.retryAfterSeconds) setWait(e.details.retryAfterSeconds); },
+  });
+
+  // Auto-submit once a full code is entered.
+  useEffect(() => {
+    if (code.length === 6 && !verify.isPending) verify.mutate();
+  }, [code]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  return (
+    <Screen bg="surface" header={<Header title="" transparent />} footer={<Button title="Verify and continue" size="lg" block disabled={code.length < 4} loading={verify.isPending} onPress={() => verify.mutate()} testID="verify-otp" />}>
+      <View className="px-5 pt-2">
+        <T variant="title">Enter verification code</T>
+        <T variant="body" tone="muted" className="mt-2">Sent to {maskPhone(phone)}</T>
+        <View className="mt-8">
+          <OtpInput value={code} onChange={(c) => { setCode(c); setError(null); }} error={!!error} />
+          {error ? <T variant="bodySm" tone="danger" className="mt-3">{error}</T> : null}
+        </View>
+        <View className="mt-6 flex-row items-center">
+          {wait > 0 ? (
+            <T variant="bodySm" tone="subtle">Resend code in {wait}s</T>
+          ) : (
+            <Button title="Resend code" variant="ghost" size="sm" className="-ml-4" loading={resend.isPending} onPress={() => resend.mutate()} />
+          )}
+        </View>
+      </View>
+    </Screen>
+  );
+}

@@ -9,7 +9,7 @@ import { Booking, BOOKING_STATUSES } from './booking.model.js';
 import { serializeBooking } from './booking.serializer.js';
 import {
   buildQuote, serializeQuote, createBooking, bookingPaymentOrder, cancelByUser, cancellationPreview,
-  vendorDecision, cancelByAdmin, requestExtension,
+  vendorDecision, cancelByAdmin, requestExtension, extensionPaymentOrder,
 } from './booking.service.js';
 import { startTrip, submitReturn, agreementFor, pickupSchema, returnSchema, vendorReturnReview, resolveDamageClaim, settlementPaymentOrder, inspectionsFor, previewSettlement } from '../trips/trip.service.js';
 import { verifyCheckout, markPaymentFailed, serializePayment } from '../payments/payment.service.js';
@@ -110,6 +110,10 @@ userBookingRouter.post('/:id/cancel', validate({ params: idParams, body: z.objec
 userBookingRouter.post('/:id/extensions', validate({ params: idParams, body: z.object({ endAt: z.coerce.date() }).strict() }), async (req, res) => {
   const r = await requestExtension(req, req.valid.params.id, req.valid.body.endAt);
   created(res, { extension: { id: r.extension._id, requestedEndAt: r.extension.requestedEndAt, pricing: r.extension.pricing, holdExpiresAt: r.extension.holdExpiresAt }, payment: r.payment });
+});
+
+userBookingRouter.post('/:id/extensions/:extensionId/payment-order', validate({ params: z.object({ id: objectId, extensionId: objectId }) }), async (req, res) => {
+  ok(res, await extensionPaymentOrder(req.auth.id, req.valid.params.id, req.valid.params.extensionId));
 });
 
 userBookingRouter.get('/:id/agreement', validate({ params: idParams }), async (req, res) => ok(res, await agreementFor(req.auth.id, req.valid.params.id)));

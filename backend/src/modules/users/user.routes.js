@@ -62,6 +62,13 @@ userAccountRouter.post('/me/onboarding', validate({ body: z.object({ name, email
 userAccountRouter.patch('/me', validate({ body: z.object({ name: name.optional(), email: email.optional().or(z.literal('')), homeCityId: objectId.nullable().optional() }).strict() }), async (req, res) => {
   const set = { ...req.valid.body };
   if (set.email === '') set.email = undefined;
+  if (set.name) {
+    // The verified name must keep matching the licence; changes go through support.
+    const current = await User.findById(req.auth.id).select('name kyc.status').lean();
+    if (['pending', 'approved'].includes(current.kyc?.status) && set.name !== current.name) {
+      throw conflict('Your name is locked after verification. Contact support to change it.', 'NAME_LOCKED');
+    }
+  }
   const user = await User.findByIdAndUpdate(req.auth.id, { $set: set }, { new: true, runValidators: true }).lean();
   ok(res, serializeUser(user));
 });

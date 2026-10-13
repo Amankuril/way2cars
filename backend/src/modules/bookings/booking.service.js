@@ -299,6 +299,16 @@ export async function requestExtension(req, bookingId, newEndAt) {
   return { extension: result.extension, payment: order };
 }
 
+/** Re-opens the payment order for an extension still inside its hold window. */
+export async function extensionPaymentOrder(userId, bookingId, extensionId) {
+  const b = await Booking.findOne({ _id: bookingId, userId }).lean();
+  if (!b) throw notFound('Booking');
+  const ext = b.extensions.find((e) => String(e._id) === String(extensionId));
+  if (!ext || ext.status !== 'pending_payment') throw conflict('This extension does not need payment.', 'PAYMENT_NOT_REQUIRED');
+  if (ext.holdExpiresAt < new Date()) throw new AppError(410, 'HOLD_EXPIRED', 'This extension hold has expired. Please request it again.');
+  return openPaymentOrder({ booking: b, purpose: 'extension', amountPaise: ext.pricing.totalPaise, extensionId: ext._id });
+}
+
 // ------------------------------------------------------------------ jobs
 /** Marks lapsed unpaid holds as expired and returns their wallet credit / coupon. */
 export async function expireHolds() {

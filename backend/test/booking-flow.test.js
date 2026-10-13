@@ -15,6 +15,7 @@ vi.mock('../src/integrations/razorpay.js', async (importOriginal) => {
     }),
     fetchPayment: vi.fn(async (paymentId) => rzpState.payments?.get(paymentId)),
     fetchOrderPayments: vi.fn(async () => ({ items: [] })),
+    createCustomer: vi.fn(async () => ({ id: `cust_${crypto.randomBytes(5).toString('hex')}` })),
     createRefund: vi.fn(async ({ amountPaise, receipt }) => {
       rzpState.refunds.push({ amountPaise, receipt });
       return { id: `rfnd_${crypto.randomBytes(6).toString('hex')}`, status: 'processed' };

@@ -21,6 +21,16 @@ export async function openPaymentOrder({ booking, purpose, amountPaise, extensio
     payment = (await Payment.create({ bookingId: booking._id, userId: booking.userId, purpose, extensionId, amountPaise, razorpayOrderId: order.id })).toObject();
   }
   const user = await User.findById(booking.userId).select('name phone email razorpayCustomerId').lean();
+  if (user && !user.razorpayCustomerId) {
+    // Lets Razorpay save cards/UPI for this renter. Best effort — never blocks checkout.
+    try {
+      const c = await rzp.createCustomer({ name: user.name, contact: user.phone, email: user.email });
+      user.razorpayCustomerId = c.id;
+      await User.updateOne({ _id: user._id, razorpayCustomerId: null }, { $set: { razorpayCustomerId: c.id } });
+    } catch {
+      // continue without saved methods
+    }
+  }
   return {
     paymentId: payment._id,
     keyId: rzp.publicKeyId(),
