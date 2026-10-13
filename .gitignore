@@ -7,3 +7,6 @@ storage/
 coverage/
 *.log
 .DS_Store
+
+# Release binaries (built locally, see liveReleases/README.md)
+liveReleases/*.apk
