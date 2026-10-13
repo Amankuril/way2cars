@@ -1,0 +1,202 @@
+# WAY2CARS — Architecture
+
+Self-drive car rental platform with three modules: **User**, **Vendor (host)**, **Admin**.
+Source of business requirements: `WAY2CARS Scope of Work.pdf` (SOW). Technology decisions in this
+document supersede the SOW's stack section.
+
+## 1. Delivery architecture (verified)
+
+```
+                    ┌──────────────────────── Nginx (TLS) ────────────────────────┐
+ browser ──HTTPS──▶ │ /user/*   → apps/user/dist   (SPA, mobile-first)            │
+                    │ /vendor/* → apps/vendor/dist (SPA, mobile-first)            │
+                    │ /admin/*  → apps/admin/dist  (SPA, dashboard)               │
+                    │ /uploads/* → PUBLIC_UPLOAD_DIR (processed WebP only)        │
+                    │ /api/*    → backend (Express) on 127.0.0.1:PORT             │
+                    │ /_protected/* (internal) → PRIVATE_UPLOAD_DIR (X-Accel)     │
+                    └──────────────────────────────────────────────────────────────┘
+                                         │
+                       backend (Express 5, ESM JavaScript)
+                                         │
+              MongoDB replica set (transactions)   +  provider services:
+              Razorpay · SMS India Hub · FCM · Google Maps Platform · SMTP
+```
+
+### Frontend toolchain decision
+
+| Concern | Decision | Why |
+|---|---|---|
+| UI library | React 19 (DOM) | Browser-first delivery for all three modules |
+| Styling | Tailwind CSS 4 (`@tailwindcss/vite`) with shared design tokens (`apps/shared/styles/theme.css`) | One token set across user, vendor and admin |
+| Bundler | Vite (one independent build per app, `base` = `/user/`, `/vendor/`, `/admin/`) | Admin code never ships to renters; fast builds, code splitting |
+| Routing | React Router 7 (library mode, `basename` per app) | Real URLs and deep links |
+| Server state | TanStack Query 5 | Caching, retries, loading/error states without hand-written effects |
+| Forms | react-hook-form + zod | Long KYC/vehicle forms with field-level validation |
+| Icons / charts | lucide-react / Recharts (admin only) | Consistent line icons, light charting |
+
+React Native Web and NativeWind were evaluated (a working spike was built) but **dropped at the
+product owner's request**: all three apps are React + Tailwind web apps. User and vendor apps are
+mobile-first, installable-feeling web apps; the admin app is a desktop-first dashboard. Business
+logic that a future native app would need (API client, enums, formatting, pricing display rules)
+lives in `apps/shared` with no DOM dependency.
+
+## 2. Repository layout (npm workspaces)
+
+```
+backend/               Node.js + Express API (see §3)
+apps/user/             User web app            base path /user/
+apps/vendor/           Vendor web app          base path /vendor/
+apps/admin/            Admin dashboard         base path /admin/
+apps/shared/           Design tokens, UI components, API client, enums, formatters (workspace package)
+deploy/                Nginx, PM2, backup scripts
+docs/                  Architecture, API, env, deployment, testing
+```
+
+## 3. Backend structure
+
+```
+backend/src/
+  config/          env schema (zod, fail-fast), constants
+  core/            logger, errors, response helpers, db, money, pagination, jobs, audit
+  middleware/      auth (realm + permissions), validate, rate limits, upload, error handler
+  integrations/    ONE service per provider — sms, razorpay, firebase, maps, email, storage, tracking
+  modules/<feature>/  routes · controller · service · model(s) · schemas · policy · tests
+  routes.js        mounts /api/v1/{auth,user,vendor,admin,public,webhooks,files}
+  jobs/            scheduled jobs (Mongo lease-locked, no Redis)
+```
+
+Feature modules: `auth`, `users`, `vendors`, `kyc`, `vehicles`, `catalog` (cities/brands/categories),
+`availability`, `pricing`, `search`, `bookings`, `payments`, `trips` (inspections, agreements),
+`refunds`, `coupons`, `wallet` (ledger, referrals, loyalty), `reviews`, `notifications`, `support`
+(tickets, roadside), `payouts`, `cms`, `reports`, `admin` (admin users, audit, settings), `files`, `tracking`.
+
+Controllers are thin; business rules live in services and are reused by all realms (e.g. the booking
+service is called by user, vendor, admin and webhook handlers — never re-implemented).
+
+## 4. Authentication & authorisation
+
+* **Realms**: `user`, `vendor`, `admin`. Identities live in separate collections; a JWT carries
+  `realm` and is accepted **only** by routes of that realm. Changing a URL, payload or local state
+  cannot change realm — it is derived server-side from which collection authenticated the session.
+* **User / vendor login**: mobile + OTP only (§8 of prompt). Flow: `POST /auth/{realm}/otp/request`
+  → `POST /auth/{realm}/otp/verify` → session issued; response says `isNewAccount` / onboarding step.
+  Responses are identical whether or not the number exists (no enumeration).
+* **OTP rules** (backend only): number normalised to 10-digit Indian mobile; if it is in
+  `OTP_DUMMY_NUMBERS` → static `1234` in every environment; else if `OTP_BYPASS_ENABLED=true` →
+  `1234`; else a random 6-digit OTP sent through SMS India Hub. OTPs are stored hashed (HMAC),
+  expire (`OTP_TTL_SECONDS`), are single-use, allow `OTP_MAX_ATTEMPTS` tries, have resend cooldown
+  and per-phone/per-IP hourly caps. Bypass paths still go through every limit and are audit-logged.
+  A startup warning is logged when bypass is active (list never logged or exposed).
+* **Sessions**: short-lived access JWT (memory only on the client) + rotating refresh token in an
+  `httpOnly; Secure; SameSite=Strict` cookie scoped to `/api/v1/auth/{realm}`. Refresh tokens are
+  stored hashed; reuse of a rotated token revokes the whole session family. Logout revokes the
+  session. Suspension revokes all sessions and is checked on every request.
+  CSRF: cookie is only used by refresh/logout, which additionally require the `X-W2C-Client`
+  header and an allowed `Origin`. A future native client would need body-delivered refresh tokens; this is
+  documented but not enabled.
+* **Admin**: email + password (scrypt), optional/enforceable TOTP MFA, lockout after failed
+  attempts, separate cookie and realm, permission-based RBAC (`super_admin`, `operations`,
+  `kyc_reviewer`, `finance`, `support`, `content`). OTP bypass never applies to admins.
+  First admin is created with a CLI script — no default credentials exist.
+* **Resource-level checks**: every query on a realm route is scoped by owner
+  (`booking.userId === req.auth.id`, `vehicle.vendorId === req.auth.id`); IDs from other owners
+  return 404, not 403, to avoid leaking existence.
+
+## 5. Data model & collection naming
+
+Convention: `admin_` for admin-owned data, `user_` / `vendor_` for data owned solely by that
+module, **no prefix** for shared business entities (single source of truth).
+
+| Collection | Owner | Purpose |
+|---|---|---|
+| `admin_users`, `admin_sessions` | admin | Admin identities, sessions, MFA |
+| `admin_audit_logs` | admin | Append-only audit trail (all realms' significant actions) |
+| `admin_settings` | admin | Versioned platform settings (tax %, commission %, fees, policies, support contacts) |
+| `admin_cities`, `admin_vehicle_brands`, `admin_vehicle_categories` | admin | Catalogue |
+| `admin_coupons` | admin | Coupon definitions |
+| `admin_banners`, `admin_cms_pages`, `admin_faqs` | admin | Content |
+| `user_accounts`, `user_sessions` | user | Renter identity, profile, addresses, wallet balance, referral code |
+| `vendor_accounts`, `vendor_sessions` | vendor | Host identity, business info, onboarding/approval, wallet balances |
+| `vendor_bank_accounts` | vendor | Bank details (account number encrypted at rest, masked on read) |
+| `vendor_payout_requests` | vendor | Withdrawal requests and settlement references |
+| `otp_challenges` | shared | Hashed OTPs with TTL index |
+| `kyc_submissions` | shared | KYC for users and vendors (`subjectType`) |
+| `files` | shared | Metadata for every stored file (public/private, owner, purpose) |
+| `vehicles` | shared | Listing, specs, pricing, documents, approval, status |
+| `vehicle_blocks` | shared | Vendor-blocked date ranges |
+| `vehicle_price_overrides` | shared | Per-date pricing calendar |
+| `bookings` | shared | Booking + trip lifecycle, price snapshot, extensions, state history |
+| `trip_inspections` | shared | Pickup/return checklists, photos, fuel, odometer, damages |
+| `rental_agreements` | shared | Signed digital agreement records (text hash, version, IP, UA) |
+| `payments`, `refunds`, `invoices` | shared | Razorpay orders/payments, refunds, GST invoices |
+| `webhook_events` | shared | Idempotency store for provider webhooks |
+| `wallet_ledger` | shared | Double-entry style ledger for user wallet + vendor earnings |
+| `coupon_redemptions`, `referrals` | shared | Coupon usage, referral attribution |
+| `reviews` | shared | Vehicle + host ratings |
+| `notifications`, `device_tokens` | shared | In-app inbox, FCM tokens |
+| `support_tickets` | shared | Tickets, messages, roadside assistance requests |
+| `vehicle_locations` | shared | Telematics positions (only from a real tracking provider) |
+| `counters`, `job_locks` | shared | Invoice sequences, scheduled-job leases |
+
+Money is stored as **integer paise**. Times are UTC `Date`; the client shows IST.
+
+### Double-booking prevention
+Bookings are created inside a MongoDB transaction that (1) bumps `vehicles.lockVersion` for the
+vehicle — concurrent transactions on the same vehicle hit a write conflict and are retried/rejected,
+(2) checks overlapping bookings in blocking states (`pending_payment` with unexpired hold,
+`pending_vendor_approval`, `confirmed`, `ongoing`) and overlapping vendor blocks (with a buffer
+between trips), (3) inserts the booking. This requires a replica set (production: Atlas or a
+single-node replica set; tests: `mongodb-memory-server` replica set).
+
+## 6. Booking & money flow
+
+```
+pending_payment ──paid──▶ pending_vendor_approval ──accept──▶ confirmed ──pickup──▶ ongoing
+      │ hold expires          │ reject / timeout (auto refund)     │ cancel (policy refund)  │ return submitted
+      ▼                       ▼                                    ▼                         ▼
+   expired              rejected                              cancelled             return_pending ──vendor confirm / auto──▶ completed
+```
+Instant-book vehicles skip `pending_vendor_approval`. Price is always computed server-side from the
+vehicle, pricing calendar, settings and coupon at the moment of booking, and snapshotted.
+Payment success is only accepted from a verified Razorpay signature or verified webhook; amounts are
+compared with the server-side order. Webhook events are stored by event id (unique index) so replays
+are no-ops. Refunds are created from the booking's payment with an idempotency key per refund reason.
+On completion: extra-km, fuel, late-return and approved damage charges are deducted from the
+security deposit; the remainder is refunded; host earnings (rental − commission) are credited to
+the vendor ledger as `pending`, released to `available` after `PAYOUT_HOLD_DAYS`.
+Withdrawals are requests; they become `paid` only when finance records the bank UTR (or a future
+RazorpayX payout confirms) — a request is never presented as a completed payout.
+
+## 7. Files
+
+* `integrations/storage` is the only code that touches disk. Validation (magic-byte sniffing via
+  `file-type`, size and pixel limits) → `sharp` (rotate, strip metadata, resize, WebP) → unique
+  random name → `files` record → URL / id. Failed DB writes delete the written file.
+* **Public** (vehicle photos, banners, brand logos): `PUBLIC_UPLOAD_DIR`, served by Nginx at `/uploads/`.
+* **Private** (KYC, licence, RC, insurance, PUC, fitness, inspection & damage photos):
+  `PRIVATE_UPLOAD_DIR`, outside any web root, served only by `GET /api/v1/files/:id` after an
+  ownership/permission check (optionally offloaded to Nginx via `X-Accel-Redirect` to an `internal`
+  location). PDFs are accepted for documents and stored unmodified after validation.
+
+## 8. Integrations (one service each)
+
+| Service | Module | Notes |
+|---|---|---|
+| SMS India Hub | `integrations/sms` | REST `api/mt/SendSMS`; DLT `PEId` + per-message `TemplateId`; retries on network errors only; OTP never logged |
+| Razorpay | `integrations/razorpay` | Orders, signature + webhook HMAC verification, fetch/reconcile, refunds |
+| Firebase (FCM) | `integrations/firebase` | firebase-admin; invalid tokens pruned; disabled cleanly if not configured |
+| Google Maps | `integrations/maps` | Places Autocomplete/Details (New), Geocoding, Routes (distance/ETA); server key; LRU cache; geo maths for proximity/geofence |
+| Email | `integrations/email` | SMTP via nodemailer (provider-agnostic) |
+| Tracking | `integrations/tracking` | Provider boundary + signed ingest endpoint. **No provider is configured yet → live tracking shows "no device"**; nothing is simulated |
+
+`notifications` service is the single dispatcher: an event (`booking.confirmed`, …) fans out to
+in-app inbox, push, SMS and email according to templates and user preferences.
+
+## 9. Scheduled jobs (in-process, Mongo lease lock)
+Expire unpaid holds · reconcile pending payments with Razorpay · auto-reject vendor approvals past
+SLA · pickup/return reminders · auto-confirm unreviewed returns · release vendor pending earnings.
+
+## 10. External dependencies still required
+Credentials for Razorpay, SMS India Hub (+ DLT sender/templates), Firebase project, Google Maps
+keys, SMTP; GPS/telematics provider for live tracking; legal text for the rental agreement, privacy
+policy and terms (editable in CMS); production MongoDB replica set; TLS certificates.
