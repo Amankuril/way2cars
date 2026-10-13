@@ -6,7 +6,7 @@ import { logger } from '../../core/logger.js';
 import { sendSms } from '../../integrations/sms.js';
 import { OtpChallenge } from './otp.model.js';
 
-export const STATIC_OTP = '1234';
+export const STATIC_OTP = '123456';
 
 // Normalised once at startup; never exposed to clients or logged.
 const dummyNumbers = new Set(env.OTP_DUMMY_NUMBERS.map(normalizeIndianMobile).filter(Boolean));
@@ -17,8 +17,8 @@ export function bypassStatus() {
 
 /**
  * Decides how an OTP is produced for a number:
- *  - number in OTP_DUMMY_NUMBERS → static 1234, in every environment
- *  - OTP_BYPASS_ENABLED=true     → static 1234 for everyone
+ *  - number in OTP_DUMMY_NUMBERS → static 123456, in every environment
+ *  - OTP_BYPASS_ENABLED=true     → static 123456 for everyone
  *  - otherwise                    → random code delivered by SMS India Hub
  */
 export function decideOtpMode(phone, { bypassEnabled, dummyNumbers: dummies }) {
@@ -79,7 +79,7 @@ export async function requestOtp({ phone, realm, ip }) {
 
 /** Verifies and consumes an OTP. Throws a generic error for wrong/expired/exhausted codes. */
 export async function verifyOtp({ phone, realm, code }) {
-  if (!/^\d{4,8}$/.test(String(code || ''))) throw badRequest('Enter the code sent to your phone.', undefined, 'OTP_INVALID');
+  if (!/^\d{6}$/.test(String(code || ''))) throw badRequest('Enter the code sent to your phone.', undefined, 'OTP_INVALID');
   const now = new Date();
   // Atomically claim an attempt on the newest live challenge.
   const challenge = await OtpChallenge.findOneAndUpdate(

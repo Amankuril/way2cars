@@ -89,8 +89,8 @@ service is called by user, vendor, admin and webhook handlers — never re-imple
   → `POST /auth/{realm}/otp/verify` → session issued; response says `isNewAccount` / onboarding step.
   Responses are identical whether or not the number exists (no enumeration).
 * **OTP rules** (backend only): number normalised to 10-digit Indian mobile; if it is in
-  `OTP_DUMMY_NUMBERS` → static `1234` in every environment; else if `OTP_BYPASS_ENABLED=true` →
-  `1234`; else a random 6-digit OTP sent through SMS India Hub. OTPs are stored hashed (HMAC),
+  `OTP_DUMMY_NUMBERS` → static `123456` in every environment; else if `OTP_BYPASS_ENABLED=true` →
+  `123456`; else a random 6-digit OTP sent through SMS India Hub. OTPs are stored hashed (HMAC),
   expire (`OTP_TTL_SECONDS`), are single-use, allow `OTP_MAX_ATTEMPTS` tries, have resend cooldown
   and per-phone/per-IP hourly caps. Bypass paths still go through every limit and are audit-logged.
   A startup warning is logged when bypass is active (list never logged or exposed).

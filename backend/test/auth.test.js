@@ -37,16 +37,16 @@ describe('user OTP login', () => {
     expect(JSON.stringify(res.body)).not.toMatch(/static|bypass|dummy/i);
   });
 
-  it('dummy number logs in with 1234, creates the account, and response does not leak the mode', async () => {
+  it('dummy number logs in with 123456, creates the account, and response does not leak the mode', async () => {
     const reqRes = await api().post('/api/v1/auth/user/otp/request').send({ phone: '+91 98765 43210' }).expect(200);
     expect(Object.keys(reqRes.body.data).sort()).toEqual(['expiresInSeconds', 'resendAfterSeconds']);
-    const res = await api().post('/api/v1/auth/user/otp/verify').send({ phone: '9876543210', code: '1234' }).expect(200);
+    const res = await api().post('/api/v1/auth/user/otp/verify').send({ phone: '9876543210', code: '123456' }).expect(200);
     expect(res.body.data.isNewAccount).toBe(true);
     expect(res.body.data.nextStep).toBe('profile');
     expect(res.body.data.account.phone).toBe('9876543210');
     expect(res.headers['set-cookie'][0]).toMatch(/w2c_user_rt=.*HttpOnly.*SameSite=Strict/i);
     const stored = await OtpChallenge.findOne({ phone: '9876543210' }).lean();
-    expect(stored.codeHash).not.toContain('1234');
+    expect(stored.codeHash).not.toContain('123456');
   });
 
   it('second login reports an existing account', async () => {
@@ -63,25 +63,32 @@ describe('user OTP login', () => {
     expect(res.headers['retry-after']).toBeDefined();
   });
 
+  it('accepts only 6-digit codes', async () => {
+    for (const code of ['1234', '12345', '1234567', '12345a']) {
+      const r = await api().post('/api/v1/auth/user/otp/verify').send({ phone: '9876543210', code });
+      expect(r.status).toBe(422);
+    }
+  });
+
   it('codes are single use and attempts are limited', async () => {
     await OtpChallenge.deleteMany({ phone: '9123456780' });
     await api().post('/api/v1/auth/user/otp/request').send({ phone: '9123456780' }).expect(200);
     for (let i = 0; i < 4; i++) {
-      const r = await api().post('/api/v1/auth/user/otp/verify').send({ phone: '9123456780', code: '9999' });
+      const r = await api().post('/api/v1/auth/user/otp/verify').send({ phone: '9123456780', code: '999999' });
       expect(r.body.error.code).toBe('OTP_INCORRECT');
     }
-    const last = await api().post('/api/v1/auth/user/otp/verify').send({ phone: '9123456780', code: '9999' });
+    const last = await api().post('/api/v1/auth/user/otp/verify').send({ phone: '9123456780', code: '999999' });
     expect(last.body.error.details.attemptsLeft).toBe(0);
     // Even the right code no longer works on an exhausted challenge.
-    const after = await api().post('/api/v1/auth/user/otp/verify').send({ phone: '9123456780', code: '1234' });
+    const after = await api().post('/api/v1/auth/user/otp/verify').send({ phone: '9123456780', code: '123456' });
     expect(after.body.error.code).toBe('OTP_EXPIRED');
   });
 
   it('a used code cannot be replayed', async () => {
     await OtpChallenge.deleteMany({ phone: '9123456780' });
     await api().post('/api/v1/auth/user/otp/request').send({ phone: '9123456780' }).expect(200);
-    await api().post('/api/v1/auth/user/otp/verify').send({ phone: '9123456780', code: '1234' }).expect(200);
-    const replay = await api().post('/api/v1/auth/user/otp/verify').send({ phone: '9123456780', code: '1234' });
+    await api().post('/api/v1/auth/user/otp/verify').send({ phone: '9123456780', code: '123456' }).expect(200);
+    const replay = await api().post('/api/v1/auth/user/otp/verify').send({ phone: '9123456780', code: '123456' });
     expect(replay.status).toBe(400);
   });
 
@@ -89,7 +96,7 @@ describe('user OTP login', () => {
     await User.updateOne({ phone: '9123456780' }, { $set: { status: 'suspended' } });
     await OtpChallenge.deleteMany({ phone: '9123456780' });
     await api().post('/api/v1/auth/user/otp/request').send({ phone: '9123456780' }).expect(200);
-    const res = await api().post('/api/v1/auth/user/otp/verify').send({ phone: '9123456780', code: '1234' });
+    const res = await api().post('/api/v1/auth/user/otp/verify').send({ phone: '9123456780', code: '123456' });
     expect(res.status).toBe(403);
     expect(res.body.error.code).toBe('ACCOUNT_SUSPENDED');
     await User.updateOne({ phone: '9123456780' }, { $set: { status: 'active' } });

@@ -48,7 +48,7 @@ const schema = z.object({
 
   OTP_BYPASS_ENABLED: bool(false),
   OTP_DUMMY_NUMBERS: csv,
-  OTP_LENGTH: int(6, { min: 4, max: 8 }),
+  OTP_LENGTH: int(6, { min: 6, max: 6 }), // apps and API accept exactly 6 digits
   OTP_TTL_SECONDS: int(300, { min: 60, max: 900 }),
   OTP_MAX_ATTEMPTS: int(5, { min: 1, max: 10 }),
   OTP_RESEND_COOLDOWN_SECONDS: int(30, { min: 10, max: 300 }),

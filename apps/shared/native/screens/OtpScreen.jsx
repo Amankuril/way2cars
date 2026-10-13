@@ -38,7 +38,7 @@ export function OtpScreen({ route }) {
   }, [code]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
-    <Screen bg="surface" header={<Header title="" transparent />} footer={<Button title="Verify and continue" size="lg" block disabled={code.length < 4} loading={verify.isPending} onPress={() => verify.mutate()} testID="verify-otp" />}>
+    <Screen bg="surface" header={<Header title="" transparent />} footer={<Button title="Verify and continue" size="lg" block disabled={code.length < 6} loading={verify.isPending} onPress={() => verify.mutate()} testID="verify-otp" />}>
       <View className="px-5 pt-2">
         <T variant="title">Enter verification code</T>
         <T variant="body" tone="muted" className="mt-2">Sent to {maskPhone(phone)}</T>

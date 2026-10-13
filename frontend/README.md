@@ -26,7 +26,7 @@ Vite proxies `/api` and `/uploads` to `API_PROXY_TARGET` (default `http://localh
 the httpOnly refresh cookies same-origin.
 
 Dev sign-in for `/user` and `/vendor`: the dummy numbers `9999900001` … `9999900004` accept the code
-`1234`. Admins are created with `npm run admin:create -w @way2cars/backend`, and two-factor enrolment
+`123456`. Admins are created with `npm run admin:create -w @way2cars/backend`, and two-factor enrolment
 is enforced.
 
 ## Structure

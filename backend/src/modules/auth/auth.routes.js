@@ -15,7 +15,7 @@ import { serializeUser } from '../users/user.serializer.js';
 import { serializeVendor } from '../vendors/vendor.serializer.js';
 
 const phoneBody = z.object({ phone: z.string().min(10).max(16) }).strict();
-const verifyBody = z.object({ phone: z.string().min(10).max(16), code: z.string().regex(/^\d{4,8}$/, 'Enter the code') }).strict();
+const verifyBody = z.object({ phone: z.string().min(10).max(16), code: z.string().regex(/^\d{6}$/, 'Enter the 6-digit code') }).strict();
 const serializers = { user: serializeUser, vendor: serializeVendor };
 
 /** Native apps keep the refresh token in the Android Keystore instead of a cookie. */
