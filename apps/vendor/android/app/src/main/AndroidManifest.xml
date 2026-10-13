@@ -22,7 +22,7 @@
       android:roundIcon="@mipmap/ic_launcher_round"
       android:allowBackup="false"
       android:theme="@style/AppTheme"
-      android:usesCleartextTraffic="${usesCleartextTraffic}"
+      android:usesCleartextTraffic="${w2cCleartext}"
       android:supportsRtl="true">
       <meta-data android:name="com.google.android.geo.API_KEY" android:value="${googleMapsApiKey}" />
       <activity
