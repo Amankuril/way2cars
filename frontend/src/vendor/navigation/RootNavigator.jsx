@@ -1,46 +1,68 @@
 import { RouterProvider } from 'react-router/dom';
 import { LayoutDashboard, CalendarClock, CarFront, Wallet, UserRound } from 'lucide-react';
 import { createMobileRouter } from '@/mobile/nav';
-import { PhoneScreen, OtpScreen, CmsPageScreen, FaqScreen, NotificationsScreen, NotificationPrefsScreen, TicketScreen, NewTicketScreen, placeholder } from '@/mobile/screens';
+import { PhoneScreen, OtpScreen, CmsPageScreen, FaqScreen, NotificationsScreen, NotificationPrefsScreen, TicketScreen, NewTicketScreen } from '@/mobile/screens';
 import { DEV_ROUTES, DEV_SCREENS } from '@/mobile/dev';
 import { ROUTES, ACCESS } from './routes';
 import { Guard } from './Guard';
+import { OnboardingScreen } from '../screens/onboarding/OnboardingScreen';
+import { ProfileStepScreen } from '../screens/onboarding/ProfileStepScreen';
+import { BusinessStepScreen } from '../screens/onboarding/BusinessStepScreen';
+import { KycStepScreen } from '../screens/onboarding/KycStepScreen';
+import { BankStepScreen } from '../screens/onboarding/BankStepScreen';
+import { DashboardScreen } from '../screens/dashboard/DashboardScreen';
+import { BookingsScreen } from '../screens/bookings/BookingsScreen';
+import { BookingDetailScreen } from '../screens/bookings/BookingDetailScreen';
+import { DamageClaimScreen } from '../screens/bookings/DamageClaimScreen';
+import { FleetScreen } from '../screens/fleet/FleetScreen';
+import { VehicleFormScreen } from '../screens/fleet/VehicleFormScreen';
+import { VehicleDetailScreen } from '../screens/fleet/VehicleDetailScreen';
+import { VehiclePhotosScreen } from '../screens/fleet/VehiclePhotosScreen';
+import { VehicleDocumentsScreen } from '../screens/fleet/VehicleDocumentsScreen';
+import { CalendarScreen } from '../screens/fleet/CalendarScreen';
+import { PricingCalendarScreen } from '../screens/fleet/PricingCalendarScreen';
+import { EarningsScreen } from '../screens/earnings/EarningsScreen';
+import { PayoutsScreen } from '../screens/earnings/PayoutsScreen';
+import { LedgerScreen } from '../screens/earnings/LedgerScreen';
+import { AccountScreen } from '../screens/account/AccountScreen';
+import { ReviewsScreen } from '../screens/account/ReviewsScreen';
+import { HelpScreen } from '../screens/account/HelpScreen';
 
-/** Screen registry. PHASE 2: replace each `placeholder(...)` with the ported screen. */
+/** Screen registry: native screen name → ported screen (apps/vendor/src/navigation/RootNavigator.jsx + MainTabs.jsx). */
 const SCREENS = {
   Phone: PhoneScreen,
   Otp: OtpScreen,
   CmsPage: CmsPageScreen,
 
-  Onboarding: placeholder('Become a host'),
-  ProfileStep: placeholder('Your details', { back: true }),
-  BusinessStep: placeholder('Business details', { back: true }),
-  KycStep: placeholder('Verify identity', { back: true }),
-  BankStep: placeholder('Bank account', { back: true }),
+  Onboarding: OnboardingScreen,
+  ProfileStep: ProfileStepScreen,
+  BusinessStep: BusinessStepScreen,
+  KycStep: KycStepScreen,
+  BankStep: BankStepScreen,
 
   Faq: FaqScreen,
-  Help: placeholder('Help', { back: true }),
+  Help: HelpScreen,
   Ticket: TicketScreen,
   NewTicket: NewTicketScreen,
   Notifications: NotificationsScreen,
 
-  Today: placeholder('Today'),
-  Bookings: placeholder('Bookings'),
-  Fleet: placeholder('Fleet'),
-  Earnings: placeholder('Earnings'),
-  Account: placeholder('Account'),
+  Today: DashboardScreen,
+  Bookings: BookingsScreen,
+  Fleet: FleetScreen,
+  Earnings: EarningsScreen,
+  Account: AccountScreen,
 
-  Booking: placeholder('Booking', { back: true }),
-  DamageClaim: placeholder('Damage claim', { back: true }),
-  VehicleForm: placeholder('Car details', { back: true }),
-  Vehicle: placeholder('Car', { back: true }),
-  VehiclePhotos: placeholder('Photos', { back: true }),
-  VehicleDocuments: placeholder('Documents', { back: true }),
-  Calendar: placeholder('Availability', { back: true }),
-  PricingCalendar: placeholder('Pricing', { back: true }),
-  Payouts: placeholder('Payouts', { back: true }),
-  Ledger: placeholder('Ledger', { back: true }),
-  Reviews: placeholder('Reviews', { back: true }),
+  Booking: BookingDetailScreen,
+  DamageClaim: DamageClaimScreen,
+  VehicleForm: VehicleFormScreen,
+  Vehicle: VehicleDetailScreen,
+  VehiclePhotos: VehiclePhotosScreen,
+  VehicleDocuments: VehicleDocumentsScreen,
+  Calendar: CalendarScreen,
+  PricingCalendar: PricingCalendarScreen,
+  Payouts: PayoutsScreen,
+  Ledger: LedgerScreen,
+  Reviews: ReviewsScreen,
   NotificationPrefs: NotificationPrefsScreen,
 };
 
