@@ -1,19 +1,41 @@
 import { useMemo, useState } from 'react';
-import { View, Pressable } from 'react-native';
+import { View, TextInput, Pressable } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
-import { ChevronDown, ChevronUp } from 'lucide-react-native';
-import { Screen, Header, Section, Panel } from '../Layout';
+import { Search, X, SearchX } from 'lucide-react-native';
+import { Screen } from '../Layout';
 import { T } from '../Text';
-import { Field } from '../Field';
-import { Loading, ErrorState } from '../Feedback';
+import { ErrorState, EmptyState, Skeleton } from '../Feedback';
+import { Card, SectionHeader, Accordion } from '../Surfaces';
+import { HeroHeader } from '../Blocks';
+import { FadeInView } from '../Motion';
 import { useApp } from '../app/AppContext';
-import { colors } from '../../theme/tokens';
+import { colors, shadows } from '../../theme/tokens';
+
+function FaqSkeleton() {
+  return (
+    <View className="mt-6">
+      {[0, 1].map((g) => (
+        <View key={g} className="mb-6">
+          <Skeleton className="mx-4 mb-3 h-5 w-1/3" />
+          <Card className="mx-4 px-4">
+            {[0, 1, 2].map((i) => (
+              <View key={i} className={`flex-row items-center py-4 ${i < 2 ? 'border-b border-line' : ''}`}>
+                <Skeleton className="mr-6 h-3.5 flex-1" />
+                <Skeleton className="h-4 w-4 rounded-full" />
+              </View>
+            ))}
+          </Card>
+        </View>
+      ))}
+    </View>
+  );
+}
 
 export function FaqScreen() {
   const { api, realm } = useApp();
   const q = useQuery({ queryKey: ['faqs', realm], queryFn: () => api.get('/api/v1/public/faqs', { audience: realm === 'vendor' ? 'vendor' : 'user' }), staleTime: 60 * 60_000 });
-  const [open, setOpen] = useState(null);
   const [search, setSearch] = useState('');
+  const [focused, setFocused] = useState(false);
   const groups = useMemo(() => {
     const s = search.trim().toLowerCase();
     const map = new Map();
@@ -25,23 +47,39 @@ export function FaqScreen() {
     return [...map.entries()];
   }, [q.data, search]);
   return (
-    <Screen header={<Header title="FAQs" />}>
-      <View className="px-4 pt-4"><Field placeholder="Search questions" value={search} onChangeText={setSearch} /></View>
-      {q.isLoading ? <Loading /> : q.error ? <ErrorState error={q.error} onRetry={q.refetch} /> : groups.map(([cat, items], gi) => (
-        <Section key={cat} title={cat} first={gi === 0}>
-          <Panel padded={false}>
-            {items.map((f, i) => (
-              <Pressable key={f.id} onPress={() => setOpen(open === f.id ? null : f.id)} className={`px-4 py-3.5 ${i < items.length - 1 ? 'border-b border-line' : ''}`} accessibilityRole="button" accessibilityState={{ expanded: open === f.id }}>
-                <View className="flex-row items-center">
-                  <T variant="label" className="flex-1 pr-2">{f.question}</T>
-                  {open === f.id ? <ChevronUp size={18} color={colors.ink[500]} /> : <ChevronDown size={18} color={colors.ink[500]} />}
-                </View>
-                {open === f.id ? <T variant="bodySm" tone="muted" className="mt-2">{f.answer}</T> : null}
-              </Pressable>
-            ))}
-          </Panel>
-        </Section>
-      ))}
+    <Screen tone="hero">
+      <HeroHeader eyebrow="Help centre" title="FAQs" className="pb-8">
+        <View
+          className="mt-4 h-[52px] flex-row items-center rounded-xl bg-surface px-3.5"
+          style={{ boxShadow: focused ? '0px 0px 0px 3px rgba(255, 255, 255, 0.35)' : shadows.raised }}
+        >
+          <Search size={18} color={colors.ink[500]} strokeWidth={2.2} />
+          <TextInput
+            value={search}
+            onChangeText={setSearch}
+            placeholder="Search questions"
+            placeholderTextColor={colors.ink[400]}
+            accessibilityLabel="Search questions"
+            returnKeyType="search"
+            onFocus={() => setFocused(true)}
+            onBlur={() => setFocused(false)}
+            className="ml-2.5 flex-1 font-sans text-body font-medium text-ink-900"
+          />
+          {search ? (
+            <Pressable onPress={() => setSearch('')} hitSlop={10} accessibilityRole="button" accessibilityLabel="Clear search" className="-mr-1.5 h-9 w-9 items-center justify-center rounded-full active:bg-ink-100">
+              <X size={16} color={colors.ink[500]} strokeWidth={2.4} />
+            </Pressable>
+          ) : null}
+        </View>
+      </HeroHeader>
+      {q.isLoading ? <FaqSkeleton /> : q.error ? <ErrorState error={q.error} onRetry={q.refetch} /> : groups.length ? groups.map(([cat, items], gi) => (
+        <FadeInView key={cat} index={gi} className={gi === 0 ? 'mt-6' : 'mt-7'}>
+          <SectionHeader title={cat} subtitle={`${items.length} ${items.length === 1 ? 'question' : 'questions'}`} />
+          <Accordion items={items.map((f) => ({ id: f.id, title: f.question, content: f.answer }))} />
+        </FadeInView>
+      )) : (
+        <EmptyState icon={SearchX} title="No matching questions" message={search ? `Nothing found for “${search.trim()}”. Try a different word.` : undefined} />
+      )}
     </Screen>
   );
 }

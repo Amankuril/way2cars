@@ -1,13 +1,14 @@
 import { View, ActivityIndicator, Modal, Pressable, StyleSheet } from 'react-native';
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import Animated, { FadeInDown, FadeOutDown, useAnimatedStyle, useSharedValue, withRepeat, withTiming, withSpring, Easing, cancelAnimation, useReducedMotion } from 'react-native-reanimated';
-import Svg, { Defs, LinearGradient, Stop, Rect } from 'react-native-svg';
+import Animated, { FadeInDown, FadeOutDown, ZoomIn, useAnimatedStyle, useSharedValue, withRepeat, withTiming, withSpring, Easing, cancelAnimation, useReducedMotion } from 'react-native-reanimated';
+import Svg, { Defs, LinearGradient, Stop, Rect, Circle, Path } from 'react-native-svg';
 import { AlertTriangle, CheckCircle2, Info, XCircle, WifiOff } from 'lucide-react-native';
 import { T } from './Text';
 import { Button } from './Button';
+import { GradientFill } from './Surfaces';
 import { cn } from './cn';
-import { colors, shadows, motion } from '../theme/tokens';
+import { colors, shadows, motion, gradients } from '../theme/tokens';
 
 const TONES = {
   neutral: { bg: 'bg-ink-100', text: 'text-ink-700', dot: colors.ink[500] },
@@ -54,17 +55,44 @@ export function Loading({ label, full = true }) {
   );
 }
 
-export function EmptyState({ icon: Icon, title, message, action, className }) {
+/** Illustrated badge for empty/error states: soft halo, dashed orbit, confetti dots and a gradient icon tile. */
+export function EmptyArt({ icon: Icon, tone = 'brand' }) {
+  const danger = tone === 'danger';
   return (
-    <View className={cn('items-center px-8 py-14', className)}>
-      {Icon ? (
-        <View className="mb-4 h-16 w-16 items-center justify-center rounded-full bg-brand-50">
-          <Icon size={28} color={colors.brand[500]} strokeWidth={1.8} />
+    <View style={{ width: 148, height: 120, alignItems: 'center', justifyContent: 'center' }}>
+      <Svg width={148} height={120} viewBox="0 0 148 120" style={{ position: 'absolute', left: 0, top: 0 }}>
+        <Circle cx="74" cy="60" r="54" fill={danger ? colors.danger[50] : colors.brand[50]} />
+        <Circle cx="74" cy="60" r="43" fill="none" stroke={danger ? colors.danger[100] : colors.brand[200]} strokeWidth="1.5" strokeDasharray="4 6" />
+        <Circle cx="16" cy="34" r="4" fill={colors.accent[300]} />
+        <Circle cx="134" cy="24" r="3" fill={colors.brand[300]} />
+        <Circle cx="130" cy="98" r="5" fill={colors.accent[200]} />
+        <Circle cx="22" cy="96" r="3" fill={colors.brand[200]} />
+        <Path d="M120 50 v8 M116 54 h8" stroke={colors.accent[400]} strokeWidth="2" strokeLinecap="round" />
+        <Path d="M30 14 v6 M27 17 h6" stroke={colors.brand[300]} strokeWidth="2" strokeLinecap="round" />
+      </Svg>
+      <View style={{ width: 64, height: 64, borderRadius: 20, boxShadow: danger ? undefined : shadows.brand, transform: [{ rotate: '-6deg' }] }}>
+        <View style={{ width: 64, height: 64, borderRadius: 20, overflow: 'hidden', alignItems: 'center', justifyContent: 'center' }}>
+          <GradientFill stops={danger ? [colors.danger[500], colors.warning[500]] : gradients.brand} />
+          {Icon ? <Icon size={28} color="#fff" strokeWidth={2} /> : null}
         </View>
-      ) : null}
-      <T variant="headline" className="text-center">{title}</T>
-      {message ? <T variant="bodySm" tone="muted" className="mt-1.5 text-center">{message}</T> : null}
-      {action ? <View className="mt-5">{action}</View> : null}
+      </View>
+    </View>
+  );
+}
+
+/** Empty state with an illustration (or custom `art`, e.g. <CarArt still />), title, message and action. */
+export function EmptyState({ icon, title, message, action, className, art, tone }) {
+  const reduce = useReducedMotion();
+  return (
+    <View className={cn('items-center px-8 py-12', className)}>
+      <Animated.View entering={reduce ? undefined : ZoomIn.springify().damping(14)} style={{ marginBottom: 12 }}>
+        {art || <EmptyArt icon={icon} tone={tone} />}
+      </Animated.View>
+      <Animated.View entering={reduce ? undefined : FadeInDown.delay(120).duration(motion.slow)} style={{ alignItems: 'center' }}>
+        <T variant="headline" className="text-center">{title}</T>
+        {message ? <T variant="bodySm" tone="muted" className="mt-1.5 text-center">{message}</T> : null}
+        {action ? <View className="mt-5">{action}</View> : null}
+      </Animated.View>
     </View>
   );
 }
@@ -75,6 +103,7 @@ export function ErrorState({ error, onRetry, className }) {
     <EmptyState
       className={className}
       icon={offline ? WifiOff : AlertTriangle}
+      tone="danger"
       title={offline ? 'You’re offline' : 'Something went wrong'}
       message={error?.message || 'Please try again.'}
       action={onRetry ? <Button title="Try again" variant="secondary" onPress={onRetry} /> : null}
@@ -85,7 +114,8 @@ export function ErrorState({ error, onRetry, className }) {
 /** Placeholder block for loading layouts, with a light sweep (shimmer) running on the UI thread. */
 export function Skeleton({ className, style }) {
   const reduce = useReducedMotion();
-  const [w, setW] = useState(0);
+  const [size, setSize] = useState({ w: 0, h: 0 });
+  const w = size.w;
   const x = useSharedValue(-1);
   useEffect(() => {
     if (reduce || !w) return undefined;
@@ -95,10 +125,10 @@ export function Skeleton({ className, style }) {
   }, [w, reduce, x]);
   const sweep = useAnimatedStyle(() => ({ transform: [{ translateX: x.value * w }] }));
   return (
-    <View className={cn('overflow-hidden rounded-md bg-ink-100', className)} style={style} onLayout={(e) => setW(Math.round(e.nativeEvent.layout.width))} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
-      {w && !reduce ? (
+    <View className={cn('overflow-hidden rounded-md bg-ink-100', className)} style={style} onLayout={(e) => { const nw = Math.ceil(e.nativeEvent.layout.width); const nh = Math.ceil(e.nativeEvent.layout.height); setSize((p) => (p.w === nw && p.h === nh ? p : { w: nw, h: nh })); }} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+      {w && size.h && !reduce ? (
         <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, sweep]}>
-          <Svg width="100%" height="100%">
+          <Svg key={`${w}x${size.h}`} width={w} height={size.h}>
             <Defs>
               <LinearGradient id="w2cShimmer" x1="0" y1="0" x2="1" y2="0">
                 <Stop offset="0.2" stopColor="#FFFFFF" stopOpacity="0" />
@@ -106,7 +136,7 @@ export function Skeleton({ className, style }) {
                 <Stop offset="0.8" stopColor="#FFFFFF" stopOpacity="0" />
               </LinearGradient>
             </Defs>
-            <Rect x="0" y="0" width="100%" height="100%" fill="url(#w2cShimmer)" />
+            <Rect x="0" y="0" width={w} height={size.h} fill="url(#w2cShimmer)" />
           </Svg>
         </Animated.View>
       ) : null}
@@ -173,20 +203,29 @@ export function Sheet({ visible, onClose, title, children, footer }) {
   );
 }
 
-/** Confirmation dialog for destructive or money-moving actions. */
+/** Confirmation dialog for destructive or money-moving actions. The card pops in with a spring. */
 export function Confirm({ visible, title, message, confirmLabel = 'Confirm', cancelLabel = 'Cancel', tone = 'primary', loading, onConfirm, onCancel, children }) {
+  const reduce = useReducedMotion();
+  const danger = tone === 'danger';
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onCancel} statusBarTranslucent>
-      <View className="flex-1 items-center justify-center bg-black/40 px-6">
-        <View className="w-full rounded-lg bg-surface p-5">
-          <T variant="headline">{title}</T>
-          {message ? <T variant="bodySm" tone="muted" className="mt-2">{message}</T> : null}
-          {children}
-          <View className="mt-5 flex-row justify-end">
-            <Button title={cancelLabel} variant="ghost" size="sm" onPress={onCancel} disabled={loading} />
-            <Button title={confirmLabel} variant={tone === 'danger' ? 'danger' : 'primary'} size="sm" className="ml-2" onPress={onConfirm} loading={loading} />
-          </View>
-        </View>
+      <View className="flex-1 items-center justify-center bg-black/45 px-6">
+        {visible ? (
+          <Animated.View entering={reduce ? undefined : ZoomIn.springify().damping(18).stiffness(260)} style={{ width: '100%' }}>
+            <View className="w-full rounded-3xl bg-surface p-5" style={{ boxShadow: shadows.float }}>
+              <View className={cn('mb-3 h-11 w-11 items-center justify-center rounded-xl', danger ? 'bg-danger-50' : 'bg-brand-50')}>
+                {danger ? <AlertTriangle size={21} color={colors.danger[600]} strokeWidth={2.2} /> : <Info size={21} color={colors.brand[600]} strokeWidth={2.2} />}
+              </View>
+              <T variant="headline">{title}</T>
+              {message ? <T variant="bodySm" tone="muted" className="mt-2">{message}</T> : null}
+              {children}
+              <View className="mt-5 flex-row">
+                <Button title={cancelLabel} variant="secondary" className="flex-1" onPress={onCancel} disabled={loading} />
+                <Button title={confirmLabel} variant={danger ? 'danger' : 'primary'} className="ml-2.5 flex-1" onPress={onConfirm} loading={loading} />
+              </View>
+            </View>
+          </Animated.View>
+        ) : null}
       </View>
     </Modal>
   );

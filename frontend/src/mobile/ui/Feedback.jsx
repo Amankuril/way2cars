@@ -4,8 +4,10 @@ import { View, ActivityIndicator, Modal, Pressable, SafeAreaView, OverlayContext
 import { AlertTriangle, CheckCircle2, Info, XCircle, WifiOff } from 'lucide-react';
 import { T } from './Text';
 import { Button } from './Button';
+import { GradientFill } from './Surfaces';
+import Svg, { Circle, Path } from '../svg';
 import { cn } from './cn';
-import { colors, shadows } from '@shared/theme/tokens';
+import { colors, shadows, gradients } from '@shared/theme/tokens';
 import './kit.css';
 
 const TONES = {
@@ -53,17 +55,43 @@ export function Loading({ label, full = true }) {
   );
 }
 
-export function EmptyState({ icon: Icon, title, message, action, className }) {
+/** Illustrated badge for empty/error states: soft halo, dashed orbit, confetti dots and a gradient icon tile. */
+export function EmptyArt({ icon: Icon, tone = 'brand' }) {
+  const danger = tone === 'danger';
   return (
-    <View className={cn('items-center px-8 py-14', className)}>
-      {Icon ? (
-        <View className="mb-4 h-16 w-16 items-center justify-center rounded-full bg-brand-50">
-          <Icon size={28} color={colors.brand[500]} strokeWidth={1.8} />
+    <View style={{ width: 148, height: 120, alignItems: 'center', justifyContent: 'center' }}>
+      <Svg width={148} height={120} viewBox="0 0 148 120" style={{ position: 'absolute', left: 0, top: 0 }}>
+        <Circle cx="74" cy="60" r="54" fill={danger ? colors.danger[50] : colors.brand[50]} />
+        <Circle cx="74" cy="60" r="43" fill="none" stroke={danger ? colors.danger[100] : colors.brand[200]} strokeWidth="1.5" strokeDasharray="4 6" />
+        <Circle cx="16" cy="34" r="4" fill={colors.accent[300]} />
+        <Circle cx="134" cy="24" r="3" fill={colors.brand[300]} />
+        <Circle cx="130" cy="98" r="5" fill={colors.accent[200]} />
+        <Circle cx="22" cy="96" r="3" fill={colors.brand[200]} />
+        <Path d="M120 50 v8 M116 54 h8" stroke={colors.accent[400]} strokeWidth="2" strokeLinecap="round" />
+        <Path d="M30 14 v6 M27 17 h6" stroke={colors.brand[300]} strokeWidth="2" strokeLinecap="round" />
+      </Svg>
+      <View style={{ width: 64, height: 64, borderRadius: 20, boxShadow: danger ? undefined : shadows.brand, transform: [{ rotate: '-6deg' }] }}>
+        <View style={{ width: 64, height: 64, borderRadius: 20, overflow: 'hidden', alignItems: 'center', justifyContent: 'center' }}>
+          <GradientFill stops={danger ? [colors.danger[500], colors.warning[500]] : gradients.brand} />
+          {Icon ? <Icon size={28} color="#fff" strokeWidth={2} /> : null}
         </View>
-      ) : null}
-      <T variant="headline" className="text-center">{title}</T>
-      {message ? <T variant="bodySm" tone="muted" className="mt-1.5 text-center">{message}</T> : null}
-      {action ? <View className="mt-5">{action}</View> : null}
+      </View>
+    </View>
+  );
+}
+
+/** Empty state with an illustration (or custom `art`, e.g. <CarArt still />), title, message and action. */
+export function EmptyState({ icon, title, message, action, className, art, tone }) {
+  return (
+    <View className={cn('items-center px-8 py-12', className)}>
+      <View className="w2c-pop-in" style={{ marginBottom: 12 }}>
+        {art || <EmptyArt icon={icon} tone={tone} />}
+      </View>
+      <View className="w2c-fade-up" style={{ alignItems: 'center', animationDelay: '120ms' }}>
+        <T variant="headline" className="text-center">{title}</T>
+        {message ? <T variant="bodySm" tone="muted" className="mt-1.5 text-center">{message}</T> : null}
+        {action ? <View className="mt-5">{action}</View> : null}
+      </View>
     </View>
   );
 }
@@ -74,6 +102,7 @@ export function ErrorState({ error, onRetry, className }) {
     <EmptyState
       className={className}
       icon={offline ? WifiOff : AlertTriangle}
+      tone="danger"
       title={offline ? 'You’re offline' : 'Something went wrong'}
       message={error?.message || 'Please try again.'}
       action={onRetry ? <Button title="Try again" variant="secondary" onPress={onRetry} /> : null}
@@ -133,18 +162,22 @@ export function Sheet({ visible, onClose, title, children, footer, webLayer }) {
   );
 }
 
-/** Confirmation dialog for destructive or money-moving actions. */
+/** Confirmation dialog for destructive or money-moving actions. The card pops in with a spring. */
 export function Confirm({ visible, title, message, confirmLabel = 'Confirm', cancelLabel = 'Cancel', tone = 'primary', loading, onConfirm, onCancel, children }) {
+  const danger = tone === 'danger';
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onCancel}>
-      <View className="flex-1 items-center justify-center bg-black/40 px-6">
-        <View className="w-full rounded-lg bg-surface p-5" accessibilityRole="alert">
+      <View className="flex-1 items-center justify-center bg-black/45 px-6">
+        <View className="w2c-dialog-in w-full rounded-3xl bg-surface p-5" style={{ boxShadow: shadows.float }} accessibilityRole="alert">
+          <View className={cn('mb-3 h-11 w-11 items-center justify-center rounded-xl', danger ? 'bg-danger-50' : 'bg-brand-50')}>
+            {danger ? <AlertTriangle size={21} color={colors.danger[600]} strokeWidth={2.2} /> : <Info size={21} color={colors.brand[600]} strokeWidth={2.2} />}
+          </View>
           <T variant="headline">{title}</T>
           {message ? <T variant="bodySm" tone="muted" className="mt-2">{message}</T> : null}
           {children}
-          <View className="mt-5 flex-row justify-end">
-            <Button title={cancelLabel} variant="ghost" size="sm" onPress={onCancel} disabled={loading} />
-            <Button title={confirmLabel} variant={tone === 'danger' ? 'danger' : 'primary'} size="sm" className="ml-2" onPress={onConfirm} loading={loading} />
+          <View className="mt-5 flex-row">
+            <Button title={cancelLabel} variant="secondary" className="flex-1" onPress={onCancel} disabled={loading} />
+            <Button title={confirmLabel} variant={danger ? 'danger' : 'primary'} className="ml-2.5 flex-1" onPress={onConfirm} loading={loading} />
           </View>
         </View>
       </View>

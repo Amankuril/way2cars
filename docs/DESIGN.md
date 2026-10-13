@@ -1,4 +1,4 @@
-# WAY2CARS design system — renter redesign (phase A)
+# WAY2CARS design system — renter redesign (phases A and B)
 
 The renter app (native `apps/user`, web replica `frontend/src/user`) uses a shared **motion + design kit**.
 The kit has the same component names and props on both platforms:
@@ -67,6 +67,14 @@ Existing values are unchanged. These were added:
 | `TripRoute` | Pickup → duration → return, with a dashed arrow. `start`/`end` are `{ overline, title, subtitle }`. Pass `label`. `animated` adds a travelling dot. |
 | `AnimatedTabBar` | Bottom tabs with a sliding pill and an icon pop. On native, wire it with `tabBar={(p) => <NavTabBar {...p} />}`. On web, add `tabs.Main.tabBar = AnimatedTabBar` in the router config (opt-in; the host app keeps the classic bar). |
 | `Sheet`, toasts | Same API. The sheet now springs up, and toasts show a tone icon. `Button` is `rounded-lg` and shrinks to 0.98 when pressed. |
+| `FillSvg`, `useBoxSize` | Absolute-fill SVG layer drawn at its **measured** pixel size (children may be a function of `{ w, h }`). Use it for every full-bleed SVG. `GradientFill`, `GradientHero`, `DashedDivider`, `Skeleton` and `CarLoader` are built on it. |
+| `HeroHeader` | Gradient header for stack screens: back button, `title`/`subtitle`/`eyebrow`, `right`, `children` (balance, avatar row…). `compact` puts the title in the top bar. Use it as the first child of `<Screen tone="hero">`. |
+| `Screen` | New `tone="hero"` (navy status-bar area with light icons, for screens that start with a `HeroHeader`), `scrollRef`, `testID`. The `footer` is a sticky action bar with an upward shadow (`shadows.bar`). |
+| `StepProgress` | Numbered steps with check marks and animated connectors. `steps`, `current`, `tone`: `default` \| `inverse` (on a hero). |
+| `Timeline` | Vertical status timeline. `items=[{ key, title, subtitle, state }]`, `state`: `done` \| `current` \| `todo` \| `stopped`. The current dot pings three times and then rests. |
+| `ActionTile` | Square quick-action tile (icon tile + label + optional caption) with press feedback. Put several in a row; each takes an equal share. |
+| `EmptyState`, `EmptyArt` | Illustrated: a soft halo, a dashed orbit and a tilted gradient icon tile pop in, then the copy rises. `art` swaps in a custom illustration (e.g. `<CarArt still />`). `tone="danger"` is used by `ErrorState`. |
+| `ListItem`, `Segmented`, `Confirm`, `Field`, `OtpInput`, `PhotoTile` | Restyled with the same props. `ListItem` has 40px rounded-xl tiles and `iconTone` (`brand`, `accent`, `success`, `warning`, `danger`, `neutral`). `Segmented` has a sliding white pill. `Confirm` is a rounded-3xl dialog that pops in, with a tone icon and two equal buttons. `Field` is 52px with a focus ring. OTP digits pop in. `PhotoTile` is a dashed brand capture tile. |
 
 Screen-level helpers in the renter app: `components/offers.js` (`offerValue`, `offerTerms` built from the coupon's
 own limits) and the redesigned `VehicleCard`, `Gallery` and `PriceBreakdown`.
@@ -89,6 +97,20 @@ own limits) and the redesigned `VehicleCard`, `Gallery` and `PriceBreakdown`.
   `className="-mt-[72px]"`.
 - **Web parity:** every native animation has a CSS twin in `frontend/src/mobile/ui/kit.css`, with the same names,
   durations and curves.
+
+## Android rendering rules (learned on a device)
+
+- **Never size an SVG with percentages.** react-native-svg on Android resolves `width="100%"` once and doesn't repaint
+  after a relayout. On the device, the Home hero gradient stopped about 7% short of the right edge and left a stale
+  rectangle behind the city pill, and the coupon stub band ended 60px short of the card edge. Use `FillSvg` (or
+  numeric sizes from `onLayout`). Every kit layer is drawn at its measured size and re-mounted when that size changes.
+- **Text colour overrides.** NativeWind doesn't reliably let a later colour class beat an earlier one, so
+  `<T variant="overline" className="text-accent-200">` rendered ink-900 (dark on dark). `T` now drops its tone class
+  whenever `className` sets a text colour. For text on gradients that must stay legible, also pass `style={{ color }}`.
+- Translucent pills on gradients: use `PressableScale` with an rgba `style` background and a numeric `borderRadius`.
+  Don't rely on `bg-white/15` combined with `active:` classes.
+- Shadow and clipping: put `boxShadow` and the radius on an outer view, and `overflow-hidden` and the radius on an
+  inner view. `TicketCard` and `EmptyArt` follow this pattern.
 
 ## Porting notes (web)
 

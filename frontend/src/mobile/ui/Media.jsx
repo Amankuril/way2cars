@@ -21,21 +21,21 @@ export function Logo({ size = 'md', subtitle }) {
  * Upload slot for documents/photos. state: idle | uploading | done | error.
  * Private files are displayed through an authenticated URI source ({ uri, headers }).
  */
-export function PhotoTile({ label, source, state = 'idle', onPress, error, aspect = 1.4, className }) {
+export function PhotoTile({ label, source, state = 'idle', onPress, error, aspect = 1.4, className, testID }) {
   return (
-    <Pressable onPress={onPress} accessibilityRole="button" accessibilityLabel={`${label}${state === 'done' ? ', uploaded' : ''}`} className={cn('mb-3', className)}>
-      <View style={{ aspectRatio: aspect }} className={cn('overflow-hidden rounded-md border', error ? 'border-danger-500' : state === 'done' ? 'border-ink-200' : 'border-dashed border-ink-300', 'bg-ink-50')}>
+    <Pressable onPress={onPress} testID={testID} accessibilityRole="button" accessibilityLabel={`${label}${state === 'done' ? ', uploaded' : ''}`} className={cn('mb-3 active:opacity-80', className)}>
+      <View style={{ aspectRatio: aspect }} className={cn('overflow-hidden rounded-xl border', error || state === 'error' ? 'border-danger-500 bg-danger-50' : source ? 'border-ink-200 bg-ink-50' : 'border-dashed border-brand-300 bg-brand-50')}>
         {source ? <Image source={source} className="h-full w-full" resizeMode="cover" /> : (
           <View className="flex-1 items-center justify-center px-2">
-            <Camera size={22} color={colors.ink[500]} />
-            <T variant="caption" tone="muted" className="mt-1.5 text-center">{label}</T>
+            <View className="h-10 w-10 items-center justify-center rounded-full bg-surface"><Camera size={20} color={colors.brand[600]} strokeWidth={2.2} /></View>
+            <T variant="caption" className="mt-1.5 text-center font-semibold text-brand-700" numberOfLines={2}>{label}</T>
           </View>
         )}
         {state === 'uploading' ? <View className="absolute inset-0 items-center justify-center bg-white/70"><ActivityIndicator color={colors.brand[500]} /></View> : null}
         {state === 'done' && source ? <View className="absolute right-1.5 top-1.5 rounded-full bg-white"><CheckCircle2 size={20} color={colors.success[600]} fill="#fff" /></View> : null}
         {state === 'error' ? <View className="absolute inset-0 items-center justify-center bg-white/80"><RotateCcw size={20} color={colors.danger[600]} /><T variant="caption" tone="danger" className="mt-1">Tap to retry</T></View> : null}
       </View>
-      {source ? <T variant="caption" tone="muted" className="mt-1">{label}</T> : null}
+      {source ? <T variant="caption" tone="muted" className="mt-1 font-semibold" numberOfLines={1}>{label}</T> : null}
       {error ? <T variant="caption" tone="danger" className="mt-0.5">{error}</T> : null}
     </Pressable>
   );

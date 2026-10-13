@@ -1,15 +1,15 @@
 import { View } from 'react-native';
 import { Camera, Image as ImageIcon } from 'lucide-react-native';
 import { Sheet } from '../Feedback';
-import { ListItem } from '../Rows';
+import { ActionTile } from '../Blocks';
 
 /** Camera or gallery choice for document/photo uploads. */
 export function SourceChooser({ visible, onClose, onPick }) {
   return (
     <Sheet visible={visible} onClose={onClose} title="Add photo">
-      <View className="pb-2">
-        <ListItem icon={Camera} title="Take a photo" onPress={() => { onClose(); onPick('camera'); }} />
-        <ListItem icon={ImageIcon} title="Choose from gallery" last onPress={() => { onClose(); onPick('gallery'); }} />
+      <View className="flex-row px-4 pb-4 pt-1">
+        <View className="flex-1 px-1"><ActionTile icon={Camera} label="Take a photo" caption="Use the camera" onPress={() => { onClose(); onPick('camera'); }} /></View>
+        <View className="flex-1 px-1"><ActionTile icon={ImageIcon} tone="accent" label="Choose from gallery" caption="Pick a saved photo" onPress={() => { onClose(); onPick('gallery'); }} /></View>
       </View>
     </Sheet>
   );

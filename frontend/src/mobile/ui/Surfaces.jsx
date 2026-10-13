@@ -1,4 +1,4 @@
-import { useEffect, useId, useState } from 'react';
+import { useCallback, useEffect, useId, useState } from 'react';
 import { View, Pressable } from '../rn';
 import Svg, { Defs, LinearGradient, Stop, Rect, Circle, Path, Line } from '../svg';
 import { ChevronDown, ChevronRight, Copy, Check, TicketPercent } from 'lucide-react';
@@ -12,6 +12,32 @@ import './kit.css';
 
 const svgId = (id) => `g${id.replace(/[^a-zA-Z0-9]/g, '')}`;
 const FILL = { position: 'absolute', left: 0, top: 0, width: '100%', height: '100%', pointerEvents: 'none' };
+
+/** Measured box size via onLayout (API twin of native; web SVGs could use % sizes, native can't). */
+export function useBoxSize() {
+  const [box, setBox] = useState(null);
+  const onLayout = useCallback((e) => {
+    const { width, height } = e.nativeEvent.layout;
+    const w = Math.ceil(width);
+    const h = Math.ceil(height);
+    setBox((b) => (b && b.w === w && b.h === h ? b : { w, h }));
+  }, []);
+  return [box, onLayout];
+}
+
+/** Absolute-fill SVG layer at the measured pixel size. `children` may be a function of { w, h }. */
+export function FillSvg({ children, viewBox, preserveAspectRatio, style }) {
+  const [box, onLayout] = useBoxSize();
+  return (
+    <View style={[FILL, style]} pointerEvents="none" onLayout={onLayout}>
+      {box && box.w > 0 && box.h > 0 ? (
+        <Svg width={box.w} height={box.h} viewBox={viewBox || `0 0 ${box.w} ${box.h}`} preserveAspectRatio={preserveAspectRatio}>
+          {typeof children === 'function' ? children(box) : children}
+        </Svg>
+      ) : null}
+    </View>
+  );
+}
 
 export function GradientFill({ stops = gradients.brand, angle = 'diagonal', opacity = 1 }) {
   const id = svgId(useId());

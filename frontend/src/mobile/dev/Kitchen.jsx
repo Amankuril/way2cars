@@ -6,7 +6,7 @@
 import { useCallback, useState } from 'react';
 import { View, ScrollView, FlatList, Pressable, Image, Switch, Alert, Share, Linking, useWindowDimensions } from '../rn';
 import { Bell, CalendarDays, Car, Share2, Phone, ShieldCheck, Users, Cog, Fuel } from 'lucide-react';
-import { Screen, Header, Section, Panel, T, Button, IconButton, Field, Chip, Segmented, ListItem, KeyValue, Pill, Notice, Skeleton, Sheet, Confirm, useToast, PhotoTile, Avatar, Rating, Stepper, useUploader, Divider, CarLoader, TripRoute, TicketCard, Accordion, Carousel, SpecChip, IconTile, AnimatedNumber, SkeletonVehicleCard, SkeletonRow, GradientHero, SectionHeader, PressableScale, FadeInView, DashedDivider, Card } from '../ui';
+import { Screen, Header, Section, Panel, T, Button, IconButton, Field, Chip, Segmented, ListItem, KeyValue, Pill, Notice, Skeleton, Sheet, Confirm, useToast, PhotoTile, Avatar, Rating, Stepper, useUploader, Divider, CarLoader, TripRoute, TicketCard, Accordion, Carousel, SpecChip, IconTile, AnimatedNumber, SkeletonVehicleCard, SkeletonRow, GradientHero, SectionHeader, PressableScale, FadeInView, DashedDivider, Card, HeroHeader, StepProgress, Timeline, ActionTile, EmptyState } from '../ui';
 import { DateTimePickerAndroid } from '../app/datetime';
 import { useFocusEffect } from '../nav';
 import { colors } from '@shared/theme/tokens';
@@ -39,6 +39,7 @@ export default function Kitchen({ navigation, route }) {
     },
   });
 
+  const [kitStep, setKitStep] = useState(1);
   return (
     <Screen header={<Header title="Primitives" subtitle={`route ${route.name} · frame ${width}px · focus ${focusCount}`} right={<IconButton icon={Bell} label="Notifications" onPress={() => navigation.navigate('Notifications')} />} />}>
       <View className="px-4 pt-4">
@@ -57,6 +58,16 @@ export default function Kitchen({ navigation, route }) {
         <Card className="mx-4 mt-5 p-4"><T variant="label">Card + DashedDivider</T><DashedDivider className="my-3" /><T variant="caption" tone="muted">Skeletons below shimmer.</T></Card>
         <View className="mt-4"><SkeletonVehicleCard /><SkeletonRow /></View>
         {[0, 1, 2].map((i) => <FadeInView key={i} index={i} className="mx-4 mb-2 rounded-xl bg-brand-50 p-3"><T variant="caption">FadeInView #{i + 1}</T></FadeInView>)}
+      </Section>
+
+      <Section title="Phase B blocks">
+        <HeroHeader back={false} eyebrow="HeroHeader" title="Gradient header" subtitle="With a StepProgress (inverse) inside" className="mx-4 rounded-3xl" rounded>
+          <StepProgress className="mt-4" tone="inverse" steps={['Licence', 'ID', 'Selfie']} current={kitStep} />
+        </HeroHeader>
+        <Card className="mx-4 mt-4 p-4"><StepProgress steps={['Photos', 'Fuel & km', 'Confirm']} current={kitStep} /><Button title="Next step" size="sm" variant="tonal" className="mt-3 self-start" onPress={() => setKitStep((n) => (n + 1) % 4)} /></Card>
+        <Card className="mx-4 mt-4 p-4"><Timeline items={[{ key: 'a', title: 'Booked', subtitle: 'Sat, 14 Oct · 9:00 AM', state: 'done' }, { key: 'b', title: 'Host approved', state: 'done' }, { key: 'c', title: 'Pickup', subtitle: 'In 2 days', state: 'current' }, { key: 'd', title: 'Return', state: 'todo' }]} /></Card>
+        <View className="mx-3 mt-4 flex-row">{[[Car, 'Start pickup'], [Phone, 'Call host'], [ShieldCheck, 'Roadside']].map(([I, l]) => <View key={l} className="flex-1 px-1"><ActionTile icon={I} label={l} onPress={() => toast(l)} /></View>)}</View>
+        <EmptyState icon={CalendarDays} title="EmptyState" message="Illustrated, pops in." action={<Button title="Action" size="sm" />} />
       </Section>
 
       <Section title="Typography">

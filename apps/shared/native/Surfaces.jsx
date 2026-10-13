@@ -1,4 +1,4 @@
-import { useEffect, useId, useState } from 'react';
+import { useCallback, useEffect, useId, useState } from 'react';
 import { View, Pressable, StyleSheet } from 'react-native';
 import Svg, { Defs, LinearGradient, Stop, Rect, Circle, Path, Line } from 'react-native-svg';
 import Animated, { FadeInDown, FadeOut, LinearTransition, ZoomIn, useAnimatedStyle, useSharedValue, withRepeat, withTiming, withSpring, withDelay, Easing, useReducedMotion, cancelAnimation } from 'react-native-reanimated';
@@ -10,19 +10,55 @@ import { colors, gradients, shadows, motion } from '../theme/tokens';
 
 const svgId = (id) => `g${id.replace(/[^a-zA-Z0-9]/g, '')}`;
 
+/**
+ * Measures its absolute-fill box and reports exact pixel sizes. On Android, react-native-svg resolves
+ * percentage sizes once and doesn't repaint them after a relayout (the hero gradient stopped short of
+ * the right/bottom edge and left stale rectangles), so every full-bleed SVG layer is drawn at a
+ * measured, numeric size and re-mounted when that size changes.
+ */
+export function useBoxSize() {
+  const [box, setBox] = useState(null);
+  const onLayout = useCallback((e) => {
+    const { width, height } = e.nativeEvent.layout;
+    const w = Math.ceil(width);
+    const h = Math.ceil(height);
+    setBox((b) => (b && b.w === w && b.h === h ? b : { w, h }));
+  }, []);
+  return [box, onLayout];
+}
+
+/** Absolute-fill SVG layer at the measured pixel size. `children` may be a function of { w, h }. */
+export function FillSvg({ children, viewBox, preserveAspectRatio, style }) {
+  const [box, onLayout] = useBoxSize();
+  return (
+    <View style={[StyleSheet.absoluteFill, style]} pointerEvents="none" onLayout={onLayout}>
+      {box && box.w > 0 && box.h > 0 ? (
+        <Svg key={`${box.w}x${box.h}`} width={box.w} height={box.h} viewBox={viewBox || `0 0 ${box.w} ${box.h}`} preserveAspectRatio={preserveAspectRatio}>
+          {typeof children === 'function' ? children(box) : children}
+        </Svg>
+      ) : null}
+    </View>
+  );
+}
+
 /** Fills its (relative) parent with a linear gradient. `angle`: 'diagonal' | 'horizontal' | 'vertical'. */
 export function GradientFill({ stops = gradients.brand, angle = 'diagonal', opacity = 1 }) {
   const id = svgId(useId());
   const v = angle === 'horizontal' ? { x1: '0', y1: '0', x2: '1', y2: '0' } : angle === 'vertical' ? { x1: '0', y1: '0', x2: '0', y2: '1' } : { x1: '0', y1: '0', x2: '1', y2: '1' };
+  // The base colour shows for the one frame before the layer is measured (no flash of white).
   return (
-    <Svg style={StyleSheet.absoluteFill} width="100%" height="100%" pointerEvents="none">
-      <Defs>
-        <LinearGradient id={id} {...v}>
-          {stops.map((c, i) => <Stop key={i} offset={`${(i / Math.max(1, stops.length - 1)) * 100}%`} stopColor={c} stopOpacity={opacity} />)}
-        </LinearGradient>
-      </Defs>
-      <Rect x="0" y="0" width="100%" height="100%" fill={`url(#${id})`} />
-    </Svg>
+    <FillSvg style={opacity === 1 ? { backgroundColor: stops[Math.floor(stops.length / 2)] } : null}>
+      {({ w, h }) => (
+        <>
+          <Defs>
+            <LinearGradient id={id} {...v}>
+              {stops.map((c, i) => <Stop key={i} offset={`${(i / Math.max(1, stops.length - 1)) * 100}%`} stopColor={c} stopOpacity={opacity} />)}
+            </LinearGradient>
+          </Defs>
+          <Rect x="0" y="0" width={w} height={h} fill={`url(#${id})`} />
+        </>
+      )}
+    </FillSvg>
   );
 }
 
@@ -31,13 +67,13 @@ export function GradientHero({ children, className, style, rounded = true, angle
   return (
     <View className={cn('relative overflow-hidden bg-brand-600', rounded && 'rounded-b-3xl', className)} style={style}>
       <GradientFill stops={gradients.hero} angle={angle} />
-      <Svg style={StyleSheet.absoluteFill} width="100%" height="100%" viewBox="0 0 400 300" preserveAspectRatio="xMidYMid slice" pointerEvents="none">
+      <FillSvg viewBox="0 0 400 300" preserveAspectRatio="xMidYMid slice">
         <Circle cx="360" cy="30" r="120" fill="#FFFFFF" fillOpacity="0.06" />
         <Circle cx="360" cy="30" r="70" fill="#FFFFFF" fillOpacity="0.05" />
         <Circle cx="20" cy="250" r="90" fill="#1BA4C4" fillOpacity="0.22" />
         <Path d="M-20 270 C 90 220, 170 300, 260 240 S 400 200, 430 230" stroke="#FFFFFF" strokeOpacity="0.10" strokeWidth="26" fill="none" />
         <Path d="M-20 270 C 90 220, 170 300, 260 240 S 400 200, 430 230" stroke="#FFFFFF" strokeOpacity="0.35" strokeWidth="1.5" strokeDasharray="8 10" fill="none" />
-      </Svg>
+      </FillSvg>
       {children}
     </View>
   );
@@ -52,13 +88,16 @@ export function Card({ children, className, style, flat }) {
   );
 }
 
-/** Horizontal dashed rule (works on Android, where single-side dashed borders don't). */
+/** Horizontal dashed rule (works on Android, where single-side dashed borders don't). Drawn at the measured width. */
 export function DashedDivider({ color = colors.ink[200], dash = '6 5', thickness = 1.25, className }) {
+  const [box, onLayout] = useBoxSize();
   return (
-    <View className={cn('w-full', className)} style={{ height: thickness }} pointerEvents="none">
-      <Svg width="100%" height={thickness}>
-        <Line x1="0" y1={thickness / 2} x2="100%" y2={thickness / 2} stroke={color} strokeWidth={thickness} strokeDasharray={dash} />
-      </Svg>
+    <View className={cn('w-full', className)} style={{ height: thickness }} pointerEvents="none" onLayout={onLayout}>
+      {box && box.w > 0 ? (
+        <Svg key={box.w} width={box.w} height={thickness}>
+          <Line x1="0" y1={thickness / 2} x2={box.w} y2={thickness / 2} stroke={color} strokeWidth={thickness} strokeDasharray={dash} />
+        </Svg>
+      ) : null}
     </View>
   );
 }

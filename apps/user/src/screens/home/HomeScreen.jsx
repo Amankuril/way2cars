@@ -110,11 +110,11 @@ export function HomeScreen({ navigation }) {
                 {unread.data ? <View className="absolute right-2.5 top-2.5 h-2.5 w-2.5 rounded-full border-2 border-brand-700 bg-danger-500" /> : null}
               </View>
             </View>
-            <Pressable onPress={() => navigation.navigate('CitySelect')} className="mt-4 h-11 flex-row items-center self-start rounded-full border border-white/25 bg-white/15 px-3.5 active:bg-white/25" accessibilityRole="button" accessibilityLabel="Change city">
+            <PressableScale onPress={() => navigation.navigate('CitySelect')} containerStyle={{ alignSelf: 'flex-start', marginTop: 16 }} className="h-11 flex-row items-center px-3.5" style={{ borderRadius: 22, borderWidth: 1, borderColor: 'rgba(255,255,255,0.28)', backgroundColor: 'rgba(255,255,255,0.16)' }} accessibilityRole="button" accessibilityLabel="Change city">
               <MapPin size={16} color="#fff" strokeWidth={2.4} />
               <T variant="label" tone="inverse" className="ml-1.5">{plan.city?.name || 'Choose your city'}</T>
               <ChevronDown size={16} color="#fff" style={{ marginLeft: 4 }} />
-            </Pressable>
+            </PressableScale>
           </GradientHero>
 
           {/* ------------------------------------------------ search card (overlaps the hero) */}
@@ -262,7 +262,7 @@ export function HomeScreen({ navigation }) {
             <GradientFill stops={gradients.deep} />
             <View className="flex-row items-center p-5">
               <View className="mr-4 flex-1">
-                <T variant="overline" className="text-accent-200">We’re here {support.hours || '24×7'}</T>
+                <T variant="overline" className="text-accent-200" style={{ color: colors.accent[200] }}>We’re here {support.hours || '24×7'}</T>
                 <T variant="headline" tone="inverse" className="mt-1">Need a hand with a booking?</T>
                 <T variant="caption" className="mt-1 text-white/75">Chat with us, raise a ticket or get roadside help during a trip.</T>
                 <Button title="Contact us" variant="secondary" size="sm" icon={MessageCircle} className="mt-4 self-start border-0" onPress={() => navigation.navigate('Help')} testID="home-contact" />

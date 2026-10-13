@@ -23,10 +23,18 @@ const TONE = {
   danger: 'text-danger-600',
 };
 
-/** All app text goes through this component so typography stays consistent. */
+/** A text-colour utility in className (text-white, text-white/75, text-accent-200…) overrides `tone`. */
+const COLOR_CLASS = /(^|\s)text-(white|black|transparent|(ink|brand|accent|success|warning|danger)-\d{2,3})(\/\d+)?(?=\s|$)/;
+
+/**
+ * All app text goes through this component so typography stays consistent. When className sets a
+ * text colour, the tone class is dropped: NativeWind doesn't reliably let the later class win, which
+ * left e.g. `text-accent-200` overlines rendering ink-900 (dark-on-dark) on Android.
+ */
 export function T({ variant = 'body', tone = 'default', className, children, ...rest }) {
+  const toneClass = className && COLOR_CLASS.test(className) ? null : TONE[tone];
   return (
-    <RNText className={cn('font-sans', VARIANT[variant], TONE[tone], className)} {...rest}>
+    <RNText className={cn('font-sans', VARIANT[variant], toneClass, className)} {...rest}>
       {children}
     </RNText>
   );

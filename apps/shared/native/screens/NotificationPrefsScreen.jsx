@@ -1,9 +1,13 @@
 import { useState } from 'react';
 import { View, Switch } from 'react-native';
 import { useMutation } from '@tanstack/react-query';
-import { Screen, Header, Panel } from '../Layout';
+import { Smartphone, MessageSquareText, Mail, Megaphone, ShieldCheck } from 'lucide-react-native';
+import { Screen } from '../Layout';
 import { T } from '../Text';
 import { useToast } from '../Feedback';
+import { Card, SectionHeader, IconTile } from '../Surfaces';
+import { HeroHeader } from '../Blocks';
+import { FadeInView } from '../Motion';
 import { colors } from '../../theme/tokens';
 import { useApp } from '../app/AppContext';
 
@@ -21,6 +25,8 @@ const ROWS = {
     ['promotional', 'Host tips & news', 'Product updates and earning tips'],
   ],
 };
+const ICON = { push: [Smartphone, 'brand'], sms: [MessageSquareText, 'accent'], email: [Mail, 'success'], promotional: [Megaphone, 'warning'] };
+const GROUPS = [['Channels', 'How we reach you about your account', ['push', 'sms', 'email']], ['Marketing', null, ['promotional']]];
 
 export function NotificationPrefsScreen() {
   const { api, realm, auth } = useApp();
@@ -34,16 +40,32 @@ export function NotificationPrefsScreen() {
   const toggle = (k) => { const next = { ...prefs, [k]: !prefs[k] }; setPrefs(next); save.mutate(next); };
   const rows = ROWS[realm];
   return (
-    <Screen header={<Header title="Notification settings" />}>
-      <Panel padded={false} className="mt-4">
-        {rows.map(([k, title, sub], i) => (
-          <View key={k} className={`flex-row items-center px-4 py-3.5 ${i < rows.length - 1 ? 'border-b border-line' : ''}`}>
-            <View className="mr-3 flex-1"><T variant="body" className="font-semibold">{title}</T><T variant="caption" tone="subtle">{sub}</T></View>
-            <Switch value={!!prefs[k]} onValueChange={() => toggle(k)} trackColor={{ true: colors.brand[300], false: colors.ink[200] }} thumbColor={prefs[k] ? colors.brand[500] : '#fff'} accessibilityLabel={title} />
-          </View>
-        ))}
-      </Panel>
-      <T variant="caption" tone="subtle" className="mx-4 mt-3">Security codes and essential messages are always sent.</T>
+    <Screen tone="hero">
+      <HeroHeader eyebrow="Settings" title="Notification settings" subtitle="Choose how you hear from us." className="pb-7" />
+      {GROUPS.map(([group, sub, keys], gi) => {
+        const list = rows.filter(([k]) => keys.includes(k));
+        return (
+          <FadeInView key={group} index={gi} className="mt-6">
+            <SectionHeader title={group} subtitle={sub || undefined} />
+            <Card className="mx-4">
+              {list.map(([k, title, desc], i) => {
+                const [Icon, tone] = ICON[k];
+                return (
+                  <View key={k} className={`min-h-[64px] flex-row items-center px-4 py-3.5 ${i < list.length - 1 ? 'border-b border-line' : ''}`}>
+                    <IconTile icon={Icon} tone={tone} size={40} />
+                    <View className="ml-3.5 mr-3 flex-1"><T variant="body" className="font-semibold">{title}</T><T variant="caption" tone="subtle" className="mt-0.5">{desc}</T></View>
+                    <Switch value={!!prefs[k]} onValueChange={() => toggle(k)} trackColor={{ true: colors.brand[300], false: colors.ink[200] }} thumbColor={prefs[k] ? colors.brand[500] : '#fff'} accessibilityLabel={title} />
+                  </View>
+                );
+              })}
+            </Card>
+          </FadeInView>
+        );
+      })}
+      <FadeInView index={2} className="mx-4 mt-5 flex-row items-start rounded-xl bg-ink-100 px-3.5 py-3">
+        <ShieldCheck size={16} color={colors.ink[600]} strokeWidth={2.2} style={{ marginTop: 1 }} />
+        <T variant="caption" tone="muted" className="ml-2 flex-1">Security codes and essential messages are always sent.</T>
+      </FadeInView>
     </Screen>
   );
 }

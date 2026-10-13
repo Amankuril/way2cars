@@ -1,12 +1,11 @@
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import { View, FlatList } from 'react-native';
 import { useInfiniteQuery } from '@tanstack/react-query';
 import { useFocusEffect } from '@react-navigation/native';
-import { useCallback } from 'react';
-import { CalendarClock } from 'lucide-react-native';
-import { Screen, T, Segmented, Loading, ErrorState, EmptyState, Button } from '@shared/native';
+import { CalendarX, History, Search } from 'lucide-react-native';
+import { Screen, T, Segmented, ErrorState, EmptyState, Button, FadeInView, CarArt } from '@shared/native';
 import { api } from '../../api';
-import { TripCard } from '../../components/TripCard';
+import { TripCard, SkeletonTripCard } from '../../components/TripCard';
 
 const TABS = [
   { value: 'upcoming', label: 'Upcoming' },
@@ -14,6 +13,13 @@ const TABS = [
   { value: 'completed', label: 'Past' },
   { value: 'cancelled', label: 'Cancelled' },
 ];
+
+const EMPTY = {
+  upcoming: { title: 'No upcoming trips', message: 'Find a car for your next weekend getaway or city run.', art: <CarArt still /> },
+  active: { title: 'No trip in progress', message: 'Once you pick up a car, your trip shows up here.', art: <CarArt still /> },
+  completed: { title: 'No past trips yet', message: 'Trips you complete will show up here.', icon: History },
+  cancelled: { title: 'No cancelled trips', message: 'Cancelled, declined and unpaid bookings appear here.', icon: CalendarX },
+};
 
 export function TripsScreen({ navigation }) {
   const [tab, setTab] = useState('upcoming');
@@ -25,28 +31,41 @@ export function TripsScreen({ navigation }) {
   });
   useFocusEffect(useCallback(() => { q.refetch(); }, [tab])); // eslint-disable-line react-hooks/exhaustive-deps
   const items = q.data?.pages.flatMap((p) => p.data) || [];
+  const empty = EMPTY[tab];
 
   return (
     <Screen edges={['top']} scroll={false}>
       <View className="px-4 pb-3 pt-4">
-        <T variant="title">Your trips</T>
+        <T variant="overline" tone="brand">My bookings</T>
+        <T variant="title" className="mt-0.5" accessibilityRole="header">Your trips</T>
         <Segmented className="mt-4" options={TABS} value={tab} onChange={setTab} />
       </View>
-      {q.isLoading ? <Loading /> : q.error ? <ErrorState error={q.error} onRetry={q.refetch} /> : (
+      {q.isLoading ? (
+        <View className="pt-2" accessibilityLabel="Loading trips">
+          {[0, 1, 2].map((i) => <SkeletonTripCard key={i} />)}
+        </View>
+      ) : q.error ? <ErrorState error={q.error} onRetry={q.refetch} /> : (
         <FlatList
           data={items}
           keyExtractor={(t) => t.id}
-          renderItem={({ item }) => <TripCard trip={item} onPress={() => navigation.navigate('Trip', { id: item.id })} />}
+          renderItem={({ item, index }) => (
+            <FadeInView index={index}>
+              <TripCard trip={item} onPress={() => navigation.navigate('Trip', { id: item.id })} />
+            </FadeInView>
+          )}
           onEndReached={() => q.hasNextPage && q.fetchNextPage()}
           refreshing={q.isRefetching}
           onRefresh={q.refetch}
-          contentContainerClassName="pb-6"
+          contentContainerClassName="pb-6 pt-2"
+          ListFooterComponent={q.isFetchingNextPage ? <SkeletonTripCard /> : null}
           ListEmptyComponent={
             <EmptyState
-              icon={CalendarClock}
-              title={tab === 'upcoming' ? 'No upcoming trips' : tab === 'active' ? 'No trip in progress' : tab === 'completed' ? 'No past trips yet' : 'No cancelled trips'}
-              message={tab === 'upcoming' ? 'Find a car for your next weekend getaway or city run.' : undefined}
-              action={tab === 'upcoming' ? <Button title="Find a car" onPress={() => navigation.navigate('Explore')} /> : null}
+              key={tab}
+              art={empty.art}
+              icon={empty.icon}
+              title={empty.title}
+              message={empty.message}
+              action={tab === 'upcoming' ? <Button title="Find a car" icon={Search} onPress={() => navigation.navigate('Explore')} /> : null}
             />
           }
         />

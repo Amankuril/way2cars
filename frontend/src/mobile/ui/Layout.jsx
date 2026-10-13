@@ -4,12 +4,19 @@ import { ArrowLeft } from 'lucide-react';
 import { T } from './Text';
 import { IconButton } from './Button';
 import { cn } from './cn';
-import { colors } from '@shared/theme/tokens';
+import { colors, gradients, shadows } from '@shared/theme/tokens';
 
-/** Screen shell: safe area, optional scroll + keyboard handling + pull to refresh (touch). */
-export function Screen({ children, scroll = true, header, footer, refreshing, onRefresh, bg = 'canvas', edges = ['top', 'bottom'], contentClassName, keyboardShouldPersistTaps = 'handled' }) {
+/**
+ * Screen shell: safe area, optional scroll + keyboard handling + pull to refresh (touch).
+ * `tone="hero"`: the screen starts with a <HeroHeader> — the safe-area top turns navy.
+ * The footer is a sticky action bar with a soft upward shadow.
+ */
+export function Screen({ children, scroll = true, header, footer, refreshing, onRefresh, bg = 'canvas', tone, edges = ['top', 'bottom'], contentClassName, keyboardShouldPersistTaps = 'handled', scrollRef, testID }) {
+  const hero = tone === 'hero';
   const body = scroll ? (
     <ScrollView
+      ref={scrollRef}
+      testID={testID}
       className="flex-1"
       contentContainerClassName={cn('pb-8', contentClassName)}
       keyboardShouldPersistTaps={keyboardShouldPersistTaps}
@@ -18,17 +25,26 @@ export function Screen({ children, scroll = true, header, footer, refreshing, on
       {children}
     </ScrollView>
   ) : (
-    <View className={cn('flex-1', contentClassName)}>{children}</View>
+    <View className={cn('flex-1', contentClassName)} testID={testID}>{children}</View>
   );
-  return (
-    <SafeAreaView edges={edges} className={cn('flex-1', bg === 'canvas' ? 'bg-canvas' : 'bg-surface')}>
+  const surface = bg === 'canvas' ? 'bg-canvas' : 'bg-surface';
+  const inner = (
+    <>
       {header}
       <KeyboardAvoidingView className="flex-1">
         {body}
-        {footer ? <View className="border-t border-line bg-surface px-4 pb-3 pt-3">{footer}</View> : null}
+        {footer ? <View className="z-10 bg-surface px-4 pb-3 pt-3" style={{ boxShadow: shadows.bar }}>{footer}</View> : null}
       </KeyboardAvoidingView>
-    </SafeAreaView>
+    </>
   );
+  if (hero) {
+    return (
+      <SafeAreaView edges={edges.filter((e) => e !== 'bottom')} style={{ flex: 1, backgroundColor: gradients.hero[0] }}>
+        <SafeAreaView edges={edges.includes('bottom') ? ['bottom'] : []} className={cn('flex-1', surface)}>{inner}</SafeAreaView>
+      </SafeAreaView>
+    );
+  }
+  return <SafeAreaView edges={edges} className={cn('flex-1', surface)}>{inner}</SafeAreaView>;
 }
 
 /** App header with back navigation. Title is left-aligned, as in native Android apps. */

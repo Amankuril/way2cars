@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react';
-import { View, StyleSheet } from 'react-native';
+import { View } from 'react-native';
 import Svg, { Path, Circle, Rect, Line, G, Ellipse } from 'react-native-svg';
 import Animated, { useAnimatedStyle, useSharedValue, withRepeat, withTiming, withSequence, Easing, useReducedMotion, cancelAnimation } from 'react-native-reanimated';
 import { ChevronRight } from 'lucide-react-native';
 import { T } from './Text';
 import { cn } from './cn';
-import { GradientFill, DashedDivider } from './Surfaces';
+import { GradientFill, DashedDivider, FillSvg } from './Surfaces';
 import { colors } from '../theme/tokens';
 
 /*
@@ -104,10 +104,14 @@ export function CarLoader({ title = 'Finding the best rides…', subtitle, child
     <View className={cn('mx-4 overflow-hidden rounded-3xl bg-surface', className)} style={{ boxShadow: '0px 12px 32px -12px rgba(14, 23, 27, 0.24)' }} testID={testID} accessibilityRole="progressbar" accessibilityLabel={title}>
       <View style={{ height: SCENE_H, overflow: 'hidden' }}>
         <GradientFill stops={[colors.brand[50], '#FFFFFF']} angle="vertical" />
-        <Svg style={StyleSheet.absoluteFill} width="100%" height={SCENE_H} pointerEvents="none">
-          <Circle cx="82%" cy="34" r="18" fill={colors.accent[100]} />
-          <Circle cx="82%" cy="34" r="11" fill={colors.accent[200]} />
-        </Svg>
+        <FillSvg>
+          {({ w }) => (
+            <>
+              <Circle cx={w * 0.82} cy="34" r="18" fill={colors.accent[100]} />
+              <Circle cx={w * 0.82} cy="34" r="11" fill={colors.accent[200]} />
+            </>
+          )}
+        </FillSvg>
         <Strip tile={260} height={26} top={14} duration={22000} reduce={reduce}>
           <Path d="M20 18 a8 8 0 0 1 14 -6 a10 10 0 0 1 18 2 a7 7 0 0 1 4 12 h-36 a6 6 0 0 1 0 -8 z" fill="#FFFFFF" />
           <Path d="M150 12 a6 6 0 0 1 11 -4 a8 8 0 0 1 14 2 a5 5 0 0 1 3 9 h-28 a5 5 0 0 1 0 -7 z" fill="#FFFFFF" fillOpacity="0.9" />

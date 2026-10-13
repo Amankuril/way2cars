@@ -1,7 +1,9 @@
 import { useRef } from 'react';
 import { View, TextInput, Pressable } from 'react-native';
+import Animated, { ZoomIn, useReducedMotion } from 'react-native-reanimated';
 import { T } from './Text';
 import { cn } from './cn';
+import { colors } from '../theme/tokens';
 
 /**
  * One hidden input rendered as digit boxes; accepts exactly `boxes` (6) digits.
@@ -9,6 +11,7 @@ import { cn } from './cn';
  */
 export function OtpInput({ value, onChange, boxes = 6, error, autoFocus = true }) {
   const ref = useRef(null);
+  const reduce = useReducedMotion();
   const digits = value.split('');
   return (
     <Pressable onPress={() => ref.current?.focus()} accessibilityLabel="Verification code">
@@ -16,8 +19,12 @@ export function OtpInput({ value, onChange, boxes = 6, error, autoFocus = true }
         {Array.from({ length: boxes }).map((_, i) => {
           const active = i === value.length;
           return (
-            <View key={i} className={cn('h-14 w-12 items-center justify-center rounded-md border bg-surface', error ? 'border-danger-500' : active ? 'border-brand-500' : digits[i] ? 'border-ink-300' : 'border-ink-200')}>
-              <T variant="title">{digits[i] || ''}</T>
+            <View key={i} style={active && !error ? { boxShadow: '0px 0px 0px 3px rgba(24, 117, 185, 0.14)' } : null} className={cn('h-14 w-12 items-center justify-center rounded-xl border-2', error ? 'border-danger-500 bg-danger-50' : active ? 'border-brand-500 bg-surface' : digits[i] ? 'border-brand-200 bg-brand-50' : 'border-ink-200 bg-surface')}>
+              {digits[i] ? (
+                <Animated.View key={`${i}${digits[i]}`} entering={reduce ? undefined : ZoomIn.springify().damping(14)}>
+                  <T variant="title" className={error ? 'text-danger-700' : 'text-ink-900'}>{digits[i]}</T>
+                </Animated.View>
+              ) : active ? <View style={{ width: 2, height: 22, borderRadius: 1, backgroundColor: colors.brand[500] }} /> : null}
             </View>
           );
         })}
