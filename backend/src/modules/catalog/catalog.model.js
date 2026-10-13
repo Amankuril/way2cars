@@ -8,6 +8,7 @@ const city = new mongoose.Schema(
     name: { type: String, required: true, trim: true, maxlength: 80 },
     slug,
     state: { type: String, trim: true, maxlength: 80 },
+    gstStateCode: { type: String, match: /^\d{2}$/ }, // place of supply for invoices
     center: { type: geoPoint, required: true },
     // Service area used for geofencing and doorstep delivery eligibility.
     serviceRadiusKm: { type: Number, default: 40, min: 1, max: 300 },

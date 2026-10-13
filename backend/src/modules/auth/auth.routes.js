@@ -18,6 +18,10 @@ const phoneBody = z.object({ phone: z.string().min(10).max(16) }).strict();
 const verifyBody = z.object({ phone: z.string().min(10).max(16), code: z.string().regex(/^\d{4,8}$/, 'Enter the code') }).strict();
 const serializers = { user: serializeUser, vendor: serializeVendor };
 
+/** Native apps keep the refresh token in the Android Keystore instead of a cookie. */
+const isNative = (req) => req.get('x-w2c-client') === 'native';
+const presentedToken = (req, realm) => (isNative(req) ? req.body?.refreshToken : req.cookies?.[refreshCookieName(realm)]);
+
 function otpRealmRouter(realm) {
   const r = Router();
   r.post('/otp/request', authLimiter, validate({ body: phoneBody }), async (req, res) => {
@@ -28,8 +32,10 @@ function otpRealmRouter(realm) {
   r.post('/otp/verify', authLimiter, validate({ body: verifyBody }), async (req, res) => {
     const phone = requireMobile(req.valid.body.phone);
     const out = await loginWithOtp(req, { realm, phone, code: req.valid.body.code });
-    setRefreshCookie(res, realm, out.refreshToken, out.session.expiresAt);
-    ok(res, { accessToken: out.accessToken, account: serializers[realm](out.account), isNewAccount: out.isNew, nextStep: out.nextStep });
+    const body = { accessToken: out.accessToken, account: serializers[realm](out.account), isNewAccount: out.isNew, nextStep: out.nextStep };
+    if (isNative(req)) body.refreshToken = out.refreshToken;
+    else setRefreshCookie(res, realm, out.refreshToken, out.session.expiresAt);
+    ok(res, body);
   });
 
   mountSessionRoutes(r, realm, async (session) => {
@@ -43,20 +49,21 @@ function otpRealmRouter(realm) {
 /** /refresh and /logout — cookie-authenticated, so CSRF-guarded. */
 function mountSessionRoutes(r, realm, issue) {
   r.post('/refresh', requireClientHeader, async (req, res) => {
-    const presented = req.cookies?.[refreshCookieName(realm)];
-    if (!presented) throw unauthorized('Session expired. Please sign in again.', 'SESSION_EXPIRED');
+    const presented = presentedToken(req, realm);
+    if (!presented || typeof presented !== 'string') throw unauthorized('Session expired. Please sign in again.', 'SESSION_EXPIRED');
     try {
       const { session, refreshToken } = await rotateSession(realm, presented);
-      if (refreshToken) setRefreshCookie(res, realm, refreshToken, session.expiresAt);
       const { token, account } = await issue(session);
+      if (isNative(req)) return ok(res, { accessToken: token, account, refreshToken: refreshToken || presented });
+      if (refreshToken) setRefreshCookie(res, realm, refreshToken, session.expiresAt);
       ok(res, { accessToken: token, account });
     } catch (err) {
-      clearRefreshCookie(res, realm);
+      if (!isNative(req)) clearRefreshCookie(res, realm);
       throw err;
     }
   });
   r.post('/logout', requireClientHeader, async (req, res) => {
-    const presented = req.cookies?.[refreshCookieName(realm)];
+    const presented = presentedToken(req, realm);
     const id = String(presented || '').split('.')[0];
     if (/^[a-f0-9]{24}$/.test(id)) await revokeSession(realm, id, 'logout');
     clearRefreshCookie(res, realm);

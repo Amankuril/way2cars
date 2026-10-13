@@ -19,6 +19,7 @@ const citySchema = z.object({
   name: z.string().trim().min(2).max(80),
   slug: slugSchema,
   state: z.string().trim().max(80).optional(),
+  gstStateCode: z.string().regex(/^\d{2}$/).optional(),
   lat: z.number().min(-90).max(90),
   lng: z.number().min(-180).max(180),
   serviceRadiusKm: z.number().min(1).max(300).default(40),

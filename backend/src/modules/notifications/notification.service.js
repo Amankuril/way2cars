@@ -50,6 +50,7 @@ const T = {
   'vendor.payout_rejected': (d) => ({ category: 'payout', title: 'Withdrawal declined', body: d.reason || 'Your withdrawal request was declined. The amount is back in your balance.', link: '/earnings' }),
   'vendor.earning_released': (d) => ({ category: 'payout', title: 'Earnings available', body: `₹${(d.amountPaise / 100).toFixed(2)} is now available to withdraw.`, link: '/earnings' }),
   // admin
+  'admin.alert': (d) => ({ category: 'system', title: d.title, body: d.body, link: d.link || '/' }),
   'admin.roadside_request': (d) => ({ category: 'support', title: 'Roadside assistance requested', body: `${d.type} — booking ${d.ref}`, link: `/support/${d.ticketId}` }),
 };
 

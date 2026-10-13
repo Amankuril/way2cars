@@ -3,13 +3,11 @@
   "private": true,
   "version": "0.1.0",
   "engines": { "node": ">=20.19", "npm": ">=10" },
-  "workspaces": ["backend", "apps/*"],
+  "workspaces": ["backend", "apps/admin"],
   "scripts": {
     "dev:backend": "npm run dev -w @way2cars/backend",
-    "dev:user": "npm run dev -w @way2cars/user",
-    "dev:vendor": "npm run dev -w @way2cars/vendor",
     "dev:admin": "npm run dev -w @way2cars/admin",
-    "build": "npm run build -w @way2cars/user -w @way2cars/vendor -w @way2cars/admin",
+    "build:admin": "npm run build -w @way2cars/admin",
     "test": "npm test --workspaces --if-present",
     "lint": "npm run lint --workspaces --if-present"
   }

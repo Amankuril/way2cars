@@ -120,11 +120,13 @@ const schema = new mongoose.Schema(
       commissionPaise: Number, vendorEarningPaise: Number, settledAt: Date, settledBy: actor,
     },
     reviewed: { byUser: { type: Boolean, default: false } },
+    idempotencyKey: String, // client-supplied Idempotency-Key for create
     remindersSent: { pickup: Boolean, return: Boolean },
   },
   { timestamps: true, versionKey: false },
 );
 schema.index({ ref: 1 }, { unique: true });
+schema.index({ userId: 1, idempotencyKey: 1 }, { unique: true, partialFilterExpression: { idempotencyKey: { $type: 'string' } } });
 schema.index({ vehicleId: 1, status: 1, startAt: 1, blockEndAt: 1 });
 schema.index({ userId: 1, createdAt: -1 });
 schema.index({ userId: 1, status: 1, startAt: -1 });
