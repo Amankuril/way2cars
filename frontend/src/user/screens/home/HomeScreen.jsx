@@ -110,7 +110,7 @@ export function HomeScreen({ navigation }) {
                 {unread.data ? <View className="absolute right-2.5 top-2.5 h-2.5 w-2.5 rounded-full border-2 border-brand-700 bg-danger-500" /> : null}
               </View>
             </View>
-            <PressableScale onPress={() => navigation.navigate('CitySelect')} containerStyle={{ alignSelf: 'flex-start', marginTop: 16 }} className="h-11 flex-row items-center px-3.5" style={{ borderRadius: 22, borderWidth: 1, borderColor: 'rgba(255,255,255,0.28)', backgroundColor: 'rgba(255,255,255,0.16)' }} accessibilityRole="button" accessibilityLabel="Change city">
+            <PressableScale onPress={() => navigation.navigate('CitySelect')} containerStyle={{ alignSelf: 'flex-start', marginTop: 16 }} className="h-11 flex-row items-center px-3.5" style={{ borderRadius: 22, backgroundColor: 'rgba(255,255,255,0.18)' }} accessibilityRole="button" accessibilityLabel="Change city">
               <MapPin size={16} color="#fff" strokeWidth={2.4} />
               <T variant="label" tone="inverse" className="ml-1.5">{plan.city?.name || 'Choose your city'}</T>
               <ChevronDown size={16} color="#fff" style={{ marginLeft: 4 }} />
