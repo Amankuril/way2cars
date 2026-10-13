@@ -21,7 +21,8 @@ export default defineConfig(({ mode }) => {
       },
     },
     server: { port: 5173, strictPort: true, proxy },
-    preview: { port: 4173, proxy },
+    // Same port as dev: the backend CORS/CSRF allow-list (CORS_ORIGINS) includes :5173 for local work.
+    preview: { port: 5173, strictPort: true, proxy },
     build: {
       outDir: 'dist',
       sourcemap: false,

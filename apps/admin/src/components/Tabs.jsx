@@ -22,7 +22,9 @@ export function Tabs({ items, value, onChange, className, label = 'Sections' }) 
         return (
           <button
             key={t.value}
-            ref={(el) => (refs.current[i] = el)}
+            ref={(el) => {
+              refs.current[i] = el;
+            }}
             role="tab"
             type="button"
             aria-selected={active}

@@ -90,3 +90,15 @@ export function compact(obj) {
 }
 
 export const shortId = (id) => (id ? String(id).slice(-6).toUpperCase() : '');
+
+/** 422 details → { field: message } for simple controlled forms (first segment of the path). */
+export function fieldErrorMap(err, map = {}) {
+  if (err?.status !== 422 || !Array.isArray(err.details)) return {};
+  const out = {};
+  for (const d of err.details) {
+    if (!d.field) continue;
+    const key = map[d.field] ?? map[d.field.split('.')[0]] ?? d.field.split('.')[0];
+    if (!out[key]) out[key] = d.message;
+  }
+  return out;
+}

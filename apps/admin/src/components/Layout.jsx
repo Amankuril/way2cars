@@ -196,8 +196,10 @@ function PageFallback() {
 export function Layout() {
   const [drawer, setDrawer] = useState(false);
   const { pathname } = useLocation();
-  useEffect(() => setDrawer(false), [pathname]);
-  useEffect(() => window.scrollTo(0, 0), [pathname]);
+  useEffect(() => {
+    setDrawer(false);
+    window.scrollTo(0, 0);
+  }, [pathname]);
 
   return (
     <div className="min-h-screen bg-canvas">

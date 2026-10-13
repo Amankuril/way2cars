@@ -16,7 +16,9 @@ export function FilterBar({ children, className, actions }) {
 export function SearchInput({ value, onChange, placeholder = 'Search', label = 'Search', className, delay = 350 }) {
   const id = useId();
   const [text, setText] = useState(value || '');
-  useEffect(() => setText(value || ''), [value]);
+  useEffect(() => {
+    setText(value || '');
+  }, [value]);
   useEffect(() => {
     if ((value || '') === text) return undefined;
     const t = setTimeout(() => onChange(text.trim()), delay);
