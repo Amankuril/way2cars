@@ -1,0 +1,77 @@
+/*
+ * WAY2CARS motion kit — web twin of the Reanimated animations in apps/shared/native
+ * (Motion, Surfaces, Scenes, TabBar, Feedback). Durations/curves mirror tokens.motion.
+ * Everything is switched off under prefers-reduced-motion (the native kit uses useReducedMotion).
+ */
+
+/* ---------------------------------------------------------------- entrances */
+@keyframes w2c-fade-up { from { opacity: 0; transform: translateY(25px); } to { opacity: 1; transform: none; } }
+@keyframes w2c-fade-down { from { opacity: 0; transform: translateY(-25px); } to { opacity: 1; transform: none; } }
+@keyframes w2c-fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes w2c-roll-in { from { opacity: 0; transform: translateY(70%); } to { opacity: 1; transform: none; } }
+@keyframes w2c-roll-out { from { opacity: 1; transform: none; } to { opacity: 0; transform: translateY(-70%); } }
+@keyframes w2c-zoom-in { 0% { opacity: 0; transform: scale(0.4); } 70% { opacity: 1; transform: scale(1.06); } 100% { transform: scale(1); } }
+@keyframes w2c-sheet-up { from { transform: translateY(100%); } 70% { transform: translateY(-1.5%); } to { transform: none; } }
+@keyframes w2c-toast-in { from { opacity: 0; transform: translateY(24px) scale(0.96); } 70% { opacity: 1; transform: translateY(-2px) scale(1.01); } to { transform: none; } }
+
+/* spring-ish curve that matches Reanimated springify(damping 18–22) closely enough */
+.w2c-fade-up { animation: w2c-fade-up 560ms cubic-bezier(0.22, 1, 0.36, 1) both; }
+.w2c-fade-down { animation: w2c-fade-down 560ms cubic-bezier(0.22, 1, 0.36, 1) both; }
+.w2c-fade-in { animation: w2c-fade 420ms ease-out both; }
+.w2c-roll-in { animation: w2c-roll-in 260ms cubic-bezier(0.22, 1, 0.36, 1) both; }
+.w2c-roll-out { animation: w2c-roll-out 160ms ease-in both; }
+.w2c-zoom-in { animation: w2c-zoom-in 520ms cubic-bezier(0.34, 1.56, 0.64, 1) 400ms both; }
+.w2c-sheet-up { animation: w2c-sheet-up 420ms cubic-bezier(0.22, 1, 0.36, 1); }
+.w2c-toast-in { animation: w2c-toast-in 380ms cubic-bezier(0.22, 1, 0.36, 1) both; }
+
+/* ---------------------------------------------------------------- press feedback */
+.w2c-press { transition: transform 180ms cubic-bezier(0.34, 1.56, 0.64, 1); }
+.w2c-press:active { transform: scale(var(--w2c-press-scale, 0.97)); transition-duration: 90ms; }
+
+/* ---------------------------------------------------------------- skeleton shimmer */
+@keyframes w2c-sweep { from { transform: translateX(-100%); } to { transform: translateX(100%); } }
+.w2c-skeleton { position: relative; overflow: hidden; }
+.w2c-skeleton::after {
+  content: ''; position: absolute; inset: 0;
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0) 20%, rgba(255, 255, 255, 0.65) 50%, rgba(255, 255, 255, 0) 80%);
+  animation: w2c-sweep 1.25s ease-in-out infinite;
+}
+
+/* ---------------------------------------------------------------- dots / tab bar / accordion */
+.w2c-dot { transition: width 260ms ease, background-color 260ms ease; }
+.w2c-tab-pill { transition: transform 420ms cubic-bezier(0.34, 1.4, 0.64, 1); }
+@keyframes w2c-pop { 0% { transform: scale(1); } 25% { transform: scale(0.82); } 65% { transform: scale(1.12); } 100% { transform: scale(1); } }
+.w2c-pop { animation: w2c-pop 420ms ease-out; }
+.w2c-acc-body { display: grid; grid-template-rows: 0fr; transition: grid-template-rows 260ms ease, opacity 200ms ease; opacity: 0; }
+.w2c-acc-body[data-open='true'] { grid-template-rows: 1fr; opacity: 1; }
+.w2c-acc-body > * { overflow: hidden; min-height: 0; }
+.w2c-rotate { transition: transform 300ms cubic-bezier(0.34, 1.56, 0.64, 1); }
+
+/* ---------------------------------------------------------------- FAB pulse */
+@keyframes w2c-pulse { from { opacity: 0.45; transform: scale(1); } to { opacity: 0; transform: scale(1.6); } }
+.w2c-pulse { animation: w2c-pulse 1.6s cubic-bezier(0.25, 0.46, 0.45, 0.94) 0.9s 4 both; }
+
+/* ---------------------------------------------------------------- sticky bar (scroll-linked) */
+.w2c-sticky { will-change: opacity, transform; }
+
+/* ---------------------------------------------------------------- car loader scene */
+@keyframes w2c-strip { from { transform: translateX(0); } to { transform: translateX(calc(-1 * var(--tile))); } }
+.w2c-strip { animation: w2c-strip var(--dur) linear infinite; will-change: transform; }
+@keyframes w2c-spin-rev { to { transform: rotate(-360deg); } }
+.w2c-wheel { animation: w2c-spin-rev 700ms linear infinite; transform-origin: 50% 50%; }
+@keyframes w2c-bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-1.8px); } }
+.w2c-bob { animation: w2c-bob 520ms ease-in-out infinite; }
+@keyframes w2c-speed { from { opacity: 0.8; transform: translateX(0); } to { opacity: 0; transform: translateX(-22px); } }
+.w2c-speed { animation: w2c-speed 900ms cubic-bezier(0.25, 0.46, 0.45, 0.94) infinite; }
+@keyframes w2c-travel { 0% { transform: translateX(0); opacity: 1; } 90% { opacity: 1; } 100% { transform: translateX(var(--dist)); opacity: 0; } }
+.w2c-travel { animation: w2c-travel 1.6s cubic-bezier(0.45, 0, 0.55, 1) infinite; }
+
+@media (prefers-reduced-motion: reduce) {
+  .w2c-fade-up, .w2c-fade-down, .w2c-fade-in, .w2c-roll-in, .w2c-roll-out, .w2c-zoom-in, .w2c-sheet-up, .w2c-toast-in,
+  .w2c-pop, .w2c-pulse, .w2c-strip, .w2c-wheel, .w2c-bob, .w2c-speed, .w2c-travel { animation: none !important; }
+  .w2c-pulse, .w2c-travel { opacity: 0; }
+  .w2c-skeleton::after { display: none; }
+  .w2c-press:active { transform: none; }
+  .w2c-dot, .w2c-tab-pill, .w2c-acc-body, .w2c-rotate { transition: none; }
+}
+[data-mobile-frame] svg { position: relative; }

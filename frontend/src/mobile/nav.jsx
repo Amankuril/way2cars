@@ -249,6 +249,21 @@ export function TabBar({ name }) {
   const nav = useNavigate();
   const cfg = ctx.tabs[name];
   const active = cfg.screens.find((s) => matchPath({ path: ctx.routes[s], end: true }, loc.pathname)) || cfg.screens[0];
+  const go = (s) => {
+    if (s === active) return;
+    const t = resolveTarget(ctx, s);
+    nav({ pathname: t.pathname, search: t.search });
+  };
+  if (cfg.tabBar) {
+    // Custom bar (e.g. the kit's AnimatedTabBar) — same contract as native: items/activeIndex/onSelect.
+    const Bar = cfg.tabBar;
+    const items = cfg.screens.map((s) => {
+      const Icon = cfg.icons?.[s];
+      const badge = cfg.badges?.[s];
+      return { key: s, label: cfg.labels?.[s] || s, testID: `tab-${s}`, badge: typeof badge === 'function' ? badge() : badge, icon: (p) => (Icon ? <Icon size={p.size} color={p.color} strokeWidth={p.focused ? 2.4 : 2} /> : null) };
+    });
+    return <Bar items={items} activeIndex={cfg.screens.indexOf(active)} onSelect={(i) => go(cfg.screens[i])} />;
+  }
   return (
     <View
       accessibilityRole="tablist"

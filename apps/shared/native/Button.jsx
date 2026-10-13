@@ -25,7 +25,7 @@ export function Button({ title, onPress, variant = 'primary', size = 'md', loadi
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel || title}
       accessibilityState={{ disabled: !!inactive, busy: !!loading }}
-      className={cn('flex-row items-center justify-center rounded-md', SIZES[size], v.box, block && 'w-full', inactive && 'opacity-50', className)}
+      className={cn('flex-row items-center justify-center rounded-lg active:scale-[0.98]', SIZES[size], v.box, block && 'w-full', inactive && 'opacity-50', className)}
     >
       {loading ? (
         <ActivityIndicator color={v.spinner} />

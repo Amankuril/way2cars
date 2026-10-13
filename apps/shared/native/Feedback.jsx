@@ -1,11 +1,13 @@
-import { View, ActivityIndicator, Modal, Pressable, Animated } from 'react-native';
+import { View, ActivityIndicator, Modal, Pressable, StyleSheet } from 'react-native';
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import Animated, { FadeInDown, FadeOutDown, useAnimatedStyle, useSharedValue, withRepeat, withTiming, withSpring, Easing, cancelAnimation, useReducedMotion } from 'react-native-reanimated';
+import Svg, { Defs, LinearGradient, Stop, Rect } from 'react-native-svg';
 import { AlertTriangle, CheckCircle2, Info, XCircle, WifiOff } from 'lucide-react-native';
 import { T } from './Text';
 import { Button } from './Button';
 import { cn } from './cn';
-import { colors } from '../theme/tokens';
+import { colors, shadows, motion } from '../theme/tokens';
 
 const TONES = {
   neutral: { bg: 'bg-ink-100', text: 'text-ink-700', dot: colors.ink[500] },
@@ -80,32 +82,92 @@ export function ErrorState({ error, onRetry, className }) {
   );
 }
 
-/** Placeholder block for loading layouts. */
-export function Skeleton({ className }) {
-  const opacity = useRef(new Animated.Value(0.5)).current;
+/** Placeholder block for loading layouts, with a light sweep (shimmer) running on the UI thread. */
+export function Skeleton({ className, style }) {
+  const reduce = useReducedMotion();
+  const [w, setW] = useState(0);
+  const x = useSharedValue(-1);
   useEffect(() => {
-    const loop = Animated.loop(Animated.sequence([
-      Animated.timing(opacity, { toValue: 1, duration: 700, useNativeDriver: true }),
-      Animated.timing(opacity, { toValue: 0.5, duration: 700, useNativeDriver: true }),
-    ]));
-    loop.start();
-    return () => loop.stop();
-  }, [opacity]);
-  return <Animated.View style={{ opacity }} className={cn('rounded-md bg-ink-100', className)} />;
+    if (reduce || !w) return undefined;
+    x.value = -1;
+    x.value = withRepeat(withTiming(1, { duration: 1250, easing: Easing.inOut(Easing.ease) }), -1, false);
+    return () => cancelAnimation(x);
+  }, [w, reduce, x]);
+  const sweep = useAnimatedStyle(() => ({ transform: [{ translateX: x.value * w }] }));
+  return (
+    <View className={cn('overflow-hidden rounded-md bg-ink-100', className)} style={style} onLayout={(e) => setW(Math.round(e.nativeEvent.layout.width))} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+      {w && !reduce ? (
+        <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, sweep]}>
+          <Svg width="100%" height="100%">
+            <Defs>
+              <LinearGradient id="w2cShimmer" x1="0" y1="0" x2="1" y2="0">
+                <Stop offset="0.2" stopColor="#FFFFFF" stopOpacity="0" />
+                <Stop offset="0.5" stopColor="#FFFFFF" stopOpacity="0.65" />
+                <Stop offset="0.8" stopColor="#FFFFFF" stopOpacity="0" />
+              </LinearGradient>
+            </Defs>
+            <Rect x="0" y="0" width="100%" height="100%" fill="url(#w2cShimmer)" />
+          </Svg>
+        </Animated.View>
+      ) : null}
+    </View>
+  );
 }
 
-/** Bottom sheet built on Modal (keeps dependencies minimal). */
-export function Sheet({ visible, onClose, title, children, footer }) {
+/** Ready-made skeleton for a VehicleCard (full width, or `compact` 256px for carousels). */
+export function SkeletonVehicleCard({ compact, className }) {
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose} statusBarTranslucent>
-      <View className="flex-1 justify-end bg-black/40">
+    <View className={cn('rounded-2xl bg-surface p-3', compact ? 'w-64' : 'mx-4 mb-4', className)} style={{ boxShadow: shadows.card }}>
+      <Skeleton className="rounded-xl" style={{ aspectRatio: compact ? 16 / 10 : 16 / 9 }} />
+      <Skeleton className="mt-3 h-4 w-3/5" />
+      <Skeleton className="mt-2 h-3 w-2/5" />
+      <View className="mt-3 flex-row"><Skeleton className="mr-2 h-7 w-20 rounded-full" /><Skeleton className="mr-2 h-7 w-20 rounded-full" /><Skeleton className="h-7 w-16 rounded-full" /></View>
+      <Skeleton className="mt-3 h-6 w-1/3" />
+    </View>
+  );
+}
+
+/** Ready-made skeleton for a list row (icon tile + two lines). */
+export function SkeletonRow({ className }) {
+  return (
+    <View className={cn('flex-row items-center px-4 py-3.5', className)}>
+      <Skeleton className="h-11 w-11 rounded-xl" />
+      <View className="ml-3.5 flex-1"><Skeleton className="h-3.5 w-1/2" /><Skeleton className="mt-2 h-3 w-1/3" /></View>
+    </View>
+  );
+}
+
+/** Ready-made skeleton for a generic card block. */
+export function SkeletonCard({ height = 120, className }) {
+  return (
+    <View className={cn('mx-4 rounded-2xl bg-surface p-4', className)} style={{ boxShadow: shadows.card }}>
+      <Skeleton className="h-4 w-2/5" />
+      <Skeleton className="mt-3 w-full" style={{ height: Math.max(24, height - 56) }} />
+    </View>
+  );
+}
+
+/** Bottom sheet built on Modal: the backdrop fades in and the panel springs up from the bottom. */
+export function Sheet({ visible, onClose, title, children, footer }) {
+  const reduce = useReducedMotion();
+  const y = useSharedValue(600);
+  useEffect(() => {
+    if (!visible) { y.value = 600; return; }
+    y.value = reduce ? 0 : withSpring(0, { damping: 22, stiffness: 210, mass: 0.9 });
+  }, [visible, reduce, y]);
+  const panel = useAnimatedStyle(() => ({ transform: [{ translateY: y.value }] }));
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose} statusBarTranslucent>
+      <View className="flex-1 justify-end bg-black/45">
         <Pressable className="flex-1" onPress={onClose} accessibilityLabel="Close" />
-        <SafeAreaView edges={['bottom']} className="max-h-[88%] rounded-t-xl bg-surface">
-          <View className="items-center pt-2.5"><View className="h-1 w-10 rounded-full bg-ink-200" /></View>
-          {title ? <T variant="headline" className="px-5 pb-2 pt-3">{title}</T> : null}
-          <View className="shrink">{children}</View>
-          {footer ? <View className="border-t border-line px-4 py-3">{footer}</View> : null}
-        </SafeAreaView>
+        <Animated.View style={[{ maxHeight: '88%' }, panel]}>
+          <SafeAreaView edges={['bottom']} className="shrink rounded-t-3xl bg-surface">
+            <View className="items-center pt-2.5"><View className="h-1 w-10 rounded-full bg-ink-200" /></View>
+            {title ? <T variant="headline" className="px-5 pb-2 pt-3">{title}</T> : null}
+            <View className="shrink">{children}</View>
+            {footer ? <View className="border-t border-line px-4 py-3">{footer}</View> : null}
+          </SafeAreaView>
+        </Animated.View>
       </View>
     </Modal>
   );
@@ -134,24 +196,33 @@ export function Confirm({ visible, title, message, confirmLabel = 'Confirm', can
 const ToastCtx = createContext(() => {});
 export const useToast = () => useContext(ToastCtx);
 
+const TOAST = {
+  neutral: { bg: colors.ink[900], icon: Info },
+  success: { bg: colors.success[700], icon: CheckCircle2 },
+  danger: { bg: colors.danger[700], icon: XCircle },
+  warning: { bg: colors.warning[700], icon: AlertTriangle },
+};
+
 export function ToastProvider({ children }) {
   const [toast, setToast] = useState(null);
-  const y = useRef(new Animated.Value(120)).current;
   const timer = useRef();
+  const reduce = useReducedMotion();
   const show = useCallback((message, tone = 'neutral') => {
     clearTimeout(timer.current);
-    setToast({ message, tone });
-    Animated.spring(y, { toValue: 0, useNativeDriver: true, speed: 18, bounciness: 4 }).start();
-    timer.current = setTimeout(() => Animated.timing(y, { toValue: 120, duration: 200, useNativeDriver: true }).start(() => setToast(null)), 3200);
-  }, [y]);
-  const bg = toast?.tone === 'danger' ? 'bg-danger-700' : toast?.tone === 'success' ? 'bg-success-700' : 'bg-ink-900';
+    setToast({ message, tone, id: Date.now() });
+    timer.current = setTimeout(() => setToast(null), 3200);
+  }, []);
+  useEffect(() => () => clearTimeout(timer.current), []);
+  const t = TOAST[toast?.tone] || TOAST.neutral;
+  const Icon = t.icon;
   return (
     <ToastCtx.Provider value={show}>
       {children}
       {toast ? (
-        <Animated.View pointerEvents="none" style={{ transform: [{ translateY: y }] }} className="absolute bottom-24 left-4 right-4">
-          <View className={cn('rounded-md px-4 py-3', bg)} accessibilityLiveRegion="polite">
-            <T variant="bodySm" tone="inverse">{toast.message}</T>
+        <Animated.View key={toast.id} pointerEvents="none" entering={reduce ? undefined : FadeInDown.springify().damping(motion.spring.damping).stiffness(motion.spring.stiffness)} exiting={reduce ? undefined : FadeOutDown.duration(motion.fast)} style={{ position: 'absolute', bottom: 96, left: 16, right: 16 }}>
+          <View className="flex-row items-center rounded-xl px-4 py-3" style={{ backgroundColor: t.bg, boxShadow: shadows.raised }} accessibilityLiveRegion="polite">
+            <Icon size={18} color="#fff" strokeWidth={2.2} />
+            <T variant="bodySm" tone="inverse" className="ml-2.5 flex-1">{toast.message}</T>
           </View>
         </Animated.View>
       ) : null}

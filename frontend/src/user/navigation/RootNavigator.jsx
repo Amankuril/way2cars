@@ -1,6 +1,7 @@
 import { RouterProvider } from 'react-router/dom';
 import { Compass, CalendarClock, LifeBuoy, UserRound } from 'lucide-react';
 import { createMobileRouter } from '@/mobile/nav';
+import { AnimatedTabBar } from '@/mobile/ui';
 import { PhoneScreen, OtpScreen, CmsPageScreen, FaqScreen, NotificationsScreen, NotificationPrefsScreen, TicketScreen, NewTicketScreen } from '@/mobile/screens';
 import { ProfileSetupScreen } from '../screens/auth/ProfileSetupScreen';
 import { HomeScreen } from '../screens/home/HomeScreen';
@@ -75,6 +76,7 @@ const TABS = {
   Main: {
     screens: ['Explore', 'Trips', 'Help', 'Account'],
     icons: { Explore: Compass, Trips: CalendarClock, Help: LifeBuoy, Account: UserRound },
+    tabBar: AnimatedTabBar, // same as native MainTabs (NavTabBar → AnimatedTabBar)
   },
 };
 

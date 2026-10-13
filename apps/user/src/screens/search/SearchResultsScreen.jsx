@@ -1,10 +1,10 @@
 import { useMemo, useState } from 'react';
 import { View, FlatList, ScrollView, Pressable } from 'react-native';
 import { useInfiniteQuery } from '@tanstack/react-query';
-import { SlidersHorizontal, ArrowUpDown, CarFront, CalendarDays } from 'lucide-react-native';
-import { Screen, Header, T, Button, Chip, Sheet, Loading, ErrorState, EmptyState, Skeleton } from '@shared/native';
-import { colors } from '@shared/theme/tokens';
-import { dayLabel, timeLabel } from '@shared/lib/format';
+import { SlidersHorizontal, ArrowUpDown, PencilLine, SearchX, RotateCcw, CalendarDays } from 'lucide-react-native';
+import { Screen, Header, T, Button, Chip, Sheet, ErrorState, IconButton, CarLoader, CarArt, TripRoute, FadeInView, SkeletonVehicleCard, Card } from '@shared/native';
+import { colors, shadows } from '@shared/theme/tokens';
+import { dayLabel, timeLabel, duration } from '@shared/lib/format';
 import { FUEL, BODY_TYPE } from '@shared/lib/labels';
 import { api } from '../../api';
 import { useTripPlan } from '../../hooks/useTripPlan';
@@ -74,18 +74,25 @@ export function SearchResultsScreen({ navigation, route }) {
   const toggle = (key, val) => setDraft((d) => ({ ...d, [key]: d[key].includes(val) ? d[key].filter((x) => x !== val) : [...d[key], val] }));
   const flag = (key) => setDraft((d) => ({ ...d, [key]: !d[key] }));
 
+  const tripLabel = duration(plan.startAt, plan.endAt);
+  const sortLabel = SORTS.find((x) => x.value === sort)?.label;
+
   return (
-    <Screen scroll={false} header={<Header title={route.params?.title || `Cars in ${plan.city?.name || ''}`} subtitle={total !== undefined ? `${total} available` : undefined} />}>
-      {/* Trip times + quick controls */}
-      <Pressable onPress={() => setSheet('times')} className="flex-row items-center border-b border-line bg-surface px-4 py-2.5" accessibilityRole="button" accessibilityLabel="Change trip times">
-        <CalendarDays size={16} color={colors.brand[600]} />
-        <T variant="bodySm" className="ml-2 flex-1 font-semibold" numberOfLines={1}>{dayLabel(plan.startAt)}, {timeLabel(plan.startAt)}  →  {dayLabel(plan.endAt)}, {timeLabel(plan.endAt)}</T>
-        <T variant="label" tone="brand">Edit</T>
-      </Pressable>
-      <View className="border-b border-line bg-surface py-2.5">
+    <Screen
+      scroll={false}
+      header={
+        <Header
+          title={route.params?.title || `Cars in ${plan.city?.name || ''}`}
+          subtitle={`${dayLabel(plan.startAt)}, ${timeLabel(plan.startAt)} → ${dayLabel(plan.endAt)}, ${timeLabel(plan.endAt)} · ${tripLabel}`}
+          right={<IconButton icon={PencilLine} label="Change trip times" tone="brand" onPress={() => setSheet('times')} className="bg-brand-50" />}
+        />
+      }
+    >
+      {/* Quick controls */}
+      <View className="border-b border-line bg-surface py-2.5" style={{ boxShadow: shadows.card }}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerClassName="px-4">
           <Chip label={activeCount ? `Filters · ${activeCount}` : 'Filters'} icon={SlidersHorizontal} selected={!!activeCount} onPress={() => { setDraft(filters); setSheet('filters'); }} />
-          <Chip label={SORTS.find((s) => s.value === sort)?.label} icon={ArrowUpDown} onPress={() => setSheet('sort')} />
+          <Chip label={sortLabel} icon={ArrowUpDown} onPress={() => setSheet('sort')} />
           <Chip label="Instant book" selected={filters.instant} onPress={() => setFilters((f) => ({ ...f, instant: !f.instant }))} />
           <Chip label="Automatic" selected={filters.transmission === 'automatic'} onPress={() => setFilters((f) => ({ ...f, transmission: f.transmission === 'automatic' ? null : 'automatic' }))} />
           <Chip label="Electric" selected={filters.electric} onPress={() => setFilters((f) => ({ ...f, electric: !f.electric }))} />
@@ -94,27 +101,58 @@ export function SearchResultsScreen({ navigation, route }) {
       </View>
 
       {results.isLoading ? (
-        <View className="pt-4">{[1, 2].map((i) => <Skeleton key={i} className="mx-4 mb-4 h-72" />)}</View>
+        <View className="pt-5" testID="search-loading">
+          <CarLoader title="Finding the best rides…" subtitle={`for your trip in ${plan.city?.name || 'your city'}`}>
+            <View className="rounded-2xl border border-ink-100 bg-ink-50 px-3.5 py-3">
+              <TripRoute
+                animated
+                start={{ overline: 'Pickup', title: dayLabel(plan.startAt), subtitle: timeLabel(plan.startAt) }}
+                end={{ overline: 'Return', title: dayLabel(plan.endAt), subtitle: timeLabel(plan.endAt) }}
+                label={tripLabel}
+              />
+            </View>
+          </CarLoader>
+        </View>
       ) : results.error ? (
         <ErrorState error={results.error} onRetry={results.refetch} />
       ) : (
         <FlatList
           data={items}
           keyExtractor={(v) => v.id}
-          contentContainerClassName="pt-4 pb-8"
-          renderItem={({ item }) => <VehicleCard vehicle={item} onPress={() => navigation.navigate('Vehicle', { id: item.id })} />}
+          contentContainerClassName="pb-10"
+          ListHeaderComponent={items.length ? (
+            <View className="flex-row items-center justify-between px-4 pb-3 pt-4">
+              <T variant="label">{total} {total === 1 ? 'car' : 'cars'} available</T>
+              <T variant="caption" tone="subtle">{sortLabel}</T>
+            </View>
+          ) : null}
+          renderItem={({ item, index }) => (
+            <FadeInView index={index}>
+              <VehicleCard vehicle={item} onPress={() => navigation.navigate('Vehicle', { id: item.id })} />
+            </FadeInView>
+          )}
           onEndReached={() => results.hasNextPage && !results.isFetchingNextPage && results.fetchNextPage()}
           onEndReachedThreshold={0.4}
           refreshing={results.isRefetching && !results.isFetchingNextPage}
           onRefresh={results.refetch}
-          ListFooterComponent={results.isFetchingNextPage ? <Loading full={false} /> : null}
+          ListFooterComponent={results.isFetchingNextPage ? <SkeletonVehicleCard /> : null}
           ListEmptyComponent={
-            <EmptyState
-              icon={CarFront}
-              title="No cars for these times"
-              message={activeCount ? 'Try removing some filters.' : 'Try shifting your pickup time or trip length — availability changes quickly.'}
-              action={activeCount ? <Button title="Clear filters" variant="secondary" onPress={() => setFilters({ ...EMPTY, categoryIds: [] })} /> : <Button title="Change times" variant="secondary" onPress={() => setSheet('times')} />}
-            />
+            <FadeInView className="px-4 pt-6">
+              <Card className="items-center overflow-hidden px-6 pb-6 pt-8">
+                <View className="items-center">
+                  <CarArt still />
+                  <View className="mt-1 h-1.5 w-44 rounded-full bg-ink-100" />
+                </View>
+                <View className="absolute right-5 top-5 h-10 w-10 items-center justify-center rounded-full bg-warning-50"><SearchX size={20} color={colors.warning[600]} /></View>
+                <T variant="headline" className="mt-5 text-center">No cars for these times</T>
+                <T variant="bodySm" tone="muted" className="mt-1.5 text-center">{activeCount ? 'Try removing some filters.' : 'Try shifting your pickup time or trip length — availability changes quickly.'}</T>
+                <View className="mt-5">
+                  {activeCount
+                    ? <Button title="Clear filters" icon={RotateCcw} variant="secondary" onPress={() => setFilters({ ...EMPTY, categoryIds: [] })} />
+                    : <Button title="Change times" icon={CalendarDays} variant="secondary" onPress={() => setSheet('times')} />}
+                </View>
+              </Card>
+            </FadeInView>
           }
         />
       )}

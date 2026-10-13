@@ -127,6 +127,8 @@ createMobileRouter({
 | `'@shared/native/app/media'` | `'@/mobile/app/media'` (`pickImage`, `uploadAsset`) |
 | `'@react-navigation/native'` (`useNavigation, useRoute, useFocusEffect, useIsFocused`) | `'@/mobile/nav'` |
 | `'lucide-react-native'` | `'lucide-react'` (same icon names and props) |
+| `'react-native-svg'` (`Svg, Path, Circle, LinearGradient, …`) | `'@/mobile/svg'` (same names, inline DOM SVG) |
+| `'react-native-reanimated'` animations | Don't port them. Use the kit (`PressableScale`, `FadeInView`, `StickyScrollView`, …) from `'@/mobile/ui'`, which has CSS twins in `ui/kit.css`. See `docs/DESIGN.md`. |
 | `'@react-native-community/datetimepicker'` (`DateTimePickerAndroid`) | `import { DateTimePickerAndroid } from '@/mobile/app/datetime'` (same `open({ value, mode, minimumDate, maximumDate, onChange })`, `event.type` is `'set'` or `'dismissed'`) |
 | `'react-native-razorpay'` (default `RazorpayCheckout`) | `import RazorpayCheckout from '@/mobile/app/razorpay'` (same `open(options)` promise; cancel rejects with `code: 2`) |
 | `'@react-native-async-storage/async-storage'` | `import AsyncStorage from '@/mobile/app/storage'` |
@@ -206,7 +208,7 @@ device. Things to know:
 | `Share.share` | `navigator.share`, or else the text is copied to the clipboard with a "Copied" snack. |
 | `Alert.alert` | In-app dialog styled like `Confirm` (never `window.confirm`). |
 | Status bar, `BackHandler`, `Vibration`, `PermissionsAndroid`, `LayoutAnimation` | Harmless stubs. |
-| `Animated` | **Not provided.** The app screens don't use it. Use CSS transitions or Tailwind `animate-*`. |
+| `Animated` / Reanimated | **Not provided.** Screens animate through the motion kit (`docs/DESIGN.md`), whose web versions are CSS keyframes and transitions in `src/mobile/ui/kit.css`. They honour `prefers-reduced-motion`. |
 
 ## Verify a port
 

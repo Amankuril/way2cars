@@ -5,7 +5,8 @@ import { AlertTriangle, CheckCircle2, Info, XCircle, WifiOff } from 'lucide-reac
 import { T } from './Text';
 import { Button } from './Button';
 import { cn } from './cn';
-import { colors } from '@shared/theme/tokens';
+import { colors, shadows } from '@shared/theme/tokens';
+import './kit.css';
 
 const TONES = {
   neutral: { bg: 'bg-ink-100', text: 'text-ink-700', dot: colors.ink[500] },
@@ -80,18 +81,48 @@ export function ErrorState({ error, onRetry, className }) {
   );
 }
 
-/** Placeholder block for loading layouts (opacity pulse 0.5 ↔ 1, like the native Animated loop). */
-export function Skeleton({ className }) {
-  return <View className={cn('animate-pulse rounded-md bg-ink-100', className)} />;
+/** Placeholder block for loading layouts, with a light sweep (shimmer) like the native Reanimated loop. */
+export function Skeleton({ className, style }) {
+  return <View className={cn('w2c-skeleton overflow-hidden rounded-md bg-ink-100', className)} style={style} aria-hidden />;
 }
 
-/** Bottom sheet: dimmed backdrop (tap to close), rounded top panel with grab handle; slides up. */
+export function SkeletonVehicleCard({ compact, className }) {
+  return (
+    <View className={cn('rounded-2xl bg-surface p-3', compact ? 'w-64' : 'mx-4 mb-4', className)} style={{ boxShadow: shadows.card }}>
+      <Skeleton className="rounded-xl" style={{ aspectRatio: compact ? 16 / 10 : 16 / 9 }} />
+      <Skeleton className="mt-3 h-4 w-3/5" />
+      <Skeleton className="mt-2 h-3 w-2/5" />
+      <View className="mt-3 flex-row"><Skeleton className="mr-2 h-7 w-20 rounded-full" /><Skeleton className="mr-2 h-7 w-20 rounded-full" /><Skeleton className="h-7 w-16 rounded-full" /></View>
+      <Skeleton className="mt-3 h-6 w-1/3" />
+    </View>
+  );
+}
+
+export function SkeletonRow({ className }) {
+  return (
+    <View className={cn('flex-row items-center px-4 py-3.5', className)}>
+      <Skeleton className="h-11 w-11 rounded-xl" />
+      <View className="ml-3.5 flex-1"><Skeleton className="h-3.5 w-1/2" /><Skeleton className="mt-2 h-3 w-1/3" /></View>
+    </View>
+  );
+}
+
+export function SkeletonCard({ height = 120, className }) {
+  return (
+    <View className={cn('mx-4 rounded-2xl bg-surface p-4', className)} style={{ boxShadow: shadows.card }}>
+      <Skeleton className="h-4 w-2/5" />
+      <Skeleton className="mt-3 w-full" style={{ height: Math.max(24, height - 56) }} />
+    </View>
+  );
+}
+
+/** Bottom sheet: dimmed backdrop (tap to close), rounded top panel with grab handle; springs up. */
 export function Sheet({ visible, onClose, title, children, footer, webLayer }) {
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose} webLayer={webLayer}>
-      <View className="flex-1 justify-end bg-black/40">
+      <View className="flex-1 justify-end bg-black/45">
         <Pressable className="flex-1 cursor-default" onPress={onClose} accessibilityLabel="Close" />
-        <SafeAreaView edges={['bottom']} className="rn-anim-slide-in max-h-[88%] rounded-t-xl bg-surface">
+        <SafeAreaView edges={['bottom']} className="w2c-sheet-up max-h-[88%] rounded-t-3xl bg-surface">
           <View className="items-center pt-2.5"><View className="h-1 w-10 rounded-full bg-ink-200" /></View>
           {title ? <T variant="headline" className="px-5 pb-2 pt-3">{title}</T> : null}
           <View className="shrink">{children}</View>
@@ -122,6 +153,12 @@ export function Confirm({ visible, title, message, confirmLabel = 'Confirm', can
 }
 
 // ---------------------------------------------------------------- toasts
+const TOAST = {
+  neutral: { bg: colors.ink[900], icon: Info },
+  success: { bg: colors.success[700], icon: CheckCircle2 },
+  danger: { bg: colors.danger[700], icon: XCircle },
+  warning: { bg: colors.warning[700], icon: AlertTriangle },
+};
 const ToastCtx = createContext(() => {});
 export const useToast = () => useContext(ToastCtx);
 
@@ -139,11 +176,13 @@ export function ToastProvider({ children }) {
     }, 3200);
   }, []);
   useEffect(() => () => clearTimeout(timer.current), []);
-  const bg = toast?.tone === 'danger' ? 'bg-danger-700' : toast?.tone === 'success' ? 'bg-success-700' : 'bg-ink-900';
+  const t = TOAST[toast?.tone] || TOAST.neutral;
+  const Icon = t.icon;
   const node = toast ? (
-    <View key={toast.id} pointerEvents="none" className={cn('absolute bottom-24 left-4 right-4 z-40', toast.leaving ? 'rn-anim-fade-out' : 'rn-anim-slide-in')}>
-      <View className={cn('rounded-md px-4 py-3', bg)} accessibilityLiveRegion="polite" accessibilityRole="alert">
-        <T variant="bodySm" tone="inverse">{toast.message}</T>
+    <View key={toast.id} pointerEvents="none" className={cn('absolute bottom-24 left-4 right-4 z-40', toast.leaving ? 'rn-anim-fade-out' : 'w2c-toast-in')}>
+      <View className="flex-row items-center rounded-xl px-4 py-3" style={{ backgroundColor: t.bg, boxShadow: shadows.raised }} accessibilityLiveRegion="polite" accessibilityRole="alert">
+        <Icon size={18} color="#fff" strokeWidth={2.2} />
+        <T variant="bodySm" tone="inverse" className="ml-2.5 flex-1">{toast.message}</T>
       </View>
     </View>
   ) : null;

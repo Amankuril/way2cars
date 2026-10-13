@@ -37,6 +37,39 @@ const type = {
   price: [20, 24, '800'],
 };
 
-const radius = { sm: 6, md: 10, lg: 14, xl: 18 };
+const radius = { sm: 6, md: 10, lg: 14, xl: 18, '2xl': 22, '3xl': 28 };
 
-module.exports = { colors, fontFamily, type, radius };
+/**
+ * Elevation as CSS box-shadow strings. RN 0.81 (new architecture) supports the `boxShadow` style
+ * prop on Android and iOS, and the web layer passes it through unchanged — so the same
+ * `style={{ boxShadow: shadows.card }}` renders identically on both. (Don't use Tailwind shadow-*
+ * classes on native: NativeWind maps them to iOS-only shadow props.)
+ */
+const shadows = {
+  card: '0px 6px 18px -8px rgba(14, 23, 27, 0.16)',
+  raised: '0px 12px 32px -12px rgba(14, 23, 27, 0.24)',
+  float: '0px 18px 40px -14px rgba(13, 61, 96, 0.38)',
+  brand: '0px 10px 24px -10px rgba(24, 117, 185, 0.60)',
+  bar: '0px -6px 24px -12px rgba(14, 23, 27, 0.18)',
+};
+
+/** Gradient stops (brand → accent) used by GradientHero, buttons and ticket stubs. */
+const gradients = {
+  hero: ['#0D3D60', '#12609A', '#1875B9', '#1BA4C4'],
+  brand: ['#1875B9', '#1BA4C4'],
+  deep: ['#0A2E48', '#12609A'],
+  sunrise: ['#12609A', '#3FB7D2'],
+};
+
+/** Motion tokens (ms / spring configs) shared by Reanimated (native) and CSS (web). */
+const motion = {
+  fast: 160,
+  base: 260,
+  slow: 420,
+  stagger: 60,
+  pressScale: 0.97,
+  spring: { damping: 18, stiffness: 220, mass: 0.9 },
+  springSoft: { damping: 22, stiffness: 140, mass: 1 },
+};
+
+module.exports = { colors, fontFamily, type, radius, shadows, gradients, motion };

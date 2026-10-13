@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { View, Image, Pressable, Switch } from 'react-native';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { MapPin, Truck, TicketPercent, Wallet, ShieldCheck, Lock } from 'lucide-react-native';
-import { Screen, Header, T, Button, Section, Panel, Field, Notice, Loading, ErrorState, useToast, cn } from '@shared/native';
+import { MapPin, Truck, TicketPercent, Wallet, ShieldCheck, Lock, Users, Cog, Fuel, Zap, Clock, Check, ReceiptText, X } from 'lucide-react-native';
+import { Screen, Header, T, Button, Field, Notice, ErrorState, useToast, cn, Card, SectionHeader, SpecChip, TripRoute, IconTile, AnimatedNumber, FadeInView, PressableScale, Skeleton, SkeletonCard } from '@shared/native';
 import { colors } from '@shared/theme/tokens';
+import { FUEL, TRANSMISSION } from '@shared/lib/labels';
 import { money, dayLabel, timeLabel, duration } from '@shared/lib/format';
 import { api } from '../../api';
 import { useAuth } from '../../auth/AuthContext';
@@ -13,6 +14,20 @@ import { PriceBreakdown } from '../../components/PriceBreakdown';
 import { payOrder } from '../../services/payments';
 
 const newKey = () => `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+
+/** Selectable pickup-method tile (radio). */
+const Option = ({ selected, icon, title, subtitle, onPress, testID }) => (
+  <PressableScale onPress={onPress} accessibilityRole="radio" accessibilityState={{ checked: selected }} testID={testID} containerStyle={{ flex: 1 }} className={cn('flex-1 rounded-2xl border-2 p-3.5', selected ? 'border-brand-500 bg-brand-50' : 'border-ink-100 bg-surface')}>
+    <View className="flex-row items-start justify-between">
+      <IconTile icon={icon} tone={selected ? 'brand' : 'neutral'} size={38} />
+      <View className={cn('h-5 w-5 items-center justify-center rounded-full border-2', selected ? 'border-brand-500 bg-brand-500' : 'border-ink-300')}>
+        {selected ? <Check size={12} color="#fff" strokeWidth={3.4} /> : null}
+      </View>
+    </View>
+    <T variant="label" className="mt-2.5">{title}</T>
+    <T variant="caption" tone="muted" className="mt-0.5" numberOfLines={3}>{subtitle}</T>
+  </PressableScale>
+);
 
 export function CheckoutScreen({ route, navigation }) {
   const { vehicleId } = route.params;
@@ -87,7 +102,13 @@ export function CheckoutScreen({ route, navigation }) {
     }
   };
 
-  if (vehicle.isLoading) return <Screen header={<Header title="Review & pay" />} scroll={false}><Loading /></Screen>;
+  if (vehicle.isLoading) {
+    return (
+      <Screen header={<Header title="Review & pay" />}>
+        <View className="pt-4"><SkeletonCard height={110} /><SkeletonCard height={130} className="mt-4" /><SkeletonCard height={150} className="mt-4" /></View>
+      </Screen>
+    );
+  }
   if (vehicle.error) return <Screen header={<Header title="Review & pay" />} scroll={false}><ErrorState error={vehicle.error} onRetry={vehicle.refetch} /></Screen>;
   const v = vehicle.data;
   const q = quote.data;
@@ -95,32 +116,68 @@ export function CheckoutScreen({ route, navigation }) {
 
   return (
     <Screen
-      header={<Header title="Review & pay" />}
+      header={<Header title="Review & pay" subtitle={`${duration(plan.startAt, plan.endAt)} · ${v.city?.name || ''}`} />}
       footer={
         <View>
-          <Button
-            title={q ? `Pay ${money(q.payablePaise, { exact: true })}` : 'Pay'}
-            icon={Lock}
-            size="lg"
-            block
-            disabled={!q || !kycOk || unavailable || quote.isFetching}
-            loading={paying}
-            onPress={pay}
-            testID="pay"
-          />
-          <T variant="caption" tone="subtle" className="mt-2 text-center">Secured by Razorpay · UPI, cards, net banking & wallets</T>
+          <View className="flex-row items-center">
+            <View className="mr-3 flex-1">
+              <T variant="caption" tone="subtle">To pay now</T>
+              {q ? <AnimatedNumber value={money(q.payablePaise, { exact: true })} className="text-brand-700" testID="pay-total" /> : quote.isFetching ? <Skeleton className="mt-1 h-6 w-28" /> : <T variant="price" tone="subtle">—</T>}
+            </View>
+            <Button
+              title="Pay now"
+              accessibilityLabel={q ? `Pay ${money(q.payablePaise, { exact: true })}` : 'Pay'}
+              icon={Lock}
+              size="lg"
+              disabled={!q || !kycOk || unavailable || quote.isFetching}
+              loading={paying}
+              onPress={pay}
+              testID="pay"
+              className="min-w-[150px]"
+            />
+          </View>
+          <View className="mt-2 flex-row items-center justify-center">
+            <ShieldCheck size={12} color={colors.success[600]} />
+            <T variant="caption" tone="subtle" className="ml-1">Secured by Razorpay · UPI, cards, net banking & wallets</T>
+          </View>
         </View>
       }
     >
-      {/* Summary */}
-      <View className="mx-4 mt-4 flex-row rounded-lg border border-line bg-surface p-3">
-        {v.photos?.[0] ? <Image source={{ uri: v.photos[0] }} style={{ width: 96, height: 64, borderRadius: 8 }} /> : null}
-        <View className="ml-3 flex-1">
-          <T variant="body" className="font-bold" numberOfLines={1}>{v.title}</T>
-          <T variant="caption" tone="muted">{dayLabel(plan.startAt)}, {timeLabel(plan.startAt)} → {dayLabel(plan.endAt)}, {timeLabel(plan.endAt)}</T>
-          <T variant="caption" tone="subtle">{duration(plan.startAt, plan.endAt)} · {v.instantBooking ? 'Confirms instantly' : 'Host confirms within 2 hrs'}</T>
-        </View>
-      </View>
+      {/* Car summary */}
+      <FadeInView className="mx-4 mt-4">
+        <Card className="flex-row p-3">
+          <View className="overflow-hidden rounded-xl bg-ink-100" style={{ width: 104, height: 78 }}>
+            {v.photos?.[0] ? <Image source={{ uri: v.photos[0] }} style={{ width: 104, height: 78 }} resizeMode="cover" /> : null}
+          </View>
+          <View className="ml-3 flex-1">
+            <T variant="body" className="font-extrabold" numberOfLines={1}>{v.title}</T>
+            <View className="mt-1.5 flex-row flex-wrap">
+              <SpecChip icon={Users} label={`${v.seats}`} />
+              <SpecChip icon={Cog} label={TRANSMISSION[v.transmission]} />
+              <SpecChip icon={v.fuelType === 'electric' ? Zap : Fuel} label={FUEL[v.fuelType]} />
+            </View>
+            <View className="flex-row items-center">
+              {v.instantBooking ? <Zap size={12} color={colors.brand[600]} fill={colors.brand[600]} /> : <Clock size={12} color={colors.ink[500]} />}
+              <T variant="caption" className={cn('ml-1 font-semibold', v.instantBooking ? 'text-brand-700' : 'text-ink-600')}>{v.instantBooking ? 'Confirms instantly' : 'Host confirms within 2 hrs'}</T>
+            </View>
+          </View>
+        </Card>
+      </FadeInView>
+
+      {/* Trip */}
+      <FadeInView index={1} className="mx-4 mt-4">
+        <Card className="p-4">
+          <View className="mb-3 flex-row items-center border-b border-line pb-3">
+            <MapPin size={16} color={colors.brand[600]} />
+            <T variant="label" className="ml-2 flex-1" numberOfLines={1}>{[v.location?.area, v.city?.name].filter(Boolean).join(', ')}</T>
+          </View>
+          <TripRoute
+            start={{ overline: 'Pickup', title: dayLabel(plan.startAt), subtitle: timeLabel(plan.startAt) }}
+            end={{ overline: 'Return', title: dayLabel(plan.endAt), subtitle: timeLabel(plan.endAt) }}
+            label={duration(plan.startAt, plan.endAt)}
+          />
+        </Card>
+      </FadeInView>
 
       {!kycOk ? (
         <Notice tone="warning" title="Verify your licence to book" className="mx-4 mt-4" action={<Button title="Verify now" size="sm" variant="tonal" icon={ShieldCheck} onPress={() => navigation.navigate('Kyc')} />}>
@@ -129,59 +186,78 @@ export function CheckoutScreen({ route, navigation }) {
       ) : null}
       {unavailable ? <Notice tone="danger" title="No longer available" className="mx-4 mt-4">{quote.error.message}</Notice> : null}
 
-      <Section title="Pickup">
-        <Panel padded={false}>
-          <Pressable onPress={() => setDelivery(null)} className={cn('flex-row items-center p-4', v.delivery?.enabled && 'border-b border-line')} accessibilityRole="radio" accessibilityState={{ checked: !delivery }}>
-            <MapPin size={20} color={colors.ink[600]} />
-            <View className="ml-3 flex-1"><T variant="label">Pick up from host</T><T variant="caption" tone="muted">{v.location?.area || v.city?.name} · exact address after confirmation</T></View>
-            <View className={cn('h-5 w-5 rounded-full border-2', !delivery ? 'border-brand-500 bg-brand-500' : 'border-ink-300')} />
-          </Pressable>
+      {/* Pickup method */}
+      <View className="mt-7">
+        <SectionHeader title="How do you want the car?" />
+        <View className="flex-row px-4" accessibilityRole="radiogroup">
+          <Option selected={!delivery} icon={MapPin} title="Self pickup" subtitle={`${v.location?.area || v.city?.name} · exact address after confirmation`} onPress={() => setDelivery(null)} testID="pickup-self" />
           {v.delivery?.enabled ? (
-            <Pressable onPress={() => setPickerOpen(true)} className="flex-row items-center p-4" accessibilityRole="radio" accessibilityState={{ checked: !!delivery }}>
-              <Truck size={20} color={colors.ink[600]} />
-              <View className="ml-3 flex-1">
-                <T variant="label">Doorstep delivery</T>
-                <T variant="caption" tone="muted" numberOfLines={2}>{delivery ? delivery.address : `Within ${v.delivery.maxKm} km · fee based on distance`}</T>
-              </View>
-              <View className={cn('h-5 w-5 rounded-full border-2', delivery ? 'border-brand-500 bg-brand-500' : 'border-ink-300')} />
-            </Pressable>
+            <>
+              <View className="w-3" />
+              <Option selected={!!delivery} icon={Truck} title="Doorstep delivery" subtitle={`Within ${v.delivery.maxKm} km · fee based on distance`} onPress={() => setPickerOpen(true)} testID="pickup-delivery" />
+            </>
           ) : null}
-        </Panel>
-      </Section>
+        </View>
+        {delivery ? (
+          <Pressable onPress={() => setPickerOpen(true)} accessibilityRole="button" accessibilityLabel="Change delivery address" className="mx-4 mt-3 flex-row items-center rounded-2xl border border-brand-100 bg-brand-50 p-3.5 active:bg-brand-100">
+            <Truck size={18} color={colors.brand[600]} />
+            <View className="ml-3 flex-1">
+              <T variant="caption" tone="subtle">Delivering to</T>
+              <T variant="label" numberOfLines={2}>{delivery.address}</T>
+            </View>
+            <T variant="label" tone="brand">Change</T>
+          </Pressable>
+        ) : null}
+      </View>
 
-      <Section title="Offers & credits">
-        <Panel>
+      {/* Offers & credits */}
+      <View className="mt-7">
+        <SectionHeader title="Offers & credits" actionLabel="View all coupons" onAction={() => navigation.navigate('Offers')} />
+        <Card className="mx-4 p-4">
           {coupon ? (
-            <View className="flex-row items-center">
-              <TicketPercent size={20} color={colors.success[600]} />
-              <View className="ml-3 flex-1"><T variant="label">{coupon} applied</T>{q?.discountPaise ? <T variant="caption" tone="success">You save {money(q.discountPaise)}</T> : null}</View>
-              <Button title="Remove" variant="ghost" size="sm" onPress={() => setCoupon(null)} />
+            <View className="flex-row items-center overflow-hidden rounded-xl border border-dashed border-success-500 bg-success-50 p-3">
+              <IconTile icon={TicketPercent} tone="success" size={38} />
+              <View className="ml-3 flex-1">
+                <T variant="label" className="tracking-wider">{coupon} applied</T>
+                {q?.discountPaise ? <T variant="caption" tone="success" className="font-semibold">You save {money(q.discountPaise)}</T> : null}
+              </View>
+              <Pressable onPress={() => setCoupon(null)} accessibilityRole="button" accessibilityLabel="Remove coupon" className="h-11 w-11 items-center justify-center rounded-full active:bg-success-100">
+                <X size={18} color={colors.ink[600]} />
+              </Pressable>
             </View>
           ) : (
             <View className="flex-row items-start">
               <Field className="mb-0 flex-1" placeholder="Coupon code" value={couponInput} onChangeText={(t) => { setCouponInput(t.toUpperCase()); setCouponError(null); }} autoCapitalize="characters" error={couponError} />
-              <Button title="Apply" variant="secondary" className="ml-2" disabled={couponInput.trim().length < 4} onPress={() => { setCouponError(null); setCoupon(couponInput.trim()); }} />
+              <Button title="Apply" variant="tonal" className="ml-2" disabled={couponInput.trim().length < 4} onPress={() => { setCouponError(null); setCoupon(couponInput.trim()); }} />
             </View>
           )}
           {account?.walletBalancePaise > 0 ? (
             <View className="mt-4 flex-row items-center border-t border-line pt-4">
-              <Wallet size={20} color={colors.ink[600]} />
+              <IconTile icon={Wallet} tone="accent" size={38} />
               <View className="ml-3 flex-1"><T variant="label">Use wallet credit</T><T variant="caption" tone="muted">Balance {money(account.walletBalancePaise)}</T></View>
               <Switch value={useWallet} onValueChange={setUseWallet} trackColor={{ true: colors.brand[300], false: colors.ink[200] }} thumbColor={useWallet ? colors.brand[500] : '#fff'} />
             </View>
           ) : null}
-        </Panel>
-      </Section>
+        </Card>
+      </View>
 
-      <Section title="Price details">
-        <Panel>
-          {q ? <PriceBreakdown p={q} /> : quote.isLoading ? <Loading full={false} /> : quote.error && !unavailable ? <ErrorState error={quote.error} onRetry={quote.refetch} /> : null}
-        </Panel>
+      {/* Price */}
+      <View className="mt-7">
+        <SectionHeader title="Payment details" />
+        <Card className="mx-4 p-4">
+          <View className="mb-2 flex-row items-center">
+            <ReceiptText size={16} color={colors.brand[600]} />
+            <T variant="label" className="ml-2">Price breakdown</T>
+          </View>
+          {q ? <PriceBreakdown p={q} /> : quote.isLoading ? (
+            <View>{[1, 2, 3, 4].map((i) => <Skeleton key={i} className="mb-2.5 h-4 w-full" />)}</View>
+          ) : quote.error && !unavailable ? <ErrorState error={quote.error} onRetry={quote.refetch} /> : null}
+        </Card>
         <T variant="caption" tone="subtle" className="mx-4 mt-3">
           By paying you accept the rental agreement and{' '}
           <T variant="caption" tone="brand" onPress={() => navigation.navigate('CmsPage', { slug: 'cancellation-policy' })}>cancellation policy</T>. Your booking is held for 15 minutes while you pay.
         </T>
-      </Section>
+      </View>
 
       <AddressPicker visible={pickerOpen} onClose={() => setPickerOpen(false)} onSelect={setDelivery} />
     </Screen>

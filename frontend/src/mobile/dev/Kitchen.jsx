@@ -5,8 +5,8 @@
  */
 import { useCallback, useState } from 'react';
 import { View, ScrollView, FlatList, Pressable, Image, Switch, Alert, Share, Linking, useWindowDimensions } from '../rn';
-import { Bell, CalendarDays, Car, Share2, Phone, ShieldCheck } from 'lucide-react';
-import { Screen, Header, Section, Panel, T, Button, IconButton, Field, Chip, Segmented, ListItem, KeyValue, Pill, Notice, Skeleton, Sheet, Confirm, useToast, PhotoTile, Avatar, Rating, Stepper, useUploader, Divider } from '../ui';
+import { Bell, CalendarDays, Car, Share2, Phone, ShieldCheck, Users, Cog, Fuel } from 'lucide-react';
+import { Screen, Header, Section, Panel, T, Button, IconButton, Field, Chip, Segmented, ListItem, KeyValue, Pill, Notice, Skeleton, Sheet, Confirm, useToast, PhotoTile, Avatar, Rating, Stepper, useUploader, Divider, CarLoader, TripRoute, TicketCard, Accordion, Carousel, SpecChip, IconTile, AnimatedNumber, SkeletonVehicleCard, SkeletonRow, GradientHero, SectionHeader, PressableScale, FadeInView, DashedDivider, Card } from '../ui';
 import { DateTimePickerAndroid } from '../app/datetime';
 import { useFocusEffect } from '../nav';
 import { colors } from '@shared/theme/tokens';
@@ -28,6 +28,7 @@ export default function Kitchen({ navigation, route }) {
   const [text, setText] = useState('');
   const [items, setItems] = useState(() => Array.from({ length: 20 }, (_, i) => i + 1));
   const [focusCount, setFocusCount] = useState(0);
+  const [kitN, setKitN] = useState(349900);
   useFocusEffect(useCallback(() => { setFocusCount((n) => n + 1); }, []));
 
   const pick = () => DateTimePickerAndroid.open({
@@ -44,7 +45,21 @@ export default function Kitchen({ navigation, route }) {
         <Notice tone="warning" title="Developer screen">Only in `npm run dev`. Not shipped.</Notice>
       </View>
 
-      <Section title="Typography" first>
+      <Section title="Motion kit" first>
+        <GradientHero className="mx-4 rounded-3xl px-4 py-6"><T variant="title" tone="inverse">GradientHero</T><T variant="caption" className="text-white/75">brand → accent with soft shapes</T></GradientHero>
+        <SectionHeader className="mt-5" eyebrow="Eyebrow" title="SectionHeader" subtitle="with an action" onAction={() => toast('See all')} />
+        <View className="flex-row flex-wrap px-4"><SpecChip icon={Users} label="5 seats" /><SpecChip icon={Cog} label="Automatic" tone="brand" /><SpecChip icon={Fuel} label="Petrol" tone="success" /></View>
+        <View className="mt-3 flex-row px-4"><IconTile icon={ShieldCheck} /><View className="w-3" /><IconTile icon={Car} tone="accent" /><View className="w-3" /><IconTile icon={Bell} tone="warning" /></View>
+        <View className="mt-4 px-4"><PressableScale onPress={() => setKitN((n) => n + 125000)} className="rounded-2xl bg-surface p-4" style={{ boxShadow: '0px 6px 18px -8px rgba(14,23,27,0.16)' }}><T variant="label">PressableScale — tap to change the AnimatedNumber</T><AnimatedNumber value={money(kitN)} className="mt-1 text-brand-700" /></PressableScale></View>
+        <CarLoader className="mt-5" subtitle="CarLoader + animated TripRoute"><TripRoute animated start={{ overline: 'Pickup', title: 'Sat, 14 Oct', subtitle: '9:00 AM' }} end={{ overline: 'Return', title: 'Sun, 15 Oct', subtitle: '9:00 AM' }} label="1 day" /></CarLoader>
+        <Carousel className="mt-5" data={[1, 2, 3]} itemWidth={280} autoPlay={3000} renderItem={({ item }) => <TicketCard value={`${item * 5}% OFF`} code={`KIT${item}00`} title="TicketCard inside a Carousel" meta="Valid till 30 Nov 2026" onCopy={() => toast('Copied', 'success')} />} />
+        <View className="mt-5"><Accordion items={[{ id: 'a', title: 'Accordion item one', content: 'Expands with a smooth height transition.' }, { id: 'b', title: 'Accordion item two', content: 'Only one item is open at a time.' }]} /></View>
+        <Card className="mx-4 mt-5 p-4"><T variant="label">Card + DashedDivider</T><DashedDivider className="my-3" /><T variant="caption" tone="muted">Skeletons below shimmer.</T></Card>
+        <View className="mt-4"><SkeletonVehicleCard /><SkeletonRow /></View>
+        {[0, 1, 2].map((i) => <FadeInView key={i} index={i} className="mx-4 mb-2 rounded-xl bg-brand-50 p-3"><T variant="caption">FadeInView #{i + 1}</T></FadeInView>)}
+      </Section>
+
+      <Section title="Typography">
         <Panel>
           <T variant="display">Display</T>
           <T variant="title">Title</T>

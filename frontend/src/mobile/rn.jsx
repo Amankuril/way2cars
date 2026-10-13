@@ -826,6 +826,9 @@ StatusBar.setBarStyle = () => {};
 StatusBar.setBackgroundColor = () => {};
 StatusBar.setHidden = () => {};
 StatusBar.setTranslucent = () => {};
+StatusBar.pushStackEntry = (props) => props;
+StatusBar.popStackEntry = () => {};
+StatusBar.replaceStackEntry = (entry, props) => props;
 StatusBar.currentHeight = 0;
 
 // ---------------------------------------------------------------------------------- APIs

@@ -1,40 +1,42 @@
-import { View, FlatList, Pressable } from '@/mobile/rn';
+import { View, FlatList } from '@/mobile/rn';
 import { useQuery } from '@tanstack/react-query';
 import { Clipboard } from '@/mobile/rn';
-import { TicketPercent, Copy } from 'lucide-react';
-import { Screen, Header, T, Loading, ErrorState, EmptyState, useToast } from '@/mobile/ui';
-import { colors } from '@shared/theme/tokens';
-import { money, dateLong, percent } from '@shared/lib/format';
+import { TicketPercent, Sparkles } from 'lucide-react';
+import { Screen, Header, T, ErrorState, EmptyState, TicketCard, FadeInView, GradientHero, SkeletonCard, useToast } from '@/mobile/ui';
 import { api } from '../../api';
 import { useTripPlan } from '../../hooks/useTripPlan';
+import { offerValue, offerTerms } from '../../components/offers';
 
 export function OffersScreen() {
   const plan = useTripPlan();
   const toast = useToast();
   const offers = useQuery({ queryKey: ['offers', plan.city?.id], queryFn: () => api.get('/api/v1/user/offers', { cityId: plan.city?.id }) });
+  const copy = (code) => { Clipboard.setString(code); toast(`Code ${code} copied`, 'success'); };
   return (
     <Screen scroll={false} header={<Header title="Offers" />}>
-      {offers.isLoading ? <Loading /> : offers.error ? <ErrorState error={offers.error} onRetry={offers.refetch} /> : (
+      {offers.isLoading ? (
+        <View className="pt-4">{[1, 2, 3].map((i) => <SkeletonCard key={i} height={180} className="mb-4" />)}</View>
+      ) : offers.error ? <ErrorState error={offers.error} onRetry={offers.refetch} /> : (
         <FlatList
           data={offers.data}
           keyExtractor={(o) => o.id}
-          contentContainerClassName="p-4"
-          ListEmptyComponent={<EmptyState icon={TicketPercent} title="No offers right now" message="Check back soon — new deals are added regularly." />}
-          renderItem={({ item: o }) => (
-            <View className="mb-3 rounded-lg border border-line bg-surface">
-              <View className="p-4">
-                <T variant="headline">{o.title}</T>
-                {o.description ? <T variant="bodySm" tone="muted" className="mt-1">{o.description}</T> : null}
-                <T variant="caption" tone="subtle" className="mt-2">
-                  {o.type === 'percent' ? `${percent(o.valueBps)} off${o.maxDiscountPaise ? ` up to ${money(o.maxDiscountPaise)}` : ''}` : `${money(o.valuePaise)} off`}
-                  {o.minRentalPaise ? ` · on trips above ${money(o.minRentalPaise)}` : ''}{o.firstBookingOnly ? ' · first booking only' : ''} · valid till {dateLong(o.endsAt)}
-                </T>
+          contentContainerClassName="pb-10"
+          ListHeaderComponent={offers.data?.length ? (
+            <GradientHero className="mb-5 px-5 pb-6 pt-5">
+              <View className="flex-row items-center">
+                <View className="h-11 w-11 items-center justify-center rounded-full bg-white/15"><Sparkles size={22} color="#fff" /></View>
+                <View className="ml-3 flex-1">
+                  <T variant="headline" tone="inverse">{offers.data.length} {offers.data.length === 1 ? 'offer' : 'offers'} for you{plan.city ? ` in ${plan.city.name}` : ''}</T>
+                  <T variant="caption" className="mt-0.5 text-white/75">Copy a code and apply it at checkout.</T>
+                </View>
               </View>
-              <Pressable onPress={() => { Clipboard.setString(o.code); toast(`Code ${o.code} copied`); }} className="flex-row items-center justify-between border-t border-dashed border-ink-200 px-4 py-3 active:bg-ink-50">
-                <T variant="label" className="tracking-widest text-brand-700">{o.code}</T>
-                <View className="flex-row items-center"><Copy size={14} color={colors.brand[600]} /><T variant="label" tone="brand" className="ml-1">Copy</T></View>
-              </Pressable>
-            </View>
+            </GradientHero>
+          ) : null}
+          ListEmptyComponent={<EmptyState icon={TicketPercent} title="No offers right now" message="Check back soon — new deals are added regularly." />}
+          renderItem={({ item: o, index }) => (
+            <FadeInView index={index} className="mx-4 mb-4">
+              <TicketCard value={offerValue(o)} code={o.code} title={o.title} description={o.description} meta={offerTerms(o)} onCopy={copy} testID={`offer-${o.code}`} />
+            </FadeInView>
           )}
         />
       )}
