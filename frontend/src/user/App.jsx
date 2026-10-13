@@ -6,6 +6,7 @@ import { AuthProvider, useAuth } from './auth/AuthContext';
 import { api } from './api';
 import { openLink } from './navigation/links';
 import { RootNavigator } from './navigation/RootNavigator';
+import { TripPlanProvider } from './hooks/useTripPlan';
 
 /** Renter web app (/user/*): web replica of apps/user. */
 const queryClient = new QueryClient({
@@ -36,8 +37,10 @@ export default function UserApp() {
         <ToastProvider>
           <AuthProvider>
             <AppBridge>
-              <RootNavigator />
-              <OfflineBanner />
+              <TripPlanProvider>
+                <RootNavigator />
+                <OfflineBanner />
+              </TripPlanProvider>
             </AppBridge>
           </AuthProvider>
         </ToastProvider>

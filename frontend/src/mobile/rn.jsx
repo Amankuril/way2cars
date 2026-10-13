@@ -305,7 +305,10 @@ function useSourceUri(src) {
 
 export const Image = forwardRef(function Image({ source, src, defaultSource, resizeMode, className, style, onLoad, onError, onLoadEnd, onLoadStart, accessibilityLabel, alt, blurRadius, fadeDuration, progressiveRenderingEnabled, accessibilityIgnoresInvertColors, ...rest }, ref) {
   const resolved = resolveSource(source || src);
-  const { uri, failed } = useSourceUri(resolved);
+  const { uri, failed: fetchFailed } = useSourceUri(resolved);
+  // Like RN, an image that fails to load leaves an empty frame (no broken-image glyph / alt text).
+  const [brokenUri, setBrokenUri] = useState(null);
+  const failed = fetchFailed || (!!uri && brokenUri === uri);
   const fallback = resolveSource(defaultSource)?.uri;
   const st = flattenStyle(style) || {};
   if (resolved?.width && st.width == null) st.width = resolved.width;
@@ -330,7 +333,7 @@ export const Image = forwardRef(function Image({ source, src, defaultSource, res
         onLoad?.({ nativeEvent: { source: { width: e.currentTarget.naturalWidth, height: e.currentTarget.naturalHeight, uri: shown } } });
         onLoadEnd?.();
       }}
-      onError={(e) => { onError?.({ nativeEvent: { error: 'Image failed to load' } }); onLoadEnd?.(e); }}
+      onError={(e) => { if (shown === uri) setBrokenUri(uri); onError?.({ nativeEvent: { error: 'Image failed to load' } }); onLoadEnd?.(e); }}
       {...domProps(rest)}
     />
   );

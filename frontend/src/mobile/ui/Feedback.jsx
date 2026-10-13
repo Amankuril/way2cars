@@ -29,7 +29,7 @@ export function Pill({ label, tone = 'neutral', className }) {
 const NOTICE_ICON = { info: Info, success: CheckCircle2, warning: AlertTriangle, danger: XCircle };
 /** Inline notice for important states (KYC needed, payment pending, etc.). */
 export function Notice({ tone = 'info', title, children, action, className }) {
-  const Icon = NOTICE_ICON[tone];
+  const Icon = NOTICE_ICON[tone] || Info; // native has no 'neutral' icon (renders undefined → crash); fall back to Info
   const t = TONES[tone];
   return (
     <View className={cn('flex-row rounded-md p-3.5', t.bg, className)}>

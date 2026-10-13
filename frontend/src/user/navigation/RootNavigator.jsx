@@ -1,49 +1,73 @@
 import { RouterProvider } from 'react-router/dom';
 import { Compass, CalendarClock, LifeBuoy, UserRound } from 'lucide-react';
 import { createMobileRouter } from '@/mobile/nav';
-import { PhoneScreen, OtpScreen, CmsPageScreen, FaqScreen, NotificationsScreen, NotificationPrefsScreen, TicketScreen, NewTicketScreen, placeholder } from '@/mobile/screens';
+import { PhoneScreen, OtpScreen, CmsPageScreen, FaqScreen, NotificationsScreen, NotificationPrefsScreen, TicketScreen, NewTicketScreen } from '@/mobile/screens';
+import { ProfileSetupScreen } from '../screens/auth/ProfileSetupScreen';
+import { HomeScreen } from '../screens/home/HomeScreen';
+import { TripsScreen } from '../screens/trips/TripsScreen';
+import { HelpScreen } from '../screens/support/HelpScreen';
+import { AccountScreen } from '../screens/account/AccountScreen';
+import { CitySelectScreen } from '../screens/home/CitySelectScreen';
+import { SearchResultsScreen } from '../screens/search/SearchResultsScreen';
+import { VehicleScreen } from '../screens/vehicle/VehicleScreen';
+import { CheckoutScreen } from '../screens/booking/CheckoutScreen';
+import { TripDetailScreen } from '../screens/trips/TripDetailScreen';
+import { PickupScreen } from '../screens/trips/PickupScreen';
+import { ReturnScreen } from '../screens/trips/ReturnScreen';
+import { ReviewScreen } from '../screens/trips/ReviewScreen';
+import { KycScreen } from '../screens/account/KycScreen';
+import { EditProfileScreen } from '../screens/account/EditProfileScreen';
+import { AddressesScreen } from '../screens/account/AddressesScreen';
+import { AddressFormScreen } from '../screens/account/AddressFormScreen';
+import { WalletScreen } from '../screens/account/WalletScreen';
+import { ReferralScreen } from '../screens/account/ReferralScreen';
+import { PaymentHistoryScreen } from '../screens/account/PaymentHistoryScreen';
+import { SavedMethodsScreen } from '../screens/account/SavedMethodsScreen';
+import { DeleteAccountScreen } from '../screens/account/DeleteAccountScreen';
+import { OffersScreen } from '../screens/home/OffersScreen';
+import { RoadsideScreen } from '../screens/support/RoadsideScreen';
 import { DEV_ROUTES, DEV_SCREENS } from '@/mobile/dev';
 import { ROUTES, ACCESS } from './routes';
 import { Guard } from './Guard';
 
 /**
- * Screen registry. PHASE 2: replace each `placeholder(...)` with the ported screen component
- * (e.g. `Explore: HomeScreen`). Names and params must match the native navigator.
+ * Screen registry: native screen name → ported component (apps/user/src/navigation/RootNavigator.jsx
+ * + MainTabs.jsx). Names and params match the native navigator.
  */
 const SCREENS = {
   Phone: PhoneScreen,
   Otp: OtpScreen,
   CmsPage: CmsPageScreen,
-  ProfileSetup: placeholder('Complete your profile'),
+  ProfileSetup: ProfileSetupScreen,
 
-  Explore: placeholder('Explore'),
-  Trips: placeholder('Trips'),
-  Help: placeholder('Help'),
-  Account: placeholder('Account'),
+  Explore: HomeScreen,
+  Trips: TripsScreen,
+  Help: HelpScreen,
+  Account: AccountScreen,
 
-  CitySelect: { component: placeholder('Choose city', { back: true }), animation: 'slide_from_bottom' },
-  Search: placeholder('Search results', { back: true }),
-  Vehicle: placeholder('Car details', { back: true }),
-  Checkout: placeholder('Checkout', { back: true }),
-  Trip: placeholder('Trip', { back: true }),
-  Pickup: placeholder('Pickup', { back: true }),
-  Return: placeholder('Return', { back: true }),
-  Review: placeholder('Review', { back: true }),
-  Kyc: placeholder('Verify licence', { back: true }),
-  EditProfile: placeholder('Edit profile', { back: true }),
-  Addresses: placeholder('Saved addresses', { back: true }),
-  AddressForm: placeholder('Address', { back: true }),
-  Wallet: placeholder('Wallet', { back: true }),
-  Referral: placeholder('Refer & earn', { back: true }),
-  PaymentHistory: placeholder('Payments', { back: true }),
-  SavedMethods: placeholder('Saved methods', { back: true }),
+  CitySelect: { component: CitySelectScreen, animation: 'slide_from_bottom' },
+  Search: SearchResultsScreen,
+  Vehicle: VehicleScreen,
+  Checkout: CheckoutScreen,
+  Trip: TripDetailScreen,
+  Pickup: PickupScreen,
+  Return: ReturnScreen,
+  Review: ReviewScreen,
+  Kyc: KycScreen,
+  EditProfile: EditProfileScreen,
+  Addresses: AddressesScreen,
+  AddressForm: AddressFormScreen,
+  Wallet: WalletScreen,
+  Referral: ReferralScreen,
+  PaymentHistory: PaymentHistoryScreen,
+  SavedMethods: SavedMethodsScreen,
   Notifications: NotificationsScreen,
   NotificationPrefs: NotificationPrefsScreen,
-  DeleteAccount: placeholder('Delete account', { back: true }),
-  Offers: placeholder('Offers', { back: true }),
+  DeleteAccount: DeleteAccountScreen,
+  Offers: OffersScreen,
   Ticket: TicketScreen,
   NewTicket: NewTicketScreen,
-  Roadside: placeholder('Roadside help', { back: true }),
+  Roadside: RoadsideScreen,
   Faq: FaqScreen,
 };
 
