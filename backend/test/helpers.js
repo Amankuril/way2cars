@@ -32,3 +32,31 @@ export async function loginWithStaticOtp(realm, phone) {
 }
 
 export const auth = (token) => ({ Authorization: `Bearer ${token}` });
+
+import sharp from 'sharp';
+import { createSession, signAccessToken } from '../src/modules/auth/token.service.js';
+
+/** Issues a real session for an account created directly in the DB (OTP is covered in auth.test.js). */
+export async function tokenFor(realm, account) {
+  const { session } = await createSession({ realm, accountId: account._id });
+  return signAccessToken({ realm, accountId: account._id, sessionId: session._id, extra: realm === 'admin' ? { role: account.role } : {} });
+}
+
+let imgSeq = 0;
+export async function testImage() {
+  imgSeq++;
+  return sharp({ create: { width: 640, height: 480, channels: 3, background: { r: (imgSeq * 37) % 255, g: 120, b: 200 } } }).png().toBuffer();
+}
+export const testPdf = () => Buffer.from('%PDF-1.4\n1 0 obj<<>>endobj\ntrailer<<>>\n%%EOF\n');
+
+export async function upload(realm, token, purpose, { pdf = false } = {}) {
+  const res = await api().post(`/api/v1/${realm}/uploads`).set(auth(token)).field('purpose', purpose).attach('file', pdf ? testPdf() : await testImage(), pdf ? 'doc.pdf' : 'photo.png');
+  if (res.status !== 201) throw new Error(`upload failed ${res.status} ${JSON.stringify(res.body)}`);
+  return res.body.data.id;
+}
+
+/** Next half-hour boundary at least `minutesAhead` from now. */
+export function slot(minutesAhead) {
+  const step = 30 * 60_000;
+  return new Date(Math.ceil((Date.now() + minutesAhead * 60_000) / step) * step);
+}
