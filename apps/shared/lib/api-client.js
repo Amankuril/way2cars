@@ -59,7 +59,10 @@ export function createApiClient({ baseUrl, realm, clientType = 'native', tokenSt
   }
 
   async function parse(res) {
-    if (res.status === 204) return { body: null };
+    if (res.status === 204) {
+      await res.text().catch(() => {}); // drain the empty body so browsers don't report the request as cancelled
+      return { body: null };
+    }
     const type = res.headers.get('content-type') || '';
     if (!type.includes('application/json')) return { body: null, raw: res };
     const json = await res.json().catch(() => null);
