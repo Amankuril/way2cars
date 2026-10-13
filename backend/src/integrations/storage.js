@@ -40,7 +40,7 @@ export const publicUrl = (key) => `${env.PUBLIC_MEDIA_BASE_URL}/${key}`;
  * Validates and processes an uploaded buffer.
  * @returns {{ buffer, mimeType, ext, width?, height? }}
  */
-export async function processUpload(buffer, { kinds }) {
+export async function processUpload(buffer, { kinds, minImageSide = 200 }) {
   if (!buffer?.length) throw badRequest('The file is empty.', undefined, 'UPLOAD_EMPTY');
   const detected = await fileTypeFromBuffer(buffer);
   const mime = detected?.mime;
@@ -50,8 +50,8 @@ export async function processUpload(buffer, { kinds }) {
     try {
       const img = sharp(buffer, { limitInputPixels: env.UPLOAD_MAX_INPUT_PIXELS, failOn: 'error' });
       const meta = await img.metadata();
-      if (!meta.width || !meta.height || meta.width < 200 || meta.height < 200)
-        throw badRequest('Image is too small. Use a photo at least 200×200 pixels.', undefined, 'UPLOAD_TOO_SMALL');
+      if (!meta.width || !meta.height || meta.width < minImageSide || meta.height < minImageSide)
+        throw badRequest(`Image is too small. Use an image at least ${minImageSide}×${minImageSide} pixels.`, undefined, 'UPLOAD_TOO_SMALL');
       const { data, info } = await img
         .rotate() // apply EXIF orientation before metadata is stripped
         .resize({ width: env.IMAGE_MAX_DIMENSION, height: env.IMAGE_MAX_DIMENSION, fit: 'inside', withoutEnlargement: true })

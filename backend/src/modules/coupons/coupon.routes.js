@@ -58,6 +58,12 @@ adminCouponRouter.get('/', validate({ query: z.object({ ...paginationQuery, camp
   ok(res, items.map((c) => serializeCoupon(c, { admin: true })), meta);
 });
 
+adminCouponRouter.get('/:id', validate({ params: z.object({ id: objectId }) }), async (req, res) => {
+  const coupon = await Coupon.findById(req.valid.params.id).lean();
+  if (!coupon) throw notFound('Coupon');
+  ok(res, serializeCoupon(coupon, { admin: true }));
+});
+
 adminCouponRouter.post('/', validate({ body: couponSchema.refine(consistent, { message: 'Set the discount value and a valid date range' }) }), async (req, res) => {
   try {
     const c = await Coupon.create({ ...req.valid.body, createdBy: req.auth.id });

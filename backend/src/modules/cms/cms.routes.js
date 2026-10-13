@@ -51,6 +51,10 @@ adminCmsRouter.get('/pages', requirePermission('cms.manage'), async (_req, res) 
   const bySlug = new Map(pages.map((p) => [p.slug, p]));
   ok(res, CMS_PAGES.map((slug) => (bySlug.get(slug) ? { ...serializePage(bySlug.get(slug)), isPublished: bySlug.get(slug).isPublished } : { slug, title: null, blocks: [], version: 0, isPublished: false })));
 });
+adminCmsRouter.get('/pages/:slug', requirePermission('cms.manage'), validate({ params: z.object({ slug: z.enum(CMS_PAGES) }) }), async (req, res) => {
+  const page = await CmsPage.findOne({ slug: req.valid.params.slug }).lean();
+  ok(res, page ? { ...serializePage(page), isPublished: page.isPublished } : { slug: req.valid.params.slug, title: null, blocks: [], version: 0, isPublished: false });
+});
 adminCmsRouter.put('/pages/:slug', requirePermission('cms.manage'),
   validate({ params: z.object({ slug: z.enum(CMS_PAGES) }), body: z.object({ title: z.string().trim().min(2).max(150), blocks, isPublished: z.boolean().default(true) }).strict() }),
   async (req, res) => {

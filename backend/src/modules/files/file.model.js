@@ -7,7 +7,7 @@ import mongoose from 'mongoose';
 export const FILE_PURPOSES = {
   vehicle_photo: { visibility: 'public', kinds: ['image'] },
   banner: { visibility: 'public', kinds: ['image'] },
-  brand_logo: { visibility: 'public', kinds: ['image'] },
+  brand_logo: { visibility: 'public', kinds: ['image'], minImageSide: 64 }, // wordmarks are short and wide
   category_image: { visibility: 'public', kinds: ['image'] },
   city_image: { visibility: 'public', kinds: ['image'] },
   avatar: { visibility: 'public', kinds: ['image'] },

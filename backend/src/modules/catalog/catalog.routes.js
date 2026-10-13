@@ -45,7 +45,7 @@ async function resolveImage(fileIdValue, purpose) {
 
 export const serializeCity = (c) => ({
   id: c._id, name: c.name, slug: c.slug, state: c.state, center: fromGeoPoint(c.center), serviceRadiusKm: c.serviceRadiusKm,
-  hasPolygon: Boolean(c.geofencePolygon?.length), imageUrl: c.imageUrl || null, isActive: c.isActive, isPopular: c.isPopular, sortOrder: c.sortOrder,
+  hasPolygon: Boolean(c.geofencePolygon?.length), imageUrl: c.imageUrl || null, gstStateCode: c.gstStateCode || null, isActive: c.isActive, isPopular: c.isPopular, sortOrder: c.sortOrder,
 });
 const serializeBrand = (b) => ({ id: b._id, name: b.name, slug: b.slug, logoUrl: b.logoUrl || null, isActive: b.isActive, sortOrder: b.sortOrder });
 const serializeCategory = (c) => ({ id: c._id, name: c.name, slug: c.slug, bodyType: c.bodyType, description: c.description, imageUrl: c.imageUrl || null, isActive: c.isActive, isPopular: c.isPopular, sortOrder: c.sortOrder });
