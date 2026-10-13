@@ -26,11 +26,11 @@ export function Pill({ label, tone = 'neutral', className }) {
   );
 }
 
-const NOTICE_ICON = { info: Info, success: CheckCircle2, warning: AlertTriangle, danger: XCircle };
+const NOTICE_ICON = { neutral: Info, info: Info, success: CheckCircle2, warning: AlertTriangle, danger: XCircle };
 /** Inline notice for important states (KYC needed, payment pending, etc.). */
 export function Notice({ tone = 'info', title, children, action, className }) {
-  const Icon = NOTICE_ICON[tone];
-  const t = TONES[tone];
+  const Icon = NOTICE_ICON[tone] || Info;
+  const t = TONES[tone] || TONES.info;
   return (
     <View className={cn('flex-row rounded-md p-3.5', t.bg, className)}>
       <Icon size={18} color={t.dot} strokeWidth={2.2} />
