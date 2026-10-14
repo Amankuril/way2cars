@@ -18,7 +18,7 @@ export function VehicleDetailScreen({ route, navigation }) {
   const q = useQuery({ queryKey: ['vehicle', id], queryFn: () => api.get(`/api/v1/vendor/vehicles/${id}`) });
   useFocusEffect(useCallback(() => { q.refetch(); }, [])); // eslint-disable-line react-hooks/exhaustive-deps
   const refresh = (v) => { if (v) qc.setQueryData(['vehicle', id], (old) => ({ ...old, ...v })); qc.invalidateQueries({ queryKey: ['vehicles'] }); q.refetch(); };
-  const submit = useMutation({ mutationFn: () => api.post(`/api/v1/vendor/vehicles/${id}/submit`), onSuccess: (v) => { toast('Submitted for review', 'success'); refresh(v); }, onError: (e) => toast(e.details?.missing ? `Missing: ${e.details.missing.join(', ')}` : e.message, 'danger') });
+  const submit = useMutation({ mutationFn: () => api.post(`/api/v1/vendor/vehicles/${id}/submit`), onSuccess: (v) => { toast('Submitted for review', 'success'); refresh(v); navigation.navigate('Main', { screen: 'Fleet' }); }, onError: (e) => toast(e.details?.missing ? `Missing: ${e.details.missing.join(', ')}` : e.message, 'danger') });
   const setStatus = useMutation({
     mutationFn: (status) => api.patch(`/api/v1/vendor/vehicles/${id}/status`, { status }),
     onSuccess: (v) => { refresh(v); if (v.upcomingBookings) toast(`${v.upcomingBookings} existing booking(s) still need this car.`, 'neutral'); },
