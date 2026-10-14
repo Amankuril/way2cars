@@ -16,7 +16,7 @@ import { useToast } from './Toast.jsx';
 const BADGES = {
   '/renter-kyc': (q) => q.renterKyc,
   '/hosts/requests': (q) => q.vendorApprovals,
-  '/vehicles': (q) => q.vehicleReviews,
+  '/vehicles/requests': (q) => q.vehicleReviews,
   '/support': (q) => q.openTickets,
   '/payouts': (q) => q.payouts,
 };
@@ -42,7 +42,8 @@ function Sidebar({ onNavigate }) {
   });
   const renterKyc = useRenterKycPending(can('kyc.review'));
   const queues = data?.queues || renterKyc ? { ...data?.queues, renterKyc } : null; // renter-only KYC count
-  // One active item per route: the longest matching nav path ("/hosts/requests" wins over "/hosts").
+  // One active item per route: the longest matching nav path ("/hosts/requests" wins over "/hosts",
+  // "/vehicles/requests" over "/vehicles").
   const { pathname } = useLocation();
   const activeTo = matchNav(pathname)?.item.to;
 

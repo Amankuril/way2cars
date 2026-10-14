@@ -144,7 +144,7 @@ export default function Dashboard() {
                 <ul className="divide-y divide-line">
                   <QueueRow icon={Building2} label="Host requests" hint="New hosts to approve" count={q.vendorApprovals} to={link('vendors.read', '/hosts/requests')} />
                   <QueueRow icon={ShieldCheck} label="Renter KYC to review" hint="Licence and ID checks" count={renterKyc} to={link('kyc.review', '/renter-kyc')} />
-                  <QueueRow icon={Car} label="Car listings to review" hint="New or changed listings" count={q.vehicleReviews} to={link('vehicles.read', '/vehicles?approval=pending_review')} />
+                  <QueueRow icon={Car} label="Vehicle requests" hint="New or changed car listings to review" count={q.vehicleReviews} to={link('vehicles.read', '/vehicles/requests')} />
                   <QueueRow icon={LifeBuoy} label="Open tickets" hint="Open or in progress" count={q.openTickets} to={link('support.manage', '/support')} />
                   <QueueRow icon={Siren} label="Active roadside requests" hint="Not yet resolved" count={q.roadside} urgent to={link('support.manage', '/support?category=roadside')} />
                   <QueueRow icon={Wallet} label="Payouts to process" hint="Requested or approved, not yet paid" count={q.payouts} to={link('payouts.manage', '/payouts')} />

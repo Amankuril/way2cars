@@ -37,7 +37,7 @@ export function ToastProvider({ children }) {
   return (
     <ToastContext.Provider value={api}>
       {children}
-      <div className="pointer-events-none fixed bottom-4 right-4 z-[60] flex w-[min(380px,calc(100vw-2rem))] flex-col gap-2" aria-live="polite" aria-relevant="additions">
+      <div className="pointer-events-none fixed bottom-4 right-4 z-[60] transition-[bottom] [body[data-decision-bar]_&]:bottom-24 flex w-[min(380px,calc(100vw-2rem))] flex-col gap-2" aria-live="polite" aria-relevant="additions">
         {toasts.map((t) => {
           const Icon = ICONS[t.tone];
           return (

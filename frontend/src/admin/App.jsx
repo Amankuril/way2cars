@@ -19,7 +19,10 @@ const KycQueue = page(() => import('@/admin/pages/verification/KycQueue.jsx'));
 const KycReview = page(() => import('@/admin/pages/verification/KycReview.jsx'));
 const VehiclesList = page(() => import('@/admin/pages/fleet/VehiclesList.jsx'));
 const VehicleDetail = page(() => import('@/admin/pages/fleet/VehicleDetail.jsx'));
+const VehicleRequests = page(() => import('@/admin/pages/fleet/VehicleRequests.jsx'));
+const VehicleRequestDetail = page(() => import('@/admin/pages/fleet/VehicleRequestDetail.jsx'));
 const HostRequests = page(() => import('@/admin/pages/fleet/HostRequests.jsx'));
+const HostRequestDetail = page(() => import('@/admin/pages/fleet/HostRequestDetail.jsx'));
 const HostsList = page(() => import('@/admin/pages/fleet/HostsList.jsx'));
 const HostDetail = page(() => import('@/admin/pages/fleet/HostDetail.jsx'));
 const UsersList = page(() => import('@/admin/pages/customers/UsersList.jsx'));
@@ -91,10 +94,12 @@ const router = createBrowserRouter(
         { path: 'kyc', element: <KycRedirect /> },
         { path: 'kyc/:id', element: guard('kyc.review', KycReview) },
         { path: 'vehicles', element: guard('vehicles.read', VehiclesList) },
+        { path: 'vehicles/requests', element: guard('vehicles.read', VehicleRequests) },
+        { path: 'vehicles/requests/:id', element: guard('vehicles.read', VehicleRequestDetail) },
         { path: 'vehicles/:id', element: guard('vehicles.read', VehicleDetail) },
         { path: 'hosts', element: guard('vendors.read', HostsList) },
         { path: 'hosts/requests', element: guard('vendors.read', HostRequests) },
-        { path: 'hosts/requests/:id', element: guard('vendors.read', HostRequests) },
+        { path: 'hosts/requests/:id', element: guard('vendors.read', HostRequestDetail) },
         { path: 'hosts/:id', element: guard('vendors.read', HostDetail) },
         { path: 'users', element: guard('users.read', UsersList) },
         { path: 'users/:id', element: guard('users.read', UserDetail) },

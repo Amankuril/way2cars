@@ -1,7 +1,7 @@
 import {
   LayoutDashboard, CalendarRange, LifeBuoy, ShieldCheck, Car, Building2, Users, Wallet, BarChart3,
   TicketPercent, Image, Megaphone, FileText, HelpCircle, Tags, Star, Settings, UserCog, ScrollText,
-  PlugZap, KeyRound, UserCheck,
+  PlugZap, KeyRound, UserCheck, ClipboardCheck,
 } from 'lucide-react';
 
 /**
@@ -29,7 +29,10 @@ export const NAV = [
   },
   {
     label: 'Fleet',
-    items: [{ label: 'Vehicles', to: '/vehicles', icon: Car, perm: 'vehicles.read' }],
+    items: [
+      { label: 'Vehicle requests', to: '/vehicles/requests', icon: ClipboardCheck, perm: 'vehicles.read' },
+      { label: 'Vehicles', to: '/vehicles', icon: Car, perm: 'vehicles.read' },
+    ],
   },
   {
     label: 'Customers',

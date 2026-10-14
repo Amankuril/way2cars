@@ -1,10 +1,10 @@
 import { useState } from 'react';
-import { Link, useParams } from 'react-router';
+import { Link, Navigate, useParams } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
-import { CircleCheck, CircleX, Star, TriangleAlert, Ban, RotateCcw, CalendarRange } from 'lucide-react';
+import { Star, Ban, RotateCcw, CalendarRange } from 'lucide-react';
 import { api, ADMIN } from '@/admin/lib/api.js';
 import { money, dateTime, dateLong, maskPhone } from '@shared/lib/format.js';
-import { VEHICLE_APPROVAL, VEHICLE_STATUS, VENDOR_STATUS, BOOKING_STATUS, FUEL, TRANSMISSION, FEATURES, INSURANCE } from '@/admin/lib/labels.js';
+import { VEHICLE_APPROVAL, VEHICLE_STATUS, VENDOR_STATUS, BOOKING_STATUS, FUEL, TRANSMISSION, FEATURES } from '@/admin/lib/labels.js';
 import { useAction } from '@/admin/lib/hooks.js';
 import { humanize, fmtNumber } from '@/admin/lib/utils.js';
 import { useAuth } from '@/admin/auth/AuthContext.jsx';
@@ -13,44 +13,11 @@ import { Panel, KeyValue, AmountRows } from '@/admin/components/Panel.jsx';
 import { StatusPill, Tag } from '@/admin/components/StatusPill.jsx';
 import { Button } from '@/admin/components/Button.jsx';
 import { ConfirmDialog } from '@/admin/components/Modal.jsx';
-import { Checkbox, Field, Input, Switch } from '@/admin/components/Form.jsx';
+import { Field, Input, Switch } from '@/admin/components/Form.jsx';
 import { DetailSkeleton } from '@/admin/components/Skeleton.jsx';
 import { ErrorState } from '@/admin/components/EmptyState.jsx';
-import { SecureFileLink } from '@/admin/components/SecureImage.jsx';
 import { MiniTable } from '@/admin/components/MiniTable.jsx';
-
-const DOCS = [
-  { key: 'rc', label: 'Registration certificate (RC)' },
-  { key: 'insurance', label: 'Insurance' },
-  { key: 'puc', label: 'Pollution certificate (PUC)' },
-  { key: 'fitness', label: 'Fitness certificate' },
-];
-
-function Photos({ urls, title }) {
-  const [active, setActive] = useState(0);
-  if (!urls?.length) return <p className="text-bodySm text-ink-500">No photos uploaded.</p>;
-  return (
-    <div className="space-y-2">
-      <div className="aspect-[16/9] overflow-hidden rounded-md border border-line bg-ink-50">
-        <img src={urls[active]} alt={`${title} — photo ${active + 1}`} className="h-full w-full object-cover" />
-      </div>
-      <div className="scroll-thin flex gap-2 overflow-x-auto pb-1">
-        {urls.map((u, i) => (
-          <button
-            key={u}
-            type="button"
-            onClick={() => setActive(i)}
-            aria-label={`Show photo ${i + 1}`}
-            aria-pressed={i === active}
-            className={`h-14 w-20 shrink-0 overflow-hidden rounded-sm border-2 ${i === active ? 'border-brand-500' : 'border-transparent opacity-80 hover:opacity-100'}`}
-          >
-            <img src={u} alt="" className="h-full w-full object-cover" loading="lazy" />
-          </button>
-        ))}
-      </div>
-    </div>
-  );
-}
+import { DocumentsTable, Photos } from './vehicleParts.jsx';
 
 function FlagsPanel({ v }) {
   const [rank, setRank] = useState(String(v.featuredRank ?? 0));
@@ -149,23 +116,15 @@ function CalendarPanel({ id }) {
 export default function VehicleDetail() {
   const { id } = useParams();
   const { can } = useAuth();
-  const [decision, setDecision] = useState(null);
-  const [luxury, setLuxury] = useState(false);
   const { data: v, isLoading, error, refetch } = useQuery({ queryKey: ['vehicle', id], queryFn: () => api.get(`${ADMIN}/vehicles/${id}`) });
-
-  const review = useAction((body) => api.post(`${ADMIN}/vehicles/${id}/review`, body), {
-    success: (_d, b) => (b.decision === 'approve' ? 'Listing approved — the host has been notified' : 'Listing sent back to the host'),
-    invalidate: [['vehicle', id], ['vehicles'], ['dashboard']],
-    toastError: false,
-  });
 
   if (isLoading) return <DetailSkeleton />;
   if (error) return <div className="panel"><ErrorState error={error} onRetry={refetch} title="Could not load this car" /></div>;
+  // Cars awaiting review are approved or sent back on the Vehicle requests page.
+  if (v.approval?.status === 'pending_review') return <Navigate to={`/vehicles/requests/${v.id}`} replace />;
 
   const p = v.pricing || {};
   const host = v.vendor || {};
-  const pending = v.approval?.status === 'pending_review';
-  const gaps = v.submissionGaps || [];
   const isEv = v.fuelType === 'electric';
 
   return (
@@ -187,27 +146,8 @@ export default function VehicleDetail() {
             <span className="num font-semibold text-ink-700">{v.registrationNumber}</span> · {v.city?.name} · {v.isListed ? 'Bookable now' : 'Not bookable'}
           </>
         }
-        actions={
-          pending && can('vehicles.review') ? (
-            <>
-              <Button variant="danger-outline" icon={CircleX} onClick={() => setDecision('reject')}>Send back…</Button>
-              <Button variant="success" icon={CircleCheck} onClick={() => { setLuxury(Boolean(v.isLuxury)); setDecision('approve'); }}>Approve listing</Button>
-            </>
-          ) : null
-        }
       />
 
-      {pending && gaps.length ? (
-        <div className="mb-5 flex items-start gap-3 rounded-lg border border-warning-100 bg-warning-50 p-4" role="status">
-          <TriangleAlert className="mt-0.5 h-5 w-5 shrink-0 text-warning-600" aria-hidden="true" />
-          <div>
-            <p className="text-bodySm font-bold text-ink-900">This listing is incomplete and cannot be approved yet</p>
-            <ul className="mt-1 list-disc pl-5 text-caption text-ink-700">
-              {gaps.map((g) => <li key={g}>{g}</li>)}
-            </ul>
-          </div>
-        </div>
-      ) : null}
       {v.approval?.status === 'rejected' && v.approval.reason ? (
         <div className="mb-5 rounded-lg border border-danger-100 bg-danger-50 p-4 text-bodySm text-danger-700">
           <span className="font-bold">Sent back {v.approval.reviewedAt ? dateTime(v.approval.reviewedAt) : ''}:</span> {v.approval.reason}
@@ -244,23 +184,7 @@ export default function VehicleDetail() {
           </Panel>
 
           <Panel title="Documents" description="Private files — opened through a secure link and audited." flush>
-            <MiniTable
-              columns={[
-                { key: 'doc', header: 'Document', cell: (d) => <span className="font-semibold text-ink-900">{d.label}</span> },
-                { key: 'num', header: 'Number / details', cell: (d) => [d.data?.number, d.key === 'insurance' && d.data?.type ? INSURANCE[d.data.type] : null, d.data?.provider].filter(Boolean).join(' · ') || '—' },
-                {
-                  key: 'exp',
-                  header: 'Valid until',
-                  cell: (d) => {
-                    if (!d.data?.expiry) return '—';
-                    const expired = new Date(d.data.expiry) < new Date();
-                    return <span className={expired ? 'font-semibold text-danger-700' : ''}>{dateLong(d.data.expiry)}{expired ? ' · expired' : ''}</span>;
-                  },
-                },
-                { key: 'file', header: 'File', cell: (d) => (d.data?.fileId ? <SecureFileLink fileId={d.data.fileId}>Open</SecureFileLink> : <span className="text-ink-400">{d.key === 'puc' && isEv ? 'Not needed (EV)' : 'Not uploaded'}</span>) },
-              ]}
-              rows={DOCS.map((d) => ({ ...d, id: d.key, data: v.documents?.[d.key] }))}
-            />
+            <DocumentsTable v={v} />
           </Panel>
 
           <Panel title="Upcoming bookings" flush>
@@ -322,27 +246,6 @@ export default function VehicleDetail() {
         </div>
       </div>
 
-      <ConfirmDialog
-        open={decision === 'approve'}
-        onClose={() => setDecision(null)}
-        title="Approve this listing?"
-        description="The car becomes bookable as soon as the host is approved and the car is active."
-        confirmLabel="Approve listing"
-        tone="success"
-        onConfirm={() => review.mutateAsync({ decision: 'approve', isLuxury: luxury })}
-      >
-        <Checkbox label="Mark as a luxury car" description="Adds it to the luxury collection." checked={luxury} onChange={(e) => setLuxury(e.target.checked)} />
-      </ConfirmDialog>
-      <ConfirmDialog
-        open={decision === 'reject'}
-        onClose={() => setDecision(null)}
-        title="Send the listing back to the host?"
-        description="The host sees your note and can fix the listing and resubmit."
-        confirmLabel="Send back"
-        tone="danger"
-        reason={{ label: 'What should the host fix?', placeholder: 'e.g. Upload a clear photo of the RC and a valid insurance certificate.', minLength: 5, maxLength: 500 }}
-        onConfirm={(reason) => review.mutateAsync({ decision: 'reject', reason })}
-      />
     </>
   );
 }

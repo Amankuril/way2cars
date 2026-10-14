@@ -2,7 +2,7 @@ import { Link, Navigate } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
 import { Building2, Star, UserCheck, ArrowRight } from 'lucide-react';
 import { api, ADMIN } from '@/admin/lib/api.js';
-import { dateTime, maskPhone } from '@shared/lib/format.js';
+import { dateLong, dateTime, maskPhone } from '@shared/lib/format.js';
 import { VENDOR_STATUS, KYC_STATUS } from '@/admin/lib/labels.js';
 import { useListQuery, useSearchState } from '@/admin/lib/hooks.js';
 import { compact } from '@/admin/lib/utils.js';
@@ -13,6 +13,7 @@ import { FilterBar, SearchInput } from '@/admin/components/Filters.jsx';
 import { StatusPill } from '@/admin/components/StatusPill.jsx';
 import { EmptyState } from '@/admin/components/EmptyState.jsx';
 import { Tabs } from '@/admin/components/Tabs.jsx';
+import { businessType } from './requestKit.jsx';
 
 const STEP_LABEL = { profile: 'Profile', business: 'Business details', kyc: 'KYC', bank: 'Bank account', review: 'Awaiting review', resubmit: 'Resubmit' };
 
@@ -34,14 +35,14 @@ export default function HostsList() {
           <Link to={hostHref(v)} className="block max-w-[260px] truncate font-semibold text-ink-900 hover:text-brand-600 hover:underline">
             {v.businessName || v.name || 'Unnamed host'}
           </Link>
-          <div className="truncate text-caption text-ink-500">
+          <div className="max-w-[260px] truncate text-caption text-ink-500">
             {v.businessName && v.name ? `${v.name} · ` : ''}
             <span className="num">{maskPhone(v.phone)}</span>
+            {businessType(v.businessType) ? ` · ${businessType(v.businessType)}` : ''}
           </div>
         </div>
       ),
     },
-    { key: 'type', header: 'Type', cell: (v) => (v.businessType === 'company' ? 'Company' : v.businessType === 'individual' ? 'Individual' : '—') },
     { key: 'status', header: 'Status', cell: (v) => <StatusPill map={VENDOR_STATUS} value={v.status} /> },
     {
       key: 'checks',
@@ -58,7 +59,7 @@ export default function HostsList() {
       header: 'Onboarding',
       cell: (v) => <CellStack primary={`${v.completedSteps?.length || 0} steps done`} secondary={v.status === 'onboarding' && v.nextStep ? `Next: ${STEP_LABEL[v.nextStep] || v.nextStep}` : null} />,
     },
-    { key: 'cars', header: 'Cars (listed)', align: 'right', cell: (v) => <span className="whitespace-nowrap">{v.vehicles?.total || 0} <span className="text-ink-500">({v.vehicles?.listed || 0})</span></span> },
+    { key: 'cars', header: 'Cars', align: 'right', cell: (v) => <span className="whitespace-nowrap">{v.vehicles?.total || 0} <span className="text-ink-500">({v.vehicles?.listed || 0})</span></span> },
     {
       key: 'rating',
       header: 'Rating',
@@ -68,7 +69,7 @@ export default function HostsList() {
     {
       key: 'date',
       header: 'Joined',
-      cell: (v) => <span className="whitespace-nowrap text-ink-600">{dateTime(v.createdAt)}</span>,
+      cell: (v) => <span className="whitespace-nowrap text-ink-600" title={dateTime(v.createdAt)}>{dateLong(v.createdAt)}</span>,
     },
   ];
 
