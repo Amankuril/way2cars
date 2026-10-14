@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { View, Pressable } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useQuery } from '@tanstack/react-query';
@@ -6,14 +6,14 @@ import MapView, { Circle, PROVIDER_GOOGLE } from 'react-native-maps';
 import { Users, Cog, Fuel, Briefcase, CalendarDays, ShieldCheck, Gauge, Zap, Truck, Check, Star, BadgeCheck, MapPin, ArrowLeft, Route, MessageSquareQuote } from 'lucide-react-native';
 import { Screen, Header, T, Button, KeyValue, ErrorState, Notice, Avatar, IconButton, StickyScrollView, Parallax, Card, SectionHeader, IconTile, DashedDivider, TripRoute, FadeInView, AnimatedNumber, Skeleton, PressableScale, cn } from '@shared/native';
 import { colors, shadows } from '@shared/theme/tokens';
-import { money, dayLabel, timeLabel, duration, dateLong, percent } from '@shared/lib/format';
+import { money, dayLabel, duration, dateLong, percent } from '@shared/lib/format';
 import { FUEL, TRANSMISSION, FEATURES, INSURANCE } from '@shared/lib/labels';
 import { api } from '../../api';
 import { ENV } from '../../env';
 import { useTripPlan } from '../../hooks/useTripPlan';
 import { usePublicConfig } from '../../hooks/queries';
 import { Gallery } from '../../components/Gallery';
-import { TripTimesSheet } from '../../components/TripTimesSheet';
+import { TripTimesSheet, tripRoute } from '../../components/TripTimesSheet';
 
 const GALLERY_H = 300;
 
@@ -61,16 +61,42 @@ export function VehicleScreen({ route, navigation }) {
   const plan = useTripPlan();
   const config = usePublicConfig();
   const [timesOpen, setTimesOpen] = useState(false);
+  // Without trip times the car is shown without availability/estimate; those come once times are picked.
+  const startAt = plan.startAt?.toISOString();
+  const endAt = plan.endAt?.toISOString();
   const q = useQuery({
-    queryKey: ['vehicle', id, plan.startAt.toISOString(), plan.endAt.toISOString()],
-    queryFn: () => api.get(`/api/v1/public/vehicles/${id}`, { startAt: plan.startAt.toISOString(), endAt: plan.endAt.toISOString() }),
+    queryKey: ['vehicle', id, startAt || null, endAt || null],
+    queryFn: () => api.get(`/api/v1/public/vehicles/${id}`, { startAt, endAt }),
+    placeholderData: (prev) => prev, // keep the page up while times change
   });
+
+  // "Continue" without times asks for them first, then goes on to checkout once availability is known.
+  const continueAfterTimes = useRef(false);
+  const [continuing, setContinuing] = useState(false);
+  useEffect(() => {
+    if (!continuing || !plan.hasTimes || !q.data || q.isPlaceholderData || q.isFetching) return;
+    setContinuing(false);
+    if (q.data.availability?.available) navigation.navigate('Checkout', { vehicleId: q.data.id });
+  }, [continuing, plan.hasTimes, q.data, q.isPlaceholderData, q.isFetching, navigation]);
+  const applyTimes = (s, e) => {
+    plan.setTimes(s, e);
+    if (continueAfterTimes.current) setContinuing(true);
+    continueAfterTimes.current = false;
+  };
+  const closeTimes = () => { continueAfterTimes.current = false; setTimesOpen(false); };
+  const onContinue = () => {
+    if (plan.hasTimes) return navigation.navigate('Checkout', { vehicleId: q.data.id });
+    continueAfterTimes.current = true;
+    setTimesOpen(true);
+  };
 
   if (q.isLoading) return <VehicleSkeleton />;
   if (q.error) return <Screen header={<Header title="" />} scroll={false}><ErrorState error={q.error} onRetry={q.refetch} /></Screen>;
   const v = q.data;
-  const available = v.availability?.available;
-  const est = v.estimate;
+  // While new times are loading, the previous car data has no say on availability/price.
+  const fresh = plan.hasTimes && !q.isPlaceholderData;
+  const available = fresh && v.availability?.available;
+  const est = fresh ? v.estimate : null;
   const rated = v.rating?.count > 0;
   const tiers = (v.policies?.cancellation?.tiers || []).slice().sort((a, b) => b.minHoursBeforeStart - a.minHoursBeforeStart);
 
@@ -119,18 +145,14 @@ export function VehicleScreen({ route, navigation }) {
               <View className="mb-3 flex-row items-center">
                 <CalendarDays size={16} color={colors.brand[600]} />
                 <T variant="label" className="ml-2 flex-1">Your trip</T>
-                <Pressable onPress={() => setTimesOpen(true)} hitSlop={8} accessibilityRole="button" accessibilityLabel="Change trip times" className="min-h-[36px] justify-center px-1">
-                  <T variant="label" tone="brand">Change</T>
+                <Pressable onPress={() => setTimesOpen(true)} hitSlop={8} accessibilityRole="button" accessibilityLabel={plan.hasTimes ? 'Change trip times' : 'Add trip dates'} className="min-h-[36px] justify-center px-1">
+                  <T variant="label" tone="brand">{plan.hasTimes ? 'Change' : 'Add dates'}</T>
                 </Pressable>
               </View>
-              <TripRoute
-                start={{ overline: 'Pickup', title: dayLabel(plan.startAt), subtitle: timeLabel(plan.startAt) }}
-                end={{ overline: 'Return', title: dayLabel(plan.endAt), subtitle: timeLabel(plan.endAt) }}
-                label={duration(plan.startAt, plan.endAt)}
-              />
+              <TripRoute {...tripRoute(plan.startAt, plan.endAt)} />
             </Card>
           </FadeInView>
-          {v.availability && !available ? (
+          {fresh && v.availability && !available ? (
             <Notice tone="warning" title="Booked for these times" className="mx-4 mt-3">Try different times — or go back for similar cars.</Notice>
           ) : null}
 
@@ -295,13 +317,13 @@ export function VehicleScreen({ route, navigation }) {
         <View className="flex-row items-center border-t border-line px-4 py-3">
           <View className="mr-3 flex-1">
             {est ? <AnimatedNumber value={money(est.rentalPaise)} className="text-brand-700" /> : null}
-            <T variant="caption" tone="subtle" numberOfLines={1}>{est ? `${duration(plan.startAt, plan.endAt)} · excl. taxes & deposit` : 'Choose trip times'}</T>
+            <T variant="caption" tone="subtle" numberOfLines={1}>{est ? `${duration(plan.startAt, plan.endAt)} · excl. taxes & deposit` : plan.hasTimes ? 'Checking price…' : 'Choose trip times'}</T>
           </View>
-          <Button title={available ? 'Continue' : 'Unavailable'} size="lg" disabled={!available} onPress={() => navigation.navigate('Checkout', { vehicleId: v.id })} testID="continue-booking" className="min-w-[150px]" />
+          <Button title={!plan.hasTimes || available || continuing ? 'Continue' : 'Unavailable'} size="lg" disabled={plan.hasTimes && !available && !continuing} loading={continuing} onPress={onContinue} testID="continue-booking" className="min-w-[150px]" />
         </View>
       </SafeAreaView>
 
-      <TripTimesSheet visible={timesOpen} onClose={() => setTimesOpen(false)} startAt={plan.startAt} endAt={plan.endAt} minLeadMinutes={config.data?.booking?.minLeadMinutes ?? 60} minHours={config.data?.booking?.minDurationHours ?? 4} onApply={plan.setTimes} />
+      <TripTimesSheet visible={timesOpen} onClose={closeTimes} startAt={plan.startAt} endAt={plan.endAt} minLeadMinutes={config.data?.booking?.minLeadMinutes ?? 60} minHours={config.data?.booking?.minDurationHours ?? 4} onApply={applyTimes} />
     </SafeAreaView>
   );
 }

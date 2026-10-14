@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { View, ScrollView, Image, Pressable, RefreshControl, StatusBar, Linking, useWindowDimensions } from '@/mobile/rn';
 import { SafeAreaView } from '@/mobile/rn';
 import { useFocusEffect } from '@/mobile/nav';
@@ -7,12 +7,12 @@ import { Clipboard } from '@/mobile/rn';
 import { MapPin, Bell, ChevronDown, Search, Navigation, ShieldCheck, ReceiptText, Truck, LifeBuoy, Phone, Headset, MessageCircle, CalendarDays, Undo2, CarFront } from 'lucide-react';
 import { T, Button, Notice, IconButton, Avatar, GradientHero, GradientFill, Card, SectionHeader, IconTile, TicketCard, Carousel, StickyScrollView, FadeInView, PressableScale, Accordion, FAB, Skeleton, SkeletonVehicleCard, TripRoute, useToast } from '@/mobile/ui';
 import { colors, gradients, shadows } from '@shared/theme/tokens';
-import { dayLabel, timeLabel, duration } from '@shared/lib/format';
+import { dayLabel, duration } from '@shared/lib/format';
 import { api } from '../../api';
 import { useAuth } from '../../auth/AuthContext';
 import { useTripPlan } from '../../hooks/useTripPlan';
 import { useCategories, usePublicConfig, useUnreadCount } from '../../hooks/queries';
-import { TripTimesSheet } from '../../components/TripTimesSheet';
+import { TripTimesSheet, tripRoute } from '../../components/TripTimesSheet';
 import { VehicleCard } from '../../components/VehicleCard';
 import { offerValue, offerTerms } from '../../components/offers';
 import { currentPosition } from '@/mobile/app/location';
@@ -37,6 +37,7 @@ export function HomeScreen({ navigation }) {
   const toast = useToast();
   const { width } = useWindowDimensions();
   const [timesOpen, setTimesOpen] = useState(false);
+  const afterTimes = useRef(null); // where to go once the renter picks trip times
   const config = usePublicConfig();
   const categories = useCategories();
   const unread = useUnreadCount();
@@ -53,20 +54,36 @@ export function HomeScreen({ navigation }) {
     return () => StatusBar.popStackEntry(entry);
   }, []));
 
+  // Cars are only shown for chosen trip times: ask for them first, then carry on.
+  const withTimes = (next) => {
+    if (plan.hasTimes) return next();
+    afterTimes.current = next;
+    setTimesOpen(true);
+  };
   const search = (extra = {}) => {
     if (!plan.city) return navigation.navigate('CitySelect');
-    navigation.navigate('Search', extra);
+    withTimes(() => navigation.navigate('Search', extra));
   };
-  const nearMe = async () => {
-    const pos = await currentPosition();
-    search(pos ? { near: pos, sort: 'distance' } : {});
+  const nearMe = () => {
+    if (!plan.city) return navigation.navigate('CitySelect');
+    withTimes(async () => {
+      const pos = await currentPosition();
+      navigation.navigate('Search', pos ? { near: pos, sort: 'distance' } : {});
+    });
   };
+  const applyTimes = (startAt, endAt) => {
+    plan.setTimes(startAt, endAt);
+    const next = afterTimes.current;
+    afterTimes.current = null;
+    next?.();
+  };
+  const closeTimes = () => { afterTimes.current = null; setTimesOpen(false); };
   const refresh = () => { featured.refetch(); banners.refetch(); offers.refetch(); };
   const firstName = account?.name?.split(' ')[0];
   const kyc = account?.kyc?.status;
   const support = config.data?.support || {};
   const refundHrs = fullRefundHours(config.data?.cancellation?.tiers);
-  const tripLabel = duration(plan.startAt, plan.endAt);
+  const trip = tripRoute(plan.startAt, plan.endAt);
 
   const sticky = (
     <View className="px-4 pb-3 pt-2" style={{ backgroundColor: HERO_TOP, boxShadow: shadows.raised }}>
@@ -75,9 +92,18 @@ export function HomeScreen({ navigation }) {
           <MapPin size={15} color={colors.brand[600]} strokeWidth={2.4} />
           <T variant="label" className="ml-1 max-w-[96px] text-brand-700" numberOfLines={1}>{plan.city?.name || 'City'}</T>
         </Pressable>
-        <Pressable onPress={() => setTimesOpen(true)} accessibilityRole="button" accessibilityLabel="Change trip times" className="h-11 flex-1 justify-center px-3">
-          <T variant="label" numberOfLines={1}>{dayLabel(plan.startAt)} → {dayLabel(plan.endAt)}</T>
-          <T variant="caption" tone="subtle" numberOfLines={1}>{tripLabel}</T>
+        <Pressable onPress={() => setTimesOpen(true)} accessibilityRole="button" accessibilityLabel={plan.hasTimes ? 'Change trip times' : 'Add trip dates'} className="h-11 flex-1 justify-center px-3">
+          {plan.hasTimes ? (
+            <>
+              <T variant="label" numberOfLines={1}>{dayLabel(plan.startAt)} → {dayLabel(plan.endAt)}</T>
+              <T variant="caption" tone="subtle" numberOfLines={1}>{duration(plan.startAt, plan.endAt)}</T>
+            </>
+          ) : (
+            <>
+              <T variant="label" tone="brand" numberOfLines={1}>Add dates</T>
+              <T variant="caption" tone="subtle" numberOfLines={1}>Pickup & return</T>
+            </>
+          )}
         </Pressable>
         <PressableScale onPress={() => search()} accessibilityRole="button" accessibilityLabel="Find cars" className="h-11 w-11 items-center justify-center overflow-hidden rounded-full">
           <GradientFill stops={gradients.brand} />
@@ -123,16 +149,12 @@ export function HomeScreen({ navigation }) {
               <View className="mb-3 flex-row items-center">
                 <CalendarDays size={16} color={colors.brand[600]} />
                 <T variant="label" className="ml-2 flex-1">Your trip</T>
-                <Pressable onPress={() => setTimesOpen(true)} hitSlop={8} accessibilityRole="button" accessibilityLabel="Edit trip times" className="min-h-[36px] justify-center px-1">
-                  <T variant="label" tone="brand">Edit</T>
+                <Pressable onPress={() => setTimesOpen(true)} hitSlop={8} accessibilityRole="button" accessibilityLabel={plan.hasTimes ? 'Edit trip times' : 'Add trip dates'} className="min-h-[36px] justify-center px-1">
+                  <T variant="label" tone="brand">{plan.hasTimes ? 'Edit' : 'Add dates'}</T>
                 </Pressable>
               </View>
-              <PressableScale onPress={() => setTimesOpen(true)} accessibilityRole="button" accessibilityLabel="Change trip times" className="rounded-xl border border-ink-100 bg-ink-50 px-3.5 py-3">
-                <TripRoute
-                  start={{ overline: 'Pickup', title: dayLabel(plan.startAt), subtitle: timeLabel(plan.startAt) }}
-                  end={{ overline: 'Return', title: dayLabel(plan.endAt), subtitle: timeLabel(plan.endAt) }}
-                  label={tripLabel}
-                />
+              <PressableScale onPress={() => setTimesOpen(true)} accessibilityRole="button" accessibilityLabel={plan.hasTimes ? 'Change trip times' : 'Add trip dates'} className="rounded-xl border border-ink-100 bg-ink-50 px-3.5 py-3" testID="home-trip-times">
+                <TripRoute {...trip} />
               </PressableScale>
               <Button title="Find cars" icon={Search} size="lg" block className="mt-4" onPress={() => search()} testID="find-cars" />
               <Pressable onPress={nearMe} className="mt-2 min-h-[44px] flex-row items-center justify-center" accessibilityRole="button">
@@ -292,12 +314,12 @@ export function HomeScreen({ navigation }) {
 
       <TripTimesSheet
         visible={timesOpen}
-        onClose={() => setTimesOpen(false)}
+        onClose={closeTimes}
         startAt={plan.startAt}
         endAt={plan.endAt}
         minLeadMinutes={config.data?.booking?.minLeadMinutes ?? 60}
         minHours={config.data?.booking?.minDurationHours ?? 4}
-        onApply={plan.setTimes}
+        onApply={applyTimes}
       />
     </SafeAreaView>
   );

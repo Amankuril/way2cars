@@ -1,23 +1,19 @@
 import { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { nextHalfHour } from '@shared/lib/format';
 
 /**
- * The renter's current search: city + pickup/return times. Persisted (non-sensitive) so the app
- * reopens where they left off; stale times are rolled forward.
+ * The renter's current search: city + pickup/return times. Only the city is persisted; trip times
+ * start empty on every launch so the renter always picks them before seeing cars (`hasTimes`).
+ * Once chosen they stay for the session until changed.
  */
 const Ctx = createContext(null);
 export const useTripPlan = () => useContext(Ctx);
 const KEY = 'w2c.tripPlan.v1';
 
-function defaults() {
-  const start = nextHalfHour(new Date(), 24 * 60);
-  start.setHours(Math.max(start.getHours(), 9));
-  return { city: null, startAt: start, endAt: new Date(start.getTime() + 24 * 3600_000) };
-}
+const EMPTY = { city: null, startAt: null, endAt: null };
 
 export function TripPlanProvider({ children }) {
-  const [plan, setPlan] = useState(defaults);
+  const [plan, setPlan] = useState(EMPTY);
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
@@ -25,10 +21,7 @@ export function TripPlanProvider({ children }) {
       if (raw) {
         try {
           const p = JSON.parse(raw);
-          const start = new Date(p.startAt);
-          const minStart = nextHalfHour(new Date(), 90);
-          const fresh = start > minStart;
-          setPlan({ city: p.city || null, ...(fresh ? { startAt: start, endAt: new Date(p.endAt) } : { startAt: defaults().startAt, endAt: defaults().endAt }) });
+          if (p.city) setPlan((cur) => ({ ...cur, city: cur.city || p.city }));
         } catch {
           // ignore corrupt cache
         }
@@ -38,12 +31,13 @@ export function TripPlanProvider({ children }) {
   }, []);
 
   useEffect(() => {
-    if (ready) AsyncStorage.setItem(KEY, JSON.stringify(plan)).catch(() => {});
-  }, [plan, ready]);
+    if (ready) AsyncStorage.setItem(KEY, JSON.stringify({ city: plan.city })).catch(() => {});
+  }, [plan.city, ready]);
 
   const value = useMemo(() => ({
     ...plan,
     ready,
+    hasTimes: !!(plan.startAt && plan.endAt),
     setCity: (city) => setPlan((p) => ({ ...p, city })),
     setTimes: (startAt, endAt) => setPlan((p) => ({ ...p, startAt, endAt })),
   }), [plan, ready]);

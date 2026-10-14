@@ -5,10 +5,12 @@ import { MapPin, Truck, TicketPercent, Wallet, ShieldCheck, Lock, Users, Cog, Fu
 import { Screen, Header, T, Button, Field, Notice, ErrorState, useToast, cn, Card, SectionHeader, SpecChip, TripRoute, IconTile, AnimatedNumber, FadeInView, PressableScale, Skeleton, SkeletonCard } from '@/mobile/ui';
 import { colors } from '@shared/theme/tokens';
 import { FUEL, TRANSMISSION } from '@shared/lib/labels';
-import { money, dayLabel, timeLabel, duration } from '@shared/lib/format';
+import { money, duration } from '@shared/lib/format';
 import { api } from '../../api';
 import { useAuth } from '../../auth/AuthContext';
 import { useTripPlan } from '../../hooks/useTripPlan';
+import { usePublicConfig } from '../../hooks/queries';
+import { TripTimesSheet, TripTimesPrompt, tripRoute } from '../../components/TripTimesSheet';
 import { AddressPicker } from '../../components/AddressPicker';
 import { PriceBreakdown } from '../../components/PriceBreakdown';
 import { payOrder } from '../../services/payments';
@@ -43,10 +45,20 @@ export function CheckoutScreen({ route, navigation }) {
   const [couponError, setCouponError] = useState(null);
   const [useWallet, setUseWallet] = useState(false);
   const [paying, setPaying] = useState(false);
+  const [timesOpen, setTimesOpen] = useState(false);
+  const config = usePublicConfig();
+
+  // Reached without trip times (deep link / reload): ask for them once; no quote until then.
+  const askedTimes = useRef(false);
+  useEffect(() => {
+    if (plan.hasTimes || askedTimes.current) return;
+    askedTimes.current = true;
+    setTimesOpen(true);
+  }, [plan.hasTimes]);
 
   const vehicle = useQuery({ queryKey: ['vehicle-lite', vehicleId], queryFn: () => api.get(`/api/v1/public/vehicles/${vehicleId}`) });
   const body = useMemo(() => ({
-    vehicleId, startAt: plan.startAt.toISOString(), endAt: plan.endAt.toISOString(),
+    vehicleId, startAt: plan.startAt?.toISOString(), endAt: plan.endAt?.toISOString(),
     delivery: delivery ? { address: delivery.address, lat: delivery.lat, lng: delivery.lng, placeId: delivery.placeId } : undefined,
     couponCode: coupon || undefined, useWallet,
   }), [vehicleId, plan.startAt, plan.endAt, delivery, coupon, useWallet]);
@@ -56,6 +68,7 @@ export function CheckoutScreen({ route, navigation }) {
     queryFn: () => api.post('/api/v1/user/bookings/quote', body),
     placeholderData: (prev) => prev,
     retry: false,
+    enabled: plan.hasTimes,
   });
 
   // A coupon or address the server rejects is removed and the reason shown.
@@ -111,6 +124,19 @@ export function CheckoutScreen({ route, navigation }) {
   }
   if (vehicle.error) return <Screen header={<Header title="Review & pay" />} scroll={false}><ErrorState error={vehicle.error} onRetry={vehicle.refetch} /></Screen>;
   const v = vehicle.data;
+  const timesSheet = (
+    <TripTimesSheet visible={timesOpen} onClose={() => setTimesOpen(false)} startAt={plan.startAt} endAt={plan.endAt} minLeadMinutes={config.data?.booking?.minLeadMinutes ?? 60} minHours={config.data?.booking?.minDurationHours ?? 4} onApply={plan.setTimes} />
+  );
+  if (!plan.hasTimes) {
+    return (
+      <Screen header={<Header title="Review & pay" subtitle={v.title} />} scroll={false}>
+        <FadeInView className="pt-6">
+          <TripTimesPrompt message="Pick your pickup and return times to see the final price." onPress={() => setTimesOpen(true)} />
+        </FadeInView>
+        {timesSheet}
+      </Screen>
+    );
+  }
   const q = quote.data;
   const unavailable = quote.error?.code === 'VEHICLE_UNAVAILABLE';
 
@@ -171,11 +197,7 @@ export function CheckoutScreen({ route, navigation }) {
             <MapPin size={16} color={colors.brand[600]} />
             <T variant="label" className="ml-2 flex-1" numberOfLines={1}>{[v.location?.area, v.city?.name].filter(Boolean).join(', ')}</T>
           </View>
-          <TripRoute
-            start={{ overline: 'Pickup', title: dayLabel(plan.startAt), subtitle: timeLabel(plan.startAt) }}
-            end={{ overline: 'Return', title: dayLabel(plan.endAt), subtitle: timeLabel(plan.endAt) }}
-            label={duration(plan.startAt, plan.endAt)}
-          />
+          <TripRoute {...tripRoute(plan.startAt, plan.endAt)} />
         </Card>
       </FadeInView>
 

@@ -4,13 +4,12 @@ import { useInfiniteQuery } from '@tanstack/react-query';
 import { SlidersHorizontal, ArrowUpDown, PencilLine, SearchX, RotateCcw, CalendarDays } from 'lucide-react';
 import { Screen, Header, T, Button, Chip, Sheet, ErrorState, IconButton, CarLoader, CarArt, TripRoute, FadeInView, SkeletonVehicleCard, Card } from '@/mobile/ui';
 import { colors, shadows } from '@shared/theme/tokens';
-import { dayLabel, timeLabel, duration } from '@shared/lib/format';
 import { FUEL, BODY_TYPE } from '@shared/lib/labels';
 import { api } from '../../api';
 import { useTripPlan } from '../../hooks/useTripPlan';
 import { useBrands, usePublicConfig } from '../../hooks/queries';
 import { VehicleCard } from '../../components/VehicleCard';
-import { TripTimesSheet } from '../../components/TripTimesSheet';
+import { TripTimesSheet, TripTimesPrompt, tripRoute, tripSummary } from '../../components/TripTimesSheet';
 
 const SORTS = [
   { value: 'recommended', label: 'Recommended' },
@@ -45,10 +44,18 @@ export function SearchResultsScreen({ navigation, route }) {
     navigation.navigate('CitySelect');
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Opened without trip times (deep link / back stack): ask for them once; nothing is fetched until then.
+  const askedTimes = useRef(false);
+  useEffect(() => {
+    if (!plan.city || plan.hasTimes || askedTimes.current) return;
+    askedTimes.current = true;
+    setSheet('times');
+  }, [plan.city, plan.hasTimes]);
+
   const query = useMemo(() => ({
     cityId: plan.city?.id,
-    startAt: plan.startAt.toISOString(),
-    endAt: plan.endAt.toISOString(),
+    startAt: plan.startAt?.toISOString(),
+    endAt: plan.endAt?.toISOString(),
     sort,
     lat: near?.lat,
     lng: near?.lng,
@@ -73,7 +80,7 @@ export function SearchResultsScreen({ navigation, route }) {
     queryFn: ({ pageParam }) => api.list('/api/v1/public/vehicles', { ...query, page: pageParam }),
     initialPageParam: 1,
     getNextPageParam: (last) => (last.meta.page < last.meta.pages ? last.meta.page + 1 : undefined),
-    enabled: !!plan.city,
+    enabled: !!plan.city && plan.hasTimes,
   });
   const items = results.data?.pages.flatMap((p) => p.data) || [];
   const total = results.data?.pages[0]?.meta.total;
@@ -82,7 +89,6 @@ export function SearchResultsScreen({ navigation, route }) {
   const toggle = (key, val) => setDraft((d) => ({ ...d, [key]: d[key].includes(val) ? d[key].filter((x) => x !== val) : [...d[key], val] }));
   const flag = (key) => setDraft((d) => ({ ...d, [key]: !d[key] }));
 
-  const tripLabel = duration(plan.startAt, plan.endAt);
   const sortLabel = SORTS.find((x) => x.value === sort)?.label;
 
   return (
@@ -91,8 +97,8 @@ export function SearchResultsScreen({ navigation, route }) {
       header={
         <Header
           title={route.params?.title || `Cars in ${plan.city?.name || ''}`}
-          subtitle={`${dayLabel(plan.startAt)}, ${timeLabel(plan.startAt)} → ${dayLabel(plan.endAt)}, ${timeLabel(plan.endAt)} · ${tripLabel}`}
-          right={<IconButton icon={PencilLine} label="Change trip times" tone="brand" onPress={() => setSheet('times')} className="bg-brand-50" />}
+          subtitle={tripSummary(plan.startAt, plan.endAt)}
+          right={<IconButton icon={PencilLine} label={plan.hasTimes ? 'Change trip times' : 'Add trip dates'} tone="brand" onPress={() => setSheet('times')} className="bg-brand-50" />}
         />
       }
     >
@@ -108,16 +114,15 @@ export function SearchResultsScreen({ navigation, route }) {
         </ScrollView>
       </View>
 
-      {results.isLoading ? (
+      {!plan.hasTimes ? (
+        <FadeInView className="pt-6">
+          <TripTimesPrompt onPress={() => setSheet('times')} />
+        </FadeInView>
+      ) : results.isLoading ? (
         <View className="pt-5" testID="search-loading">
           <CarLoader title="Finding the best rides…" subtitle={`for your trip in ${plan.city?.name || 'your city'}`}>
             <View className="rounded-2xl border border-ink-100 bg-ink-50 px-3.5 py-3">
-              <TripRoute
-                animated
-                start={{ overline: 'Pickup', title: dayLabel(plan.startAt), subtitle: timeLabel(plan.startAt) }}
-                end={{ overline: 'Return', title: dayLabel(plan.endAt), subtitle: timeLabel(plan.endAt) }}
-                label={tripLabel}
-              />
+              <TripRoute animated {...tripRoute(plan.startAt, plan.endAt)} />
             </View>
           </CarLoader>
         </View>

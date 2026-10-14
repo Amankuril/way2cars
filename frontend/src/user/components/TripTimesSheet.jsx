@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { View, Pressable } from '@/mobile/rn';
 import { DateTimePickerAndroid } from '@/mobile/app/datetime';
 import { CalendarDays } from 'lucide-react';
-import { Sheet, T, Button, Chip } from '@/mobile/ui';
+import { Sheet, T, Button, Chip, Card, CarArt } from '@/mobile/ui';
 import { colors } from '@shared/theme/tokens';
 import { dayLabel, timeLabel, duration, nextHalfHour } from '@shared/lib/format';
 
@@ -14,6 +14,54 @@ const roundHalf = (d) => {
   const step = 30 * 60000;
   return new Date(Math.round(d.getTime() / step) * step);
 };
+
+/** A starting point for the pickers when no times are chosen yet: next half hour after the lead time (not before 7 AM), 1 day. */
+export function suggestTimes(minLeadMinutes = 60) {
+  const start = nextHalfHour(new Date(), minLeadMinutes);
+  if (start.getHours() < 7) start.setHours(9, 0, 0, 0);
+  return { start, end: new Date(start.getTime() + 24 * 3600000) };
+}
+
+/** TripRoute props for the plan's times — placeholders while they're not chosen yet. */
+export function tripRoute(startAt, endAt) {
+  if (!startAt || !endAt) {
+    return {
+      start: { overline: 'Pickup', title: 'Select date', subtitle: 'and time' },
+      end: { overline: 'Return', title: 'Select date', subtitle: 'and time' },
+    };
+  }
+  return {
+    start: { overline: 'Pickup', title: dayLabel(startAt), subtitle: timeLabel(startAt) },
+    end: { overline: 'Return', title: dayLabel(endAt), subtitle: timeLabel(endAt) },
+    label: duration(startAt, endAt),
+  };
+}
+
+/** One-line trip summary for headers: "Sat, 14 Oct, 9:00 AM → Sun, 15 Oct, 9:00 AM · 1 day". */
+export function tripSummary(startAt, endAt) {
+  if (!startAt || !endAt) return 'Add your trip dates';
+  return `${dayLabel(startAt)}, ${timeLabel(startAt)} → ${dayLabel(endAt)}, ${timeLabel(endAt)} · ${duration(startAt, endAt)}`;
+}
+
+/** Shown instead of results / prices until the renter has picked trip times. */
+export function TripTimesPrompt({ title = 'When do you need the car?', message = 'Pick your pickup and return times to see cars that are free.', onPress, className }) {
+  return (
+    <View className={className} testID="trip-times-prompt">
+      <Card className="mx-4 items-center overflow-hidden px-6 pb-6 pt-8">
+        <View className="items-center">
+          <CarArt still />
+          <View className="mt-1 h-1.5 w-44 rounded-full bg-ink-100" />
+        </View>
+        <View className="absolute right-5 top-5 h-10 w-10 items-center justify-center rounded-full bg-brand-50"><CalendarDays size={20} color={colors.brand[600]} /></View>
+        <T variant="headline" className="mt-5 text-center">{title}</T>
+        <T variant="bodySm" tone="muted" className="mt-1.5 text-center">{message}</T>
+        <View className="mt-5">
+          <Button title="Choose dates" icon={CalendarDays} onPress={onPress} testID="choose-dates" />
+        </View>
+      </Card>
+    </View>
+  );
+}
 
 /** Opens the native date dialog, then the time dialog. Resolves a Date or null. */
 function pickDateTime(value, minimumDate) {
@@ -32,10 +80,17 @@ function pickDateTime(value, minimumDate) {
 }
 
 export function TripTimesSheet({ visible, onClose, startAt, endAt, onApply, minLeadMinutes = 60, minHours = 4 }) {
-  const [start, setStart] = useState(startAt);
-  const [end, setEnd] = useState(endAt);
+  // No times yet: the pickers start on a suggestion, but nothing is applied until the renter confirms.
+  const [start, setStart] = useState(() => startAt || suggestTimes(minLeadMinutes).start);
+  const [end, setEnd] = useState(() => endAt || suggestTimes(minLeadMinutes).end);
   const [error, setError] = useState(null);
-  useEffect(() => { if (visible) { setStart(startAt); setEnd(endAt); setError(null); } }, [visible, startAt, endAt]);
+  useEffect(() => {
+    if (!visible) return;
+    const s = startAt && endAt ? null : suggestTimes(minLeadMinutes);
+    setStart(s ? s.start : startAt);
+    setEnd(s ? s.end : endAt);
+    setError(null);
+  }, [visible, startAt, endAt]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const earliest = nextHalfHour(new Date(), minLeadMinutes);
   const hours = (end - start) / 3600000;
