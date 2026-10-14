@@ -19,4 +19,4 @@ pm2 startOrReload backend/ecosystem.config.cjs --update-env
 pm2 save
 
 sleep 3
-curl -fsS http://127.0.0.1:5000/api/ready && echo && echo "Done."
+curl -fsS http://127.0.0.1:5055/api/ready && echo && echo "Done."

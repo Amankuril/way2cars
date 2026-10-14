@@ -11,18 +11,18 @@ The APK files are git-ignored; rebuild them with the commands below.
 
 ## API they talk to
 
-Base URL: `http://187.127.170.123:5000`. The apps call `/api/v1/...` under it, e.g.
+Base URL: `http://187.127.170.123:5055`. The apps call `/api/v1/...` under it, e.g.
 
-- `http://187.127.170.123:5000/api/ready` — readiness check
-- `http://187.127.170.123:5000/api/v1/auth/user/...`, `/api/v1/auth/vendor/...` — OTP login
-- `http://187.127.170.123:5000/uploads/...` — public images (cars, banners, cities)
+- `http://187.127.170.123:5055/api/ready` — readiness check
+- `http://187.127.170.123:5055/api/v1/auth/user/...`, `/api/v1/auth/vendor/...` — OTP login
+- `http://187.127.170.123:5055/uploads/...` — public images (cars, banners, cities)
 
 Backend `.env` on the server must match:
 
 ```
-PORT=5000
+PORT=5055
 HOST=0.0.0.0
-PUBLIC_MEDIA_BASE_URL=http://187.127.170.123:5000/uploads
+PUBLIC_MEDIA_BASE_URL=http://187.127.170.123:5055/uploads
 SERVE_PUBLIC_UPLOADS=true
 ```
 
@@ -30,7 +30,7 @@ SERVE_PUBLIC_UPLOADS=true
 
 ```bash
 cd apps/user        # or apps/vendor
-W2C_API_BASE_URL=http://187.127.170.123:5000 W2C_ENV=staging node scripts/write-env.js
+W2C_API_BASE_URL=http://187.127.170.123:5055 W2C_ENV=staging node scripts/write-env.js
 cd android && W2C_ALLOW_CLEARTEXT=true ./gradlew assembleRelease -PreactNativeArchitectures=armeabi-v7a,arm64-v8a
 # → android/app/build/outputs/apk/release/app-release.apk
 ```
