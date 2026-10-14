@@ -25,6 +25,7 @@
       android:usesCleartextTraffic="${w2cCleartext}"
       android:supportsRtl="true">
       <meta-data android:name="com.google.android.geo.API_KEY" android:value="${googleMapsApiKey}" />
+      <meta-data android:name="com.google.firebase.messaging.default_notification_icon" android:resource="@drawable/ic_notification" />
       <activity
         android:name=".MainActivity"
         android:label="@string/app_name"
