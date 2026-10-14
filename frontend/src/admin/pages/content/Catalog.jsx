@@ -14,6 +14,7 @@ import { Field, Input, Textarea, Select, Switch } from '@/admin/components/Form.
 import { ImageUpload } from '@/admin/components/FileUpload.jsx';
 import { StatusPill, Tag } from '@/admin/components/StatusPill.jsx';
 import { EmptyState } from '@/admin/components/EmptyState.jsx';
+import { ZoneMap } from '@/admin/components/ZoneMap.jsx';
 
 const slugify = (s) => s.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60);
 const num = (v) => (v === '' || v === null || v === undefined ? NaN : Number(v));
@@ -25,17 +26,16 @@ const KINDS = {
     purpose: 'city_image',
     imageField: 'imageFileId',
     imageLabel: 'City image',
-    blank: { name: '', slug: '', state: '', gstStateCode: '', lat: '', lng: '', serviceRadiusKm: '40', sortOrder: '0', isActive: true, isPopular: false, image: null },
+    blank: { name: '', slug: '', state: '', gstStateCode: '', lat: '', lng: '', polygon: null, serviceRadiusKm: '40', sortOrder: '0', isActive: true, isPopular: false, image: null },
     fromRow: (c) => ({
-      name: c.name, slug: c.slug, state: c.state || '', gstStateCode: '', lat: c.center ? String(c.center.lat) : '', lng: c.center ? String(c.center.lng) : '',
+      name: c.name, slug: c.slug, state: c.state || '', gstStateCode: '', lat: c.center ? String(c.center.lat) : '', lng: c.center ? String(c.center.lng) : '', polygon: c.geofencePolygon || null,
       serviceRadiusKm: String(c.serviceRadiusKm ?? 40), sortOrder: String(c.sortOrder ?? 0), isActive: c.isActive, isPopular: c.isPopular, image: c.imageUrl ? { url: c.imageUrl } : null,
     }),
     validate: (f) => {
       const e = {};
       const lat = num(f.lat);
       const lng = num(f.lng);
-      if (!(lat >= -90 && lat <= 90)) e.lat = 'Latitude between −90 and 90.';
-      if (!(lng >= -180 && lng <= 180)) e.lng = 'Longitude between −180 and 180.';
+      if (!(lat >= -90 && lat <= 90) || !(lng >= -180 && lng <= 180)) e.zone = 'Search for the city on the map or draw its service zone.';
       const r = num(f.serviceRadiusKm);
       if (!(r >= 1 && r <= 300)) e.serviceRadiusKm = '1 to 300 km.';
       if (f.gstStateCode && !/^\d{2}$/.test(f.gstStateCode)) e.gstStateCode = 'Two digits, e.g. 29.';
@@ -43,7 +43,7 @@ const KINDS = {
     },
     toBody: (f) => ({
       name: f.name.trim(), slug: f.slug, ...(f.state.trim() ? { state: f.state.trim() } : {}), ...(f.gstStateCode ? { gstStateCode: f.gstStateCode } : {}),
-      lat: Number(f.lat), lng: Number(f.lng), serviceRadiusKm: Number(f.serviceRadiusKm), sortOrder: Number(f.sortOrder), isActive: f.isActive, isPopular: f.isPopular,
+      lat: Number(f.lat), lng: Number(f.lng), geofencePolygon: f.polygon?.length >= 3 ? f.polygon : null, serviceRadiusKm: Number(f.serviceRadiusKm), sortOrder: Number(f.sortOrder), isActive: f.isActive, isPopular: f.isPopular,
     }),
   },
   brands: {
@@ -70,13 +70,16 @@ const KINDS = {
   },
 };
 
-function ItemForm({ kind, item, onClose }) {
+function ItemForm({ kind, item, onClose, rows = [] }) {
   const K = KINDS[kind];
   const isNew = !item.id;
   const [f, setF] = useState(() => (isNew ? K.blank : K.fromRow(item)));
   const [slugTouched, setSlugTouched] = useState(!isNew);
   const [imageChanged, setImageChanged] = useState(false);
   const [errors, setErrors] = useState({});
+  const others = kind === 'cities'
+    ? rows.filter((c) => c.id !== item.id).map((c) => ({ name: c.name, polygon: c.geofencePolygon, centre: c.center, radiusKm: c.serviceRadiusKm }))
+    : [];
   const set = (k) => (e) => {
     const v = e.target.value;
     setF((x) => ({ ...x, [k]: v, ...(k === 'name' && !slugTouched ? { slug: slugify(v) } : {}) }));
@@ -110,7 +113,7 @@ function ItemForm({ kind, item, onClose }) {
       open
       onClose={() => !save.isPending && onClose()}
       title={isNew ? `New ${K.singular}` : `Edit ${item.name}`}
-      size="lg"
+      size={kind === 'cities' ? 'xl' : 'lg'}
       footer={
         <>
           <Button onClick={onClose} disabled={save.isPending}>Cancel</Button>
@@ -132,9 +135,7 @@ function ItemForm({ kind, item, onClose }) {
               <Field label="GST state code" htmlFor="ct-gst" error={errors.gstStateCode} hint={isNew ? 'Place of supply on invoices, e.g. 29 for Karnataka.' : 'Leave blank to keep the saved code.'}>
                 <Input id="ct-gst" value={f.gstStateCode} onChange={set('gstStateCode')} maxLength={2} inputMode="numeric" className="num" invalid={Boolean(errors.gstStateCode)} />
               </Field>
-              <Field label="Centre latitude" htmlFor="ct-lat" required error={errors.lat}><Input id="ct-lat" value={f.lat} onChange={set('lat')} inputMode="decimal" className="num" invalid={Boolean(errors.lat)} /></Field>
-              <Field label="Centre longitude" htmlFor="ct-lng" required error={errors.lng}><Input id="ct-lng" value={f.lng} onChange={set('lng')} inputMode="decimal" className="num" invalid={Boolean(errors.lng)} /></Field>
-              <Field label="Service radius (km)" htmlFor="ct-radius" required error={errors.serviceRadiusKm} hint="Search and doorstep delivery area."><Input id="ct-radius" type="number" min={1} max={300} value={f.serviceRadiusKm} onChange={set('serviceRadiusKm')} className="num" /></Field>
+              <Field label="Service radius (km)" htmlFor="ct-radius" required error={errors.serviceRadiusKm} hint={f.polygon?.length ? 'Not used while a zone is drawn.' : 'Used when no zone is drawn.'}><Input id="ct-radius" type="number" min={1} max={300} value={f.serviceRadiusKm} onChange={set('serviceRadiusKm')} className="num" /></Field>
             </>
           ) : null}
           {kind === 'categories' ? (
@@ -146,6 +147,23 @@ function ItemForm({ kind, item, onClose }) {
           ) : null}
           <Field label="Order" htmlFor="ct-order" error={errors.sortOrder} hint="Lower numbers show first."><Input id="ct-order" type="number" min={0} value={f.sortOrder} onChange={set('sortOrder')} className="num" /></Field>
         </div>
+        {kind === 'cities' ? (
+          <div>
+            <div className="mb-1.5 flex items-baseline justify-between gap-3">
+              <span className="text-label font-semibold text-ink-800">Service zone <span className="text-danger-600">*</span></span>
+              <span className="num text-caption text-ink-500">{f.lat !== '' && f.lng !== '' ? `Centre ${Number(f.lat).toFixed(4)}, ${Number(f.lng).toFixed(4)}` : 'No centre yet'}</span>
+            </div>
+            <ZoneMap
+              centre={f.lat !== '' && f.lng !== '' ? { lat: Number(f.lat), lng: Number(f.lng) } : null}
+              polygon={f.polygon}
+              radiusKm={f.serviceRadiusKm}
+              others={others}
+              onChange={({ polygon, centre }) => setF((x) => ({ ...x, polygon, ...(centre ? { lat: String(centre.lat), lng: String(centre.lng) } : {}) }))}
+              onPlace={(p) => setF((x) => ({ ...x, ...(!x.state && p.state ? { state: p.state } : {}) }))}
+            />
+            {errors.zone ? <p className="mt-1.5 text-caption font-semibold text-danger-600" role="alert">{errors.zone}</p> : null}
+          </div>
+        ) : null}
         {kind === 'categories' ? (
           <Field label="Description" htmlFor="ct-desc"><Textarea id="ct-desc" rows={2} maxLength={300} value={f.description} onChange={set('description')} /></Field>
         ) : null}
@@ -205,7 +223,7 @@ export default function Catalog() {
       ),
     },
     kind === 'cities' && { key: 'state', header: 'State', cell: (r) => r.state || '—' },
-    kind === 'cities' && { key: 'area', header: 'Service area', cell: (r) => <span className="num text-caption text-ink-600">{r.center ? `${r.center.lat.toFixed(4)}, ${r.center.lng.toFixed(4)}` : '—'} · {r.serviceRadiusKm} km{r.hasPolygon ? ' · polygon' : ''}</span> },
+    kind === 'cities' && { key: 'area', header: 'Service area', cell: (r) => (r.hasPolygon ? <Tag tone="info">Zone · {r.geofencePolygon?.length || 0} corners</Tag> : <span className="text-caption text-ink-600">{r.serviceRadiusKm} km radius{r.center ? '' : ' · no centre'}</span>) },
     kind === 'categories' && { key: 'body', header: 'Body type', cell: (r) => BODY_TYPE[r.bodyType] || r.bodyType },
     {
       key: 'flags',
@@ -244,7 +262,7 @@ export default function Catalog() {
         onRetry={refetch}
         empty={<EmptyState icon={Tags} title={`No ${K.label.toLowerCase()} yet`} description={`Add the first ${K.singular}.`} />}
       />
-      {editing ? <ItemForm key={`${kind}-${editing.id || 'new'}`} kind={kind} item={editing} onClose={() => setEditing(null)} /> : null}
+      {editing ? <ItemForm key={`${kind}-${editing.id || 'new'}`} kind={kind} item={editing} rows={data || []} onClose={() => setEditing(null)} /> : null}
       <ConfirmDialog
         open={Boolean(deleting)}
         onClose={() => setDeleting(null)}

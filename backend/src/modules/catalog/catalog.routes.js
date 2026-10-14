@@ -23,7 +23,8 @@ const citySchema = z.object({
   lat: z.number().min(-90).max(90),
   lng: z.number().min(-180).max(180),
   serviceRadiusKm: z.number().min(1).max(300).default(40),
-  geofencePolygon: z.array(z.tuple([z.number(), z.number()])).min(3).max(500).optional(),
+  // Service zone drawn by the admin: [[lng, lat], …]. null removes it (the radius around the centre applies).
+  geofencePolygon: z.array(z.tuple([z.number().min(-180).max(180), z.number().min(-90).max(90)])).min(3).max(500).nullable().optional(),
   imageFileId: fileId,
   isActive: z.boolean().default(true),
   isPopular: z.boolean().default(false),
@@ -60,8 +61,8 @@ publicCatalogRouter.get('/categories', async (_req, res) => ok(res, (await Categ
 export const adminCatalogRouter = Router();
 adminCatalogRouter.use(requirePermission('catalog.manage'));
 
-function crud(path, Model, schema, serialize, { imageField, imagePurpose, toDoc, refField }) {
-  adminCatalogRouter.get(`/${path}`, async (_req, res) => ok(res, (await Model.find().sort({ sortOrder: 1, name: 1 }).lean()).map(serialize)));
+function crud(path, Model, schema, serialize, { imageField, imagePurpose, toDoc, refField, adminSerialize = serialize }) {
+  adminCatalogRouter.get(`/${path}`, async (_req, res) => ok(res, (await Model.find().sort({ sortOrder: 1, name: 1 }).lean()).map(adminSerialize)));
 
   const build = async (body) => {
     const doc = toDoc ? toDoc(body) : { ...body };
@@ -76,14 +77,20 @@ function crud(path, Model, schema, serialize, { imageField, imagePurpose, toDoc,
   adminCatalogRouter.post(`/${path}`, validate({ body: schema }), async (req, res) => {
     const doc = await Model.create(await build(req.valid.body));
     await audit(req, `catalog.${path}.created`, { type: path, id: doc._id }, { changes: req.valid.body });
-    created(res, serialize(doc.toObject()));
+    created(res, adminSerialize(doc.toObject()));
   });
 
   adminCatalogRouter.patch(`/${path}/:id`, validate({ params: id, body: schema.partial() }), async (req, res) => {
-    const doc = await Model.findByIdAndUpdate(req.valid.params.id, { $set: await build(req.valid.body) }, { new: true, runValidators: true }).lean();
+    const $set = await build(req.valid.body);
+    const $unset = {};
+    if ($set.geofencePolygon === null) {
+      delete $set.geofencePolygon;
+      $unset.geofencePolygon = 1;
+    }
+    const doc = await Model.findByIdAndUpdate(req.valid.params.id, { $set, ...(Object.keys($unset).length ? { $unset } : {}) }, { new: true, runValidators: true }).lean();
     if (!doc) throw notFound();
     await audit(req, `catalog.${path}.updated`, { type: path, id: doc._id }, { changes: req.valid.body });
-    ok(res, serialize(doc));
+    ok(res, adminSerialize(doc));
   });
 
   adminCatalogRouter.delete(`/${path}/:id`, validate({ params: id }), async (req, res) => {
@@ -98,6 +105,7 @@ function crud(path, Model, schema, serialize, { imageField, imagePurpose, toDoc,
 
 crud('cities', City, citySchema, serializeCity, {
   imageField: 'imageFileId', imagePurpose: 'city_image', refField: 'cityId',
+  adminSerialize: (c) => ({ ...serializeCity(c), geofencePolygon: c.geofencePolygon?.length ? c.geofencePolygon : null }),
   toDoc: ({ lat, lng, ...rest }) => (lat !== undefined && lng !== undefined ? { ...rest, center: { type: 'Point', coordinates: [lng, lat] } } : rest),
 });
 crud('brands', Brand, brandSchema, serializeBrand, { imageField: 'logoFileId', imagePurpose: 'brand_logo', refField: 'brandId' });
