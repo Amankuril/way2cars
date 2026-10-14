@@ -1,7 +1,7 @@
 import {
   LayoutDashboard, CalendarRange, LifeBuoy, ShieldCheck, Car, Building2, Users, Wallet, BarChart3,
   TicketPercent, Image, Megaphone, FileText, HelpCircle, Tags, Star, Settings, UserCog, ScrollText,
-  PlugZap, KeyRound,
+  PlugZap, KeyRound, UserCheck,
 } from 'lucide-react';
 
 /**
@@ -21,19 +21,22 @@ export const NAV = [
     ],
   },
   {
-    label: 'Verification',
-    items: [{ label: 'KYC queue', to: '/kyc', icon: ShieldCheck, perm: 'kyc.review' }],
-  },
-  {
-    label: 'Fleet',
+    label: 'Host management',
     items: [
-      { label: 'Vehicles', to: '/vehicles', icon: Car, perm: 'vehicles.read' },
+      { label: 'Host requests', to: '/hosts/requests', icon: UserCheck, perm: 'vendors.read' },
       { label: 'Hosts', to: '/hosts', icon: Building2, perm: 'vendors.read' },
     ],
   },
   {
+    label: 'Fleet',
+    items: [{ label: 'Vehicles', to: '/vehicles', icon: Car, perm: 'vehicles.read' }],
+  },
+  {
     label: 'Customers',
-    items: [{ label: 'Users', to: '/users', icon: Users, perm: 'users.read' }],
+    items: [
+      { label: 'Users', to: '/users', icon: Users, perm: 'users.read' },
+      { label: 'Renter KYC', to: '/renter-kyc', icon: ShieldCheck, perm: 'kyc.review' },
+    ],
   },
   {
     label: 'Finance',

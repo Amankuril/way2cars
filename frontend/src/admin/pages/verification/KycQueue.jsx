@@ -8,32 +8,29 @@ import { compact } from '@/admin/lib/utils.js';
 import { PageHeader } from '@/admin/components/PageHeader.jsx';
 import { DataTable, CellStack } from '@/admin/components/DataTable.jsx';
 import { Pagination } from '@/admin/components/Pagination.jsx';
-import { FilterBar, FilterSelect } from '@/admin/components/Filters.jsx';
-import { StatusPill, Tag } from '@/admin/components/StatusPill.jsx';
+import { StatusPill } from '@/admin/components/StatusPill.jsx';
 import { EmptyState } from '@/admin/components/EmptyState.jsx';
 import { Tabs } from '@/admin/components/Tabs.jsx';
 
-const SUBJECT = { user: 'Renter', vendor: 'Host' };
-
+/** Renter KYC queue. Host KYC is reviewed together with the host request (Hosts → Host requests). */
 export default function KycQueue() {
-  const [s, set] = useSearchState({ page: 1, status: 'pending', subjectType: '' });
-  const query = compact({ page: s.page, limit: 25, status: s.status, subjectType: s.subjectType });
+  const [s, set] = useSearchState({ page: 1, status: 'pending' });
+  const query = compact({ page: s.page, limit: 25, status: s.status, subjectType: 'user' });
   const { rows, meta, isLoading, error, refetch } = useListQuery(['kyc'], `${ADMIN}/kyc`, query);
 
   const columns = [
     {
       key: 'subject',
-      header: 'Applicant',
+      header: 'Renter',
       cell: (k) => (
         <div className="min-w-0">
-          <Link to={`/kyc/${k.id}`} className="block max-w-[240px] truncate font-semibold text-ink-900 hover:text-brand-600 hover:underline">
+          <Link to={`/renter-kyc/${k.id}`} className="block max-w-[240px] truncate font-semibold text-ink-900 hover:text-brand-600 hover:underline">
             {k.subject?.name || 'Name not set'}
           </Link>
           <div className="num text-caption text-ink-500">{maskPhone(k.subject?.phone)}</div>
         </div>
       ),
     },
-    { key: 'type', header: 'Type', cell: (k) => <Tag tone={k.subjectType === 'vendor' ? 'info' : 'neutral'}>{SUBJECT[k.subjectType]}</Tag> },
     {
       key: 'docs',
       header: 'Documents',
@@ -65,7 +62,7 @@ export default function KycQueue() {
 
   return (
     <>
-      <PageHeader title="KYC queue" description="Identity checks for renters and hosts. Oldest pending submissions are shown first." />
+      <PageHeader title="Renter KYC" description="Driving licence and identity checks for renters. Oldest pending submissions are shown first. Host KYC is reviewed with each host request." />
       <Tabs
         className="mb-4"
         label="KYC status"
@@ -77,21 +74,18 @@ export default function KycQueue() {
           { value: 'rejected', label: 'Rejected' },
         ]}
       />
-      <FilterBar>
-        <FilterSelect label="Applicant type" value={s.subjectType} onChange={(v) => set({ subjectType: v })} options={[{ value: 'user', label: 'Renters' }, { value: 'vendor', label: 'Hosts' }]} allLabel="Renters and hosts" />
-      </FilterBar>
       <DataTable
         columns={columns}
         rows={rows}
         loading={isLoading}
         error={error}
         onRetry={refetch}
-        rowHref={(k) => `/kyc/${k.id}`}
+        rowHref={(k) => `/renter-kyc/${k.id}`}
         empty={
           <EmptyState
             icon={ShieldCheck}
             title={s.status === 'pending' ? 'All caught up' : `No ${s.status} submissions`}
-            description={s.status === 'pending' ? 'New KYC submissions from renters and hosts will appear here for review.' : 'Reviewed submissions are listed here, newest first.'}
+            description={s.status === 'pending' ? 'New KYC submissions from renters will appear here for review.' : 'Reviewed submissions are listed here, newest first.'}
           />
         }
         footer={<Pagination meta={meta} onPage={(p) => set({ page: p })} />}

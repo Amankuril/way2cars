@@ -15,6 +15,7 @@ import { Button } from '@/admin/components/Button.jsx';
 import { Tabs } from '@/admin/components/Tabs.jsx';
 import { DailyChart, fillDays, compactRupees } from '@/admin/components/Charts.jsx';
 import { useAuth } from '@/admin/auth/AuthContext.jsx';
+import { useRenterKycPending } from '@/admin/lib/hooks.js';
 import { cn, fmtNumber, istToday } from '@/admin/lib/utils.js';
 
 const ACTIVE = ['confirmed', 'ongoing', 'return_pending'];
@@ -61,6 +62,7 @@ export default function Dashboard() {
   const trend = data ? fillDays(data.trend, istToday(-13), istToday(), ['bookings', 'gbvPaise']) : [];
   const q = data?.queues || {};
   const link = (perm, to) => (can(perm) ? to : null);
+  const renterKyc = useRenterKycPending(can('kyc.review'));
 
   return (
     <>
@@ -140,8 +142,8 @@ export default function Dashboard() {
                 <div className="space-y-3 p-5">{Array.from({ length: 6 }, (_, i) => <Skeleton key={i} className="h-8" />)}</div>
               ) : (
                 <ul className="divide-y divide-line">
-                  <QueueRow icon={ShieldCheck} label="KYC to review" hint="Renter & host identity checks" count={q.kyc} to={link('kyc.review', '/kyc?status=pending')} />
-                  <QueueRow icon={Building2} label="Host approvals" hint="Applications awaiting a decision" count={q.vendorApprovals} to={link('vendors.read', '/hosts?status=pending_approval')} />
+                  <QueueRow icon={Building2} label="Host requests" hint="New hosts to approve" count={q.vendorApprovals} to={link('vendors.read', '/hosts/requests')} />
+                  <QueueRow icon={ShieldCheck} label="Renter KYC to review" hint="Licence and ID checks" count={renterKyc} to={link('kyc.review', '/renter-kyc')} />
                   <QueueRow icon={Car} label="Car listings to review" hint="New or changed listings" count={q.vehicleReviews} to={link('vehicles.read', '/vehicles?approval=pending_review')} />
                   <QueueRow icon={LifeBuoy} label="Open tickets" hint="Open or in progress" count={q.openTickets} to={link('support.manage', '/support')} />
                   <QueueRow icon={Siren} label="Active roadside requests" hint="Not yet resolved" count={q.roadside} urgent to={link('support.manage', '/support?category=roadside')} />

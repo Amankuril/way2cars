@@ -97,3 +97,15 @@ export function useDocumentTitle(title) {
     document.title = title ? `${title} · WAY2CARS Admin` : 'WAY2CARS Admin';
   }, [title]);
 }
+
+/** Number of renter KYC submissions waiting for review (sidebar badge + dashboard queue). */
+export function useRenterKycPending(enabled = true) {
+  const q = useQuery({
+    queryKey: ['renter-kyc-count'],
+    queryFn: () => api.list('/api/v1/admin/kyc', { status: 'pending', subjectType: 'user', limit: 1 }),
+    enabled,
+    refetchInterval: 60_000,
+    staleTime: 30_000,
+  });
+  return q.data?.meta?.total;
+}

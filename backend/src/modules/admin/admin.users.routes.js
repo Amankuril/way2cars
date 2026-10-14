@@ -95,11 +95,12 @@ adminUsersRouter.post('/:id/wallet-adjustment', requirePermission('refunds.manag
 // ================================================================= vendors
 export const adminVendorsRouter = Router();
 
-adminVendorsRouter.get('/', requirePermission('vendors.read'), validate({ query: z.object({ ...paginationQuery, q: z.string().trim().max(100).optional(), status: z.enum(['onboarding', 'pending_approval', 'approved', 'rejected', 'suspended', 'deleted']).optional() }) }), async (req, res) => {
-  const { page, limit, q, status } = req.valid.query;
+adminVendorsRouter.get('/', requirePermission('vendors.read'), validate({ query: z.object({ ...paginationQuery, q: z.string().trim().max(100).optional(), status: z.enum(['onboarding', 'pending_approval', 'approved', 'rejected', 'suspended', 'deleted']).optional(), notStatus: z.enum(['pending_approval', 'deleted']).optional() }) }), async (req, res) => {
+  const { page, limit, q, status, notStatus } = req.valid.query;
   const filter = { ...searchFilter(q) };
   if (q && !filter.phone) filter.$or.push({ businessName: new RegExp(escapeRegex(q), 'i') });
   if (status) filter.status = status;
+  else if (notStatus) filter.status = { $ne: notStatus };
   const sort = status === 'pending_approval' ? { submittedAt: 1 } : { createdAt: -1 };
   const { items, meta } = await paginate(Vendor, filter, { page, limit, sort });
   const counts = await Vehicle.aggregate([{ $match: { vendorId: { $in: items.map((v) => v._id) } } }, { $group: { _id: '$vendorId', total: { $sum: 1 }, listed: { $sum: { $cond: ['$isListed', 1, 0] } } } }]);

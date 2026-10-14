@@ -1,5 +1,5 @@
 import { lazy, Suspense } from 'react';
-import { createBrowserRouter, Navigate } from 'react-router';
+import { createBrowserRouter, Navigate, useLocation } from 'react-router';
 import { RouterProvider } from 'react-router/dom';
 import { Layout } from '@/admin/components/Layout.jsx';
 import { RequireAuth, RequirePermission, FullPageLoader } from '@/admin/auth/guards.jsx';
@@ -19,6 +19,7 @@ const KycQueue = page(() => import('@/admin/pages/verification/KycQueue.jsx'));
 const KycReview = page(() => import('@/admin/pages/verification/KycReview.jsx'));
 const VehiclesList = page(() => import('@/admin/pages/fleet/VehiclesList.jsx'));
 const VehicleDetail = page(() => import('@/admin/pages/fleet/VehicleDetail.jsx'));
+const HostRequests = page(() => import('@/admin/pages/fleet/HostRequests.jsx'));
 const HostsList = page(() => import('@/admin/pages/fleet/HostsList.jsx'));
 const HostDetail = page(() => import('@/admin/pages/fleet/HostDetail.jsx'));
 const UsersList = page(() => import('@/admin/pages/customers/UsersList.jsx'));
@@ -40,6 +41,16 @@ const AuditLog = page(() => import('@/admin/pages/system/AuditLog.jsx'));
 const Integrations = page(() => import('@/admin/pages/system/Integrations.jsx'));
 const Security = page(() => import('@/admin/pages/system/Security.jsx'));
 const NotFound = page(() => import('@/admin/pages/NotFound.jsx'));
+
+/** Old "/kyc" bookmarks: renter KYC now lives under Customers, host KYC under Host requests. */
+function KycRedirect() {
+  const { search } = useLocation();
+  const params = new URLSearchParams(search);
+  if (params.get('subjectType') === 'vendor') return <Navigate to="/hosts/requests" replace />;
+  params.delete('subjectType');
+  const rest = params.toString();
+  return <Navigate to={`/renter-kyc${rest ? `?${rest}` : ''}`} replace />;
+}
 
 const guard = (perm, Component) => (
   <RequirePermission perm={perm}>
@@ -75,11 +86,15 @@ const router = createBrowserRouter(
         { path: 'bookings/:id', element: guard('bookings.read', BookingDetail) },
         { path: 'support', element: guard('support.manage', TicketsList) },
         { path: 'support/:id', element: guard('support.manage', TicketDetail) },
-        { path: 'kyc', element: guard('kyc.review', KycQueue) },
+        { path: 'renter-kyc', element: guard('kyc.review', KycQueue) },
+        { path: 'renter-kyc/:id', element: guard('kyc.review', KycReview) },
+        { path: 'kyc', element: <KycRedirect /> },
         { path: 'kyc/:id', element: guard('kyc.review', KycReview) },
         { path: 'vehicles', element: guard('vehicles.read', VehiclesList) },
         { path: 'vehicles/:id', element: guard('vehicles.read', VehicleDetail) },
         { path: 'hosts', element: guard('vendors.read', HostsList) },
+        { path: 'hosts/requests', element: guard('vendors.read', HostRequests) },
+        { path: 'hosts/requests/:id', element: guard('vendors.read', HostRequests) },
         { path: 'hosts/:id', element: guard('vendors.read', HostDetail) },
         { path: 'users', element: guard('users.read', UsersList) },
         { path: 'users/:id', element: guard('users.read', UserDetail) },

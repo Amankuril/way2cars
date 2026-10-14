@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link, useParams } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
-import { CircleCheck, CircleX, Ban, RotateCcw, Star, Landmark } from 'lucide-react';
+import { CircleCheck, CircleX, Ban, RotateCcw, Star, Landmark, UserCheck } from 'lucide-react';
 import { api, ADMIN } from '@/admin/lib/api.js';
 import { money, dateTime, dateLong, maskPhone } from '@shared/lib/format.js';
 import { VENDOR_STATUS, KYC_STATUS, KYC_SUBMISSION_STATUS, BANK_STATUS, BOOKING_STATUS, VEHICLE_APPROVAL, VEHICLE_STATUS, ID_PROOF } from '@/admin/lib/labels.js';
@@ -39,7 +39,7 @@ export default function HostDetail() {
   const [decision, setDecision] = useState(null);
   const [bankDecision, setBankDecision] = useState(null);
   const { data: v, isLoading, error, refetch } = useQuery({ queryKey: ['host', id], queryFn: () => api.get(`${ADMIN}/vendors/${id}`) });
-  const invalidate = [['host', id], ['hosts'], ['dashboard']];
+  const invalidate = [['host', id], ['hosts'], ['dashboard'], ['kyc']];
 
   const decide = useAction((body) => api.post(`${ADMIN}/vendors/${id}/decision`, body), {
     success: (d, b) => {
@@ -66,10 +66,10 @@ export default function HostDetail() {
   const totalBookings = Object.values(counts).reduce((a, b) => a + b, 0);
   const d = decision ? DECISIONS[decision] : null;
 
+  // Pending hosts are approved or rejected (KYC + bank + host together) on the Host requests page.
   const actions = manage ? (
     <>
-      {['pending_approval', 'rejected'].includes(v.status) ? <Button variant="success" icon={CircleCheck} onClick={() => setDecision('approve')}>Approve host</Button> : null}
-      {v.status === 'pending_approval' ? <Button variant="danger-outline" icon={CircleX} onClick={() => setDecision('reject')}>Request changes…</Button> : null}
+      {v.status === 'pending_approval' ? <ButtonLink variant="primary" icon={UserCheck} to={`/hosts/requests/${v.id}`}>Review request</ButtonLink> : null}
       {v.status === 'suspended' ? <Button icon={RotateCcw} onClick={() => setDecision('reactivate')}>Reactivate…</Button> : null}
       {!['suspended', 'deleted'].includes(v.status) ? <Button variant="danger-outline" icon={Ban} onClick={() => setDecision('suspend')}>Suspend…</Button> : null}
     </>

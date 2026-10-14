@@ -56,9 +56,9 @@ export default function KycReview() {
 
   const review = useAction((body) => api.post(`${ADMIN}/kyc/${id}/review`, body), {
     success: (_d, v) => (v.decision === 'approve' ? 'KYC approved' : 'KYC rejected — the applicant has been told what to fix'),
-    invalidate: [['kyc'], ['dashboard'], ['users'], ['hosts']],
+    invalidate: [['kyc'], ['dashboard'], ['users'], ['hosts'], ['renter-kyc-count']],
     toastError: false,
-    onSuccess: () => navigate('/kyc'),
+    onSuccess: () => navigate(k?.subjectType === 'vendor' ? `/hosts/${k.subjectId}` : '/renter-kyc'),
   });
 
   if (isLoading) return <DetailSkeleton />;
@@ -91,7 +91,7 @@ export default function KycReview() {
   return (
     <>
       <PageHeader
-        back={{ to: '/kyc', label: 'KYC queue' }}
+        back={isUser ? { to: '/renter-kyc', label: 'Renter KYC' } : { to: `/hosts/${k.subjectId}`, label: 'Host profile' }}
         title={subject.businessName || subject.name || 'KYC submission'}
         crumb="KYC review"
         meta={
@@ -103,6 +103,13 @@ export default function KycReview() {
         description={`Submitted ${dateTime(k.createdAt)} IST. Full document numbers are shown for comparison; this view is audited.`}
         actions={canProfile ? <Link to={profileHref} className="link inline-flex items-center gap-1 text-label"><Eye className="h-4 w-4" aria-hidden="true" /> Open {isUser ? 'renter' : 'host'} profile</Link> : null}
       />
+
+      {!isUser && pending && can('vendors.read') ? (
+        <div className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-brand-100 bg-brand-50 p-4 text-bodySm text-brand-700">
+          <span>Host KYC is now reviewed together with their bank details in one step.</span>
+          <Link to={`/hosts/requests/${k.subjectId}`} className="font-semibold underline underline-offset-2">Open host request</Link>
+        </div>
+      ) : null}
 
       <div className="grid gap-5 xl:grid-cols-3">
         <div className="min-w-0 space-y-5 xl:col-span-2">

@@ -169,7 +169,7 @@ export default function UserDetail() {
         </div>
 
         <div className="min-w-0 space-y-5">
-          <Panel title="KYC" actions={k && can('kyc.review') ? <Link to={`/kyc/${k.id}`} className="link text-label">{k.status === 'pending' ? 'Review now' : 'Open review'}</Link> : null}>
+          <Panel title="KYC" actions={k && can('kyc.review') ? <Link to={`/renter-kyc/${k.id}`} className="link text-label">{k.status === 'pending' ? 'Review now' : 'Open review'}</Link> : null}>
             {k ? (
               <KeyValue
                 columns={1}

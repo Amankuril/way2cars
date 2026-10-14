@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { ChevronDown, ChevronRight, KeyRound, LogOut, Menu, X } from 'lucide-react';
 import { NAV, matchNav, ROLE_LABEL } from '@/admin/lib/nav.js';
 import { api, ADMIN } from '@/admin/lib/api.js';
+import { useRenterKycPending } from '@/admin/lib/hooks.js';
 import { cn } from '@/admin/lib/utils.js';
 import { initials } from '@shared/lib/format.js';
 import { useAuth } from '@/admin/auth/AuthContext.jsx';
@@ -13,8 +14,8 @@ import { useToast } from './Toast.jsx';
 
 /** Sidebar badge counts come from the live dashboard queues. */
 const BADGES = {
-  '/kyc': (q) => q.kyc,
-  '/hosts': (q) => q.vendorApprovals,
+  '/renter-kyc': (q) => q.renterKyc,
+  '/hosts/requests': (q) => q.vendorApprovals,
   '/vehicles': (q) => q.vehicleReviews,
   '/support': (q) => q.openTickets,
   '/payouts': (q) => q.payouts,
@@ -39,7 +40,11 @@ function Sidebar({ onNavigate }) {
     refetchInterval: 60_000,
     staleTime: 30_000,
   });
-  const queues = data?.queues;
+  const renterKyc = useRenterKycPending(can('kyc.review'));
+  const queues = data?.queues || renterKyc ? { ...data?.queues, renterKyc } : null; // renter-only KYC count
+  // One active item per route: the longest matching nav path ("/hosts/requests" wins over "/hosts").
+  const { pathname } = useLocation();
+  const activeTo = matchNav(pathname)?.item.to;
 
   return (
     <nav aria-label="Main" className="scroll-thin flex-1 overflow-y-auto px-3 pb-6 pt-2">
@@ -61,22 +66,26 @@ function Sidebar({ onNavigate }) {
                       className={({ isActive }) =>
                         cn(
                           'group relative flex h-9 items-center gap-2.5 rounded-md px-3 text-label transition-colors',
-                          isActive ? 'bg-brand-50 text-brand-700' : 'text-ink-700 hover:bg-ink-100 hover:text-ink-900',
+                          isActive && activeTo === item.to ? 'bg-brand-50 text-brand-700' : 'text-ink-700 hover:bg-ink-100 hover:text-ink-900',
                         )
                       }
+                      aria-current={activeTo === item.to ? 'page' : 'false'}
                     >
-                      {({ isActive }) => (
-                        <>
-                          <span className={cn('absolute left-0 top-1.5 bottom-1.5 w-[3px] rounded-r-full', isActive ? 'bg-brand-500' : 'bg-transparent')} aria-hidden="true" />
-                          <item.icon className={cn('h-4 w-4 shrink-0', isActive ? 'text-brand-600' : 'text-ink-500 group-hover:text-ink-700')} aria-hidden="true" strokeWidth={2.1} />
-                          <span className="truncate">{item.label}</span>
-                          {badge ? (
-                            <span className={cn('num ml-auto rounded-full px-1.5 py-px text-caption font-bold', isActive ? 'bg-brand-500 text-white' : 'bg-ink-100 text-ink-700')} aria-label={`${badge} waiting`}>
-                              {badge > 99 ? '99+' : badge}
-                            </span>
-                          ) : null}
-                        </>
-                      )}
+                      {({ isActive: routeActive }) => {
+                        const isActive = routeActive && activeTo === item.to;
+                        return (
+                          <>
+                            <span className={cn('absolute left-0 top-1.5 bottom-1.5 w-[3px] rounded-r-full', isActive ? 'bg-brand-500' : 'bg-transparent')} aria-hidden="true" />
+                            <item.icon className={cn('h-4 w-4 shrink-0', isActive ? 'text-brand-600' : 'text-ink-500 group-hover:text-ink-700')} aria-hidden="true" strokeWidth={2.1} />
+                            <span className="truncate">{item.label}</span>
+                            {badge ? (
+                              <span className={cn('num ml-auto rounded-full px-1.5 py-px text-caption font-bold', isActive ? 'bg-brand-500 text-white' : 'bg-ink-100 text-ink-700')} aria-label={`${badge} waiting`}>
+                                {badge > 99 ? '99+' : badge}
+                              </span>
+                            ) : null}
+                          </>
+                        );
+                      }}
                     </NavLink>
                   </li>
                 );

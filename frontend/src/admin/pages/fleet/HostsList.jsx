@@ -1,6 +1,7 @@
-import { Link } from 'react-router';
-import { Building2, Star } from 'lucide-react';
-import { ADMIN } from '@/admin/lib/api.js';
+import { Link, Navigate } from 'react-router';
+import { useQuery } from '@tanstack/react-query';
+import { Building2, Star, UserCheck, ArrowRight } from 'lucide-react';
+import { api, ADMIN } from '@/admin/lib/api.js';
 import { dateTime, maskPhone } from '@shared/lib/format.js';
 import { VENDOR_STATUS, KYC_STATUS } from '@/admin/lib/labels.js';
 import { useListQuery, useSearchState } from '@/admin/lib/hooks.js';
@@ -8,7 +9,7 @@ import { compact } from '@/admin/lib/utils.js';
 import { PageHeader } from '@/admin/components/PageHeader.jsx';
 import { DataTable, CellStack } from '@/admin/components/DataTable.jsx';
 import { Pagination } from '@/admin/components/Pagination.jsx';
-import { FilterBar, FilterSelect, SearchInput } from '@/admin/components/Filters.jsx';
+import { FilterBar, SearchInput } from '@/admin/components/Filters.jsx';
 import { StatusPill } from '@/admin/components/StatusPill.jsx';
 import { EmptyState } from '@/admin/components/EmptyState.jsx';
 import { Tabs } from '@/admin/components/Tabs.jsx';
@@ -17,8 +18,12 @@ const STEP_LABEL = { profile: 'Profile', business: 'Business details', kyc: 'KYC
 
 export default function HostsList() {
   const [s, set] = useSearchState({ page: 1, status: '', q: '' });
-  const query = compact({ page: s.page, limit: 25, status: s.status, q: s.q });
+  const query = compact({ page: s.page, limit: 25, status: s.status, notStatus: s.status ? undefined : 'pending_approval', q: s.q });
   const { rows, meta, isLoading, error, refetch } = useListQuery(['hosts'], `${ADMIN}/vendors`, query);
+  const pendingCount = useQuery({ queryKey: ['hosts', 'requests', 'count'], queryFn: () => api.list(`${ADMIN}/vendors`, { status: 'pending_approval', limit: 1 }) }).data?.meta?.total;
+  // Hosts awaiting approval are reviewed on the Host requests page.
+  const hostHref = (v) => (v.status === 'pending_approval' ? `/hosts/requests/${v.id}` : `/hosts/${v.id}`);
+  if (s.status === 'pending_approval') return <Navigate to="/hosts/requests" replace />;
 
   const columns = [
     {
@@ -26,7 +31,7 @@ export default function HostsList() {
       header: 'Host',
       cell: (v) => (
         <div className="min-w-0">
-          <Link to={`/hosts/${v.id}`} className="block max-w-[260px] truncate font-semibold text-ink-900 hover:text-brand-600 hover:underline">
+          <Link to={hostHref(v)} className="block max-w-[260px] truncate font-semibold text-ink-900 hover:text-brand-600 hover:underline">
             {v.businessName || v.name || 'Unnamed host'}
           </Link>
           <div className="truncate text-caption text-ink-500">
@@ -62,14 +67,21 @@ export default function HostsList() {
     },
     {
       key: 'date',
-      header: s.status === 'pending_approval' ? 'Submitted' : 'Joined',
-      cell: (v) => <span className="whitespace-nowrap text-ink-600">{dateTime(s.status === 'pending_approval' && v.submittedAt ? v.submittedAt : v.createdAt)}</span>,
+      header: 'Joined',
+      cell: (v) => <span className="whitespace-nowrap text-ink-600">{dateTime(v.createdAt)}</span>,
     },
   ];
 
   return (
     <>
-      <PageHeader title="Hosts" description="Car owners and fleet partners. Approve applications once KYC and bank details are verified." />
+      <PageHeader title="Hosts" description="Car owners and fleet partners. New applications are reviewed in Host requests." />
+      {pendingCount ? (
+        <Link to="/hosts/requests" className="group mb-4 flex items-center gap-3 rounded-lg border border-warning-100 bg-warning-50 px-4 py-3 text-bodySm text-warning-700 hover:border-warning-500">
+          <UserCheck className="h-4 w-4 shrink-0" aria-hidden="true" />
+          <span className="min-w-0 flex-1"><span className="font-bold">{pendingCount} host {pendingCount === 1 ? 'request is' : 'requests are'} waiting for review.</span></span>
+          <span className="inline-flex shrink-0 items-center gap-1 font-semibold">Review <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" aria-hidden="true" /></span>
+        </Link>
+      ) : null}
       <Tabs
         className="mb-4"
         label="Host status"
@@ -77,7 +89,6 @@ export default function HostsList() {
         onChange={(v) => set({ status: v })}
         items={[
           { value: '', label: 'All' },
-          { value: 'pending_approval', label: 'Awaiting approval', count: s.status === 'pending_approval' ? meta?.total : undefined },
           { value: 'approved', label: 'Approved' },
           { value: 'onboarding', label: 'Onboarding' },
           { value: 'rejected', label: 'Changes needed' },
@@ -86,7 +97,6 @@ export default function HostsList() {
       />
       <FilterBar>
         <SearchInput value={s.q} onChange={(v) => set({ q: v })} placeholder="Name, business, phone or email" label="Search hosts" className="sm:w-72" />
-        <FilterSelect label="Status" value={s.status} onChange={(v) => set({ status: v })} options={VENDOR_STATUS} allLabel="Any status" />
       </FilterBar>
       <DataTable
         columns={columns}
@@ -94,7 +104,7 @@ export default function HostsList() {
         loading={isLoading}
         error={error}
         onRetry={refetch}
-        rowHref={(v) => `/hosts/${v.id}`}
+        rowHref={hostHref}
         empty={
           <EmptyState
             icon={Building2}
