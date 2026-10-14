@@ -147,3 +147,9 @@ dependencies {
         implementation jscFlavor
     }
 }
+
+// The JS bundle also depends on ../shared, which Gradle does not track as an input, so a change
+// there alone would otherwise ship a stale bundle. Always re-bundle.
+tasks.configureEach { task ->
+    if (task.name.startsWith("createBundle")) task.outputs.upToDateWhen { false }
+}
