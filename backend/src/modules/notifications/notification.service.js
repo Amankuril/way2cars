@@ -1,7 +1,6 @@
 import { env } from '../../config/env.js';
 import { logger } from '../../core/logger.js';
 import { sendPush } from '../../integrations/firebase.js';
-import { sendSms } from '../../integrations/sms.js';
 import { sendEmail } from '../../integrations/email.js';
 import { Notification, DeviceToken } from './notification.model.js';
 import { User } from '../users/user.model.js';
@@ -19,16 +18,16 @@ const APP_PATH = { user: '/user', vendor: '/vendor', admin: '/admin' };
 
 const T = {
   'booking.created_pending_vendor': (d) => ({ category: 'booking', title: 'Booking request sent', body: `We've asked the host to confirm ${d.vehicle}. You'll hear back within ${d.slaMinutes} minutes.`, link: `/trips/${d.bookingId}` }),
-  'booking.confirmed': (d) => ({ category: 'booking', title: 'Booking confirmed', body: `${d.vehicle} is booked from ${d.start} to ${d.end}. Ref ${d.ref}.`, link: `/trips/${d.bookingId}`, sms: { tpl: 'booking_confirmed', data: { ref: d.ref, vehicle: d.vehicle, start: d.start, end: d.end } }, email: true }),
+  'booking.confirmed': (d) => ({ category: 'booking', title: 'Booking confirmed', body: `${d.vehicle} is booked from ${d.start} to ${d.end}. Ref ${d.ref}.`, link: `/trips/${d.bookingId}`, email: true }),
   'booking.rejected': (d) => ({ category: 'booking', title: 'Host could not confirm', body: `The host declined booking ${d.ref}. A full refund has been initiated.`, link: `/trips/${d.bookingId}`, email: true }),
   'booking.cancelled': (d) => ({ category: 'booking', title: 'Booking cancelled', body: `Booking ${d.ref} was cancelled.${d.refundPaise ? ` Refund of ₹${(d.refundPaise / 100).toFixed(0)} initiated.` : ''}`, link: `/trips/${d.bookingId}`, email: true }),
   'booking.expired': (d) => ({ category: 'booking', title: 'Booking not completed', body: `Payment for ${d.vehicle} wasn't completed in time, so the hold was released.`, link: `/trips/${d.bookingId}` }),
   'booking.extended': (d) => ({ category: 'booking', title: 'Trip extended', body: `Booking ${d.ref} now ends ${d.end}.`, link: `/trips/${d.bookingId}` }),
-  'payment.succeeded': (d) => ({ category: 'payment', title: 'Payment received', body: `₹${(d.amountPaise / 100).toFixed(2)} received for booking ${d.ref}.`, link: `/trips/${d.bookingId}`, sms: { tpl: 'payment', data: { amount: (d.amountPaise / 100).toFixed(2), ref: d.ref, status: 'successful' } } }),
+  'payment.succeeded': (d) => ({ category: 'payment', title: 'Payment received', body: `₹${(d.amountPaise / 100).toFixed(2)} received for booking ${d.ref}.`, link: `/trips/${d.bookingId}` }),
   'payment.failed': (d) => ({ category: 'payment', title: 'Payment failed', body: `Your payment for booking ${d.ref} did not go through. No money was deducted, or it will be auto-reversed by your bank.`, link: `/trips/${d.bookingId}` }),
   'refund.processed': (d) => ({ category: 'payment', title: 'Refund processed', body: `₹${(d.amountPaise / 100).toFixed(2)} has been refunded for booking ${d.ref}. It can take 5–7 working days to reflect.`, link: `/trips/${d.bookingId}`, email: true }),
-  'trip.pickup_reminder': (d) => ({ category: 'trip', title: 'Pickup reminder', body: `Your trip with ${d.vehicle} starts at ${d.start}. Keep your licence handy.`, link: `/trips/${d.bookingId}`, sms: { tpl: 'reminder', data: { kind: 'pickup', ref: d.ref, at: d.start } } }),
-  'trip.return_reminder': (d) => ({ category: 'trip', title: 'Return reminder', body: `Please return ${d.vehicle} by ${d.end}. Late returns are charged.`, link: `/trips/${d.bookingId}`, sms: { tpl: 'reminder', data: { kind: 'return', ref: d.ref, at: d.end } } }),
+  'trip.pickup_reminder': (d) => ({ category: 'trip', title: 'Pickup reminder', body: `Your trip with ${d.vehicle} starts at ${d.start}. Keep your licence handy.`, link: `/trips/${d.bookingId}` }),
+  'trip.return_reminder': (d) => ({ category: 'trip', title: 'Return reminder', body: `Please return ${d.vehicle} by ${d.end}. Late returns are charged.`, link: `/trips/${d.bookingId}` }),
   'trip.started': (d) => ({ category: 'trip', title: 'Trip started', body: `Drive safe! Your trip ${d.ref} has started.`, link: `/trips/${d.bookingId}` }),
   'trip.completed': (d) => ({ category: 'trip', title: 'Trip completed', body: `Thanks for driving with WAY2CARS. ${d.depositRefundPaise ? `₹${(d.depositRefundPaise / 100).toFixed(0)} of your deposit is being refunded.` : ''}`.trim(), link: `/trips/${d.bookingId}`, email: true }),
   'kyc.approved': () => ({ category: 'kyc', title: 'Verification approved', body: 'Your documents are verified. You can now book any car.', link: '/profile/kyc' }),
@@ -37,7 +36,7 @@ const T = {
   'support.reply': (d) => ({ category: 'support', title: 'Support replied', body: `New reply on ticket ${d.ref}.`, link: `/support/${d.ticketId}` }),
   'promo.broadcast': (d) => ({ category: 'promo', title: d.title, body: d.body, link: d.link || '/', promotional: true }),
   // vendor
-  'vendor.booking_request': (d) => ({ category: 'booking', title: 'New booking request', body: `${d.vehicle}, ${d.start} – ${d.end}. Respond within ${d.slaMinutes} minutes.`, link: `/bookings/${d.bookingId}`, sms: { tpl: 'vendor_booking', data: { ref: d.ref, vehicle: d.vehicle, start: d.start, end: d.end } } }),
+  'vendor.booking_request': (d) => ({ category: 'booking', title: 'New booking request', body: `${d.vehicle}, ${d.start} – ${d.end}. Respond within ${d.slaMinutes} minutes.`, link: `/bookings/${d.bookingId}` }),
   'vendor.booking_confirmed': (d) => ({ category: 'booking', title: 'New confirmed booking', body: `${d.vehicle} is booked ${d.start} – ${d.end}.`, link: `/bookings/${d.bookingId}` }),
   'vendor.booking_cancelled': (d) => ({ category: 'booking', title: 'Booking cancelled', body: `Booking ${d.ref} for ${d.vehicle} was cancelled.`, link: `/bookings/${d.bookingId}` }),
   'vendor.return_submitted': (d) => ({ category: 'trip', title: 'Car returned — review needed', body: `Review the return of ${d.vehicle} (booking ${d.ref}) within ${d.hours} hours.`, link: `/bookings/${d.bookingId}` }),
@@ -97,9 +96,6 @@ export async function notify(event, to, data = {}, { dedupeKey } = {}) {
         if (r.deadTokens.length) await DeviceToken.deleteMany({ token: { $in: r.deadTokens } });
         channels.push = r.skipped ? 'skipped' : r.sent ? 'sent' : 'failed';
       }
-    }
-    if (tpl.sms && prefs.sms !== false && account.phone) {
-      channels.sms = (await sendSms(account.phone, tpl.sms.tpl, tpl.sms.data, { retries: 0 })).status;
     }
     if ((tpl.email || to.realm === 'admin') && prefs.email !== false && account.email) {
       channels.email = (await sendEmail({

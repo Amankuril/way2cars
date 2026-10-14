@@ -1,85 +1,79 @@
 import { env } from '../config/env.js';
 import { logger } from '../core/logger.js';
 import { maskPhone } from '../core/phone.js';
-import { fetchWithRetry } from './http.js';
 
 /**
- * SMS India Hub — the ONLY place that talks to the SMS provider.
- * Transactional REST API: POST {SMSINDIAHUB_API_URL} with JSON body; ErrorCode "000" = accepted.
- * Indian DLT rules: message text must match the registered template exactly; the template id is
- * passed per message type and the principal entity id (PEId) per account.
+ * SMS India Hub — the ONLY place that talks to the SMS provider, and it is used ONLY for login
+ * OTPs (bookings, payments and reminders go out by push, email and in-app).
+ * Endpoint and parameters follow the SMS India Hub "vendorsms" push API. Indian DLT rules: the
+ * text must match the registered template exactly, and the sender ID must be the DLT header
+ * linked to that template.
  */
 
-const TEMPLATES = {
-  otp: { id: () => env.SMS_TEMPLATE_OTP, text: (d) => `${d.otp} is your WAY2CARS verification code. It is valid for ${d.minutes} minutes. Do not share it with anyone.` },
-  booking_confirmed: { id: () => env.SMS_TEMPLATE_BOOKING_CONFIRMED, text: (d) => `Your WAY2CARS booking ${d.ref} for ${d.vehicle} is confirmed. Pickup: ${d.start}. Return: ${d.end}.` },
-  payment: { id: () => env.SMS_TEMPLATE_PAYMENT, text: (d) => `WAY2CARS: payment of Rs ${d.amount} for booking ${d.ref} was ${d.status}.` },
-  reminder: { id: () => env.SMS_TEMPLATE_REMINDER, text: (d) => `WAY2CARS reminder: your ${d.kind} for booking ${d.ref} is at ${d.at}.` },
-  vendor_booking: { id: () => env.SMS_TEMPLATE_VENDOR_BOOKING, text: (d) => `WAY2CARS: new booking request ${d.ref} for ${d.vehicle} from ${d.start} to ${d.end}. Please respond in the host app.` },
-  generic: { id: () => env.SMS_TEMPLATE_GENERIC, text: (d) => d.text },
-};
+const PUSH_URL = 'https://cloud.smsindiahub.in/vendorsms/pushsms.aspx';
 
-export const smsConfigured = () => Boolean(env.SMS_ENABLED && env.SMSINDIAHUB_API_KEY && env.SMSINDIAHUB_SENDER_ID);
+export const smsConfigured = () => Boolean(env.SMS_ENABLED && env.SMS_INDIA_HUB_API_KEY && env.SMS_INDIA_HUB_SENDER_ID);
+
+export const buildOtpMessage = (otp) => env.SMS_INDIA_HUB_OTP_TEMPLATE.split('{otp}').join(String(otp));
 
 /**
- * Sends a templated SMS. Returns { status: 'sent'|'skipped'|'failed', providerRef?, error? }.
- * Never throws for provider failures — callers decide how to surface them.
+ * SMS India Hub answers HTTP 200 for failures too. Success is JSON `{"ErrorCode":"000", …}`;
+ * failures come as JSON with another code or as plain text such as "Failed#Parameter Missing".
  */
-export async function sendSms(phone10, templateKey, data, { retries = 1 } = {}) {
-  const tpl = TEMPLATES[templateKey];
-  if (!tpl) throw new Error(`Unknown SMS template ${templateKey}`);
-  if (!smsConfigured()) {
-    logger.info({ to: maskPhone(phone10), template: templateKey }, 'sms skipped (provider not configured)');
-    return { status: 'skipped' };
-  }
-  const body = {
-    'Account.APIKey': env.SMSINDIAHUB_API_KEY,
-    SenderId: env.SMSINDIAHUB_SENDER_ID,
-    Channel: env.SMSINDIAHUB_CHANNEL,
-    DCS: '0',
-    FlashSMS: '0',
-    Number: `91${phone10}`,
-    Route: env.SMSINDIAHUB_ROUTE,
-    Message: tpl.text(data),
-  };
-  if (env.SMSINDIAHUB_PEID) body.PEId = env.SMSINDIAHUB_PEID;
-  const templateId = tpl.id();
-  if (templateId) body.TemplateId = templateId;
-
+export function parseResponse(status, text) {
+  const body = String(text || '').trim();
+  let json = null;
   try {
-    // Retries only on network failure/5xx — a 200 with an error code is not retried (could double-send).
-    const res = await fetchWithRetry(
-      env.SMSINDIAHUB_API_URL,
-      { method: 'POST', headers: { 'content-type': 'application/json', accept: 'application/json' }, body: JSON.stringify(body) },
-      { timeoutMs: env.SMSINDIAHUB_TIMEOUT_MS, retries },
-    );
-    const text = await res.text();
-    let json;
-    try {
-      json = JSON.parse(text);
-    } catch {
-      json = null;
-    }
-    if (res.ok && json && String(json.ErrorCode) === '000') {
-      const providerRef = json.JobId || json.MessageData?.[0]?.MessageId;
-      logger.info({ to: maskPhone(phone10), template: templateKey, providerRef }, 'sms sent');
-      return { status: 'sent', providerRef };
-    }
-    const error = json?.ErrorMessage || `HTTP ${res.status}`;
-    logger.error({ to: maskPhone(phone10), template: templateKey, providerCode: json?.ErrorCode, error }, 'sms rejected by provider');
-    return { status: 'failed', error };
-  } catch (err) {
-    logger.error({ to: maskPhone(phone10), template: templateKey, err: err.message }, 'sms request failed');
-    return { status: 'failed', error: err.message };
+    json = JSON.parse(body);
+  } catch {
+    // plain text
   }
+  if (json && typeof json === 'object' && 'ErrorCode' in json) {
+    const code = String(json.ErrorCode);
+    if (code === '000') return { ok: true, providerRef: json.JobId || json.MessageData?.[0]?.MessageId };
+    return { ok: false, code, reason: json.ErrorMessage || body };
+  }
+  if (status < 200 || status >= 300) return { ok: false, code: `HTTP_${status}`, reason: body };
+  if (!body || /fail|error|invalid|missing|denied|insufficient|blocked/i.test(body)) return { ok: false, code: 'TEXT', reason: body || 'empty response' };
+  return { ok: true, unverified: true }; // unrecognised but not an error: don't block the user
 }
 
-/** Delivery report lookup by provider job id. */
-export async function getDeliveryStatus(jobId) {
-  if (!smsConfigured()) return null;
-  const url = new URL(env.SMSINDIAHUB_DELIVERY_URL);
-  url.searchParams.set('APIKey', env.SMSINDIAHUB_API_KEY);
-  url.searchParams.set('jobid', jobId);
-  const res = await fetchWithRetry(url, {}, { timeoutMs: env.SMSINDIAHUB_TIMEOUT_MS, retries: 1 });
-  return res.ok ? res.json().catch(() => null) : null;
+/**
+ * Sends a login OTP. Returns { status: 'sent'|'skipped'|'failed', providerRef?, error? } and never
+ * throws — the OTP service decides what the user sees. Not retried: a retry could deliver two codes.
+ */
+export async function sendOtpSms(phone10, otp) {
+  if (!smsConfigured()) {
+    logger.info({ to: maskPhone(phone10) }, 'otp sms skipped (provider not configured)');
+    return { status: 'skipped' };
+  }
+  // HTTPS only: the API key travels as a query parameter.
+  const url = new URL(PUSH_URL);
+  url.searchParams.set('APIKey', env.SMS_INDIA_HUB_API_KEY);
+  url.searchParams.set('sid', env.SMS_INDIA_HUB_SENDER_ID);
+  url.searchParams.set('msisdn', `91${String(phone10).replace(/\D/g, '').slice(-10)}`);
+  url.searchParams.set('msg', buildOtpMessage(otp));
+  url.searchParams.set('gwid', '2');
+  url.searchParams.set('fl', '0');
+  if (env.SMS_INDIA_HUB_USERNAME) url.searchParams.set('uname', env.SMS_INDIA_HUB_USERNAME);
+  if (env.SMS_INDIA_HUB_DLT_TEMPLATE_ID) url.searchParams.set('DLT_TE_ID', env.SMS_INDIA_HUB_DLT_TEMPLATE_ID);
+
+  let status;
+  let text;
+  try {
+    const res = await fetch(url, { signal: AbortSignal.timeout(env.SMS_INDIA_HUB_TIMEOUT_MS) });
+    status = res.status;
+    text = await res.text();
+  } catch (err) {
+    logger.error({ to: maskPhone(phone10), err: err.message }, 'otp sms request failed');
+    return { status: 'failed', error: err.message };
+  }
+  const result = parseResponse(status, text);
+  if (!result.ok) {
+    const hint = result.code === '006' ? ' (DLT template mismatch: the text must match SMS_INDIA_HUB_OTP_TEMPLATE exactly and the sender ID must be the linked DLT header)' : '';
+    logger.error({ to: maskPhone(phone10), providerCode: result.code, error: result.reason }, `otp sms rejected by provider${hint}`);
+    return { status: 'failed', error: result.reason };
+  }
+  logger.info({ to: maskPhone(phone10), providerRef: result.providerRef, unverified: result.unverified || undefined }, 'otp sms sent');
+  return { status: 'sent', providerRef: result.providerRef };
 }

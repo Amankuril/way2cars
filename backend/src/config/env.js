@@ -59,21 +59,16 @@ const schema = z.object({
   ADMIN_LOCKOUT_MINUTES: int(15, { min: 1, max: 1440 }),
   ADMIN_REQUIRE_MFA: bool(false),
 
+  // SMS India Hub — used ONLY for login OTPs. SMS_HUB_ENABLED is accepted as an alias of SMS_ENABLED.
   SMS_ENABLED: bool(false),
-  SMSINDIAHUB_API_URL: z.string().url().default('https://cloud.smsindiahub.in/api/mt/SendSMS'),
-  SMSINDIAHUB_DELIVERY_URL: z.string().url().default('https://cloud.smsindiahub.in/api/mt/GetDelivery'),
-  SMSINDIAHUB_API_KEY: optStr,
-  SMSINDIAHUB_SENDER_ID: optStr,
-  SMSINDIAHUB_ROUTE: z.string().default('1'),
-  SMSINDIAHUB_CHANNEL: z.string().default('2'),
-  SMSINDIAHUB_PEID: optStr,
-  SMSINDIAHUB_TIMEOUT_MS: int(8000, { min: 1000, max: 30000 }),
-  SMS_TEMPLATE_OTP: optStr,
-  SMS_TEMPLATE_BOOKING_CONFIRMED: optStr,
-  SMS_TEMPLATE_PAYMENT: optStr,
-  SMS_TEMPLATE_REMINDER: optStr,
-  SMS_TEMPLATE_VENDOR_BOOKING: optStr,
-  SMS_TEMPLATE_GENERIC: optStr,
+  SMS_HUB_ENABLED: optStr,
+  SMS_INDIA_HUB_USERNAME: optStr,
+  SMS_INDIA_HUB_API_KEY: optStr,
+  SMS_INDIA_HUB_SENDER_ID: optStr, // DLT header linked to the OTP template
+  SMS_INDIA_HUB_DLT_TEMPLATE_ID: optStr,
+  // Must match the DLT-approved text character for character; {otp} is replaced with the code.
+  SMS_INDIA_HUB_OTP_TEMPLATE: z.string().optional().transform((v) => (v && v.trim() ? v.trim() : '{otp} is your WAY2CARS verification code. Do not share it with anyone.')),
+  SMS_INDIA_HUB_TIMEOUT_MS: int(15000, { min: 1000, max: 30000 }),
 
   RAZORPAY_KEY_ID: optStr,
   RAZORPAY_KEY_SECRET: optStr,
@@ -83,8 +78,11 @@ const schema = z.object({
   GOOGLE_MAPS_BROWSER_KEY: optStr,
   MAPS_CACHE_TTL_SECONDS: int(86400, { min: 60 }),
 
-  FIREBASE_SERVICE_ACCOUNT_FILE: optStr,
+  // Service account: the JSON pasted inline, its base64, or a path to the file (outside the repo).
+  FIREBASE_SERVICE_ACCOUNT: optStr,
   FIREBASE_SERVICE_ACCOUNT_BASE64: optStr,
+  FIREBASE_SERVICE_ACCOUNT_FILE: optStr,
+  FIREBASE_SERVICE_ACCOUNT_PATH: optStr, // alias of FIREBASE_SERVICE_ACCOUNT_FILE
   FIREBASE_WEB_CONFIG_JSON: optStr, // public web config (apiKey, projectId, messagingSenderId, appId)
   FIREBASE_WEB_VAPID_KEY: optStr,
 
@@ -123,6 +121,9 @@ function load() {
     throw new Error(`Invalid environment configuration:\n${lines.join('\n')}`);
   }
   const e = parsed.data;
+  // Aliases (same names as other Appzeto projects' .env files).
+  if (e.SMS_HUB_ENABLED && /^(true|1|yes)$/i.test(e.SMS_HUB_ENABLED.trim())) e.SMS_ENABLED = true;
+  e.FIREBASE_SERVICE_ACCOUNT_FILE ||= e.FIREBASE_SERVICE_ACCOUNT_PATH;
   const isProd = e.NODE_ENV === 'production' || e.NODE_ENV === 'staging';
   const problems = [];
 
@@ -150,15 +151,16 @@ function load() {
     if (!e.COOKIE_SECURE) problems.push('COOKIE_SECURE must be true in production');
     if (!e.RAZORPAY_KEY_ID || !e.RAZORPAY_KEY_SECRET || !e.RAZORPAY_WEBHOOK_SECRET)
       problems.push('RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET and RAZORPAY_WEBHOOK_SECRET are required in production');
-    if (!e.OTP_BYPASS_ENABLED && (!e.SMS_ENABLED || !e.SMSINDIAHUB_API_KEY || !e.SMSINDIAHUB_SENDER_ID))
-      problems.push('SMS_ENABLED, SMSINDIAHUB_API_KEY and SMSINDIAHUB_SENDER_ID are required for live OTP delivery');
+    if (!e.OTP_BYPASS_ENABLED && (!e.SMS_ENABLED || !e.SMS_INDIA_HUB_API_KEY || !e.SMS_INDIA_HUB_SENDER_ID))
+      problems.push('SMS_ENABLED, SMS_INDIA_HUB_API_KEY and SMS_INDIA_HUB_SENDER_ID are required for live OTP delivery');
     const pub = path.resolve(e.PUBLIC_UPLOAD_DIR);
     const priv = path.resolve(e.PRIVATE_UPLOAD_DIR);
     if (priv.startsWith(pub + path.sep) || priv === pub)
       problems.push('PRIVATE_UPLOAD_DIR must not be inside PUBLIC_UPLOAD_DIR');
   }
-  if (e.SMS_ENABLED && (!e.SMSINDIAHUB_API_KEY || !e.SMSINDIAHUB_SENDER_ID))
-    problems.push('SMS_ENABLED=true requires SMSINDIAHUB_API_KEY and SMSINDIAHUB_SENDER_ID');
+  if (e.SMS_ENABLED && (!e.SMS_INDIA_HUB_API_KEY || !e.SMS_INDIA_HUB_SENDER_ID))
+    problems.push('SMS_ENABLED=true requires SMS_INDIA_HUB_API_KEY and SMS_INDIA_HUB_SENDER_ID');
+  if (!e.SMS_INDIA_HUB_OTP_TEMPLATE.includes('{otp}')) problems.push('SMS_INDIA_HUB_OTP_TEMPLATE must contain {otp}');
   if (e.TRACKING_PROVIDER !== 'none' && !e.TRACKING_WEBHOOK_SECRET)
     problems.push('TRACKING_WEBHOOK_SECRET is required when TRACKING_PROVIDER is set');
 

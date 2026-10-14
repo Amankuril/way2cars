@@ -190,7 +190,7 @@ RazorpayX payout confirms) — a request is never presented as a completed payou
 
 | Service | Module | Notes |
 |---|---|---|
-| SMS India Hub | `integrations/sms` | REST `api/mt/SendSMS`; DLT `PEId` + per-message `TemplateId`; retries on network errors only; OTP never logged |
+| SMS India Hub | `integrations/sms` | **Login OTPs only.** `vendorsms/pushsms.aspx` (APIKey, sid, DLT_TE_ID, uname); text from `SMS_INDIA_HUB_OTP_TEMPLATE` must match the DLT template exactly; never retried (no double codes); OTP never logged |
 | Razorpay | `integrations/razorpay` | Orders, signature + webhook HMAC verification, fetch/reconcile, refunds |
 | Firebase (FCM) | `integrations/firebase` | firebase-admin; invalid tokens pruned; disabled cleanly if not configured |
 | Google Maps | `integrations/maps` | Places Autocomplete/Details (New), Geocoding, Routes (distance/ETA); server key; LRU cache; geo maths for proximity/geofence |
@@ -198,7 +198,7 @@ RazorpayX payout confirms) — a request is never presented as a completed payou
 | Tracking | `integrations/tracking` | Provider boundary + signed ingest endpoint. **No provider is configured yet → live tracking shows "no device"**; nothing is simulated |
 
 `notifications` service is the single dispatcher: an event (`booking.confirmed`, …) fans out to
-in-app inbox, push, SMS and email according to templates and user preferences.
+in-app inbox, push and email according to templates and user preferences (SMS is reserved for login OTPs).
 
 ## 9. Scheduled jobs (in-process, Mongo lease lock)
 Expire unpaid holds · reconcile pending payments with Razorpay · auto-reject vendor approvals past

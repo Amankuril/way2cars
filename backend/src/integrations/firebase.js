@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import path from 'node:path';
 import admin from 'firebase-admin';
 import { env } from '../config/env.js';
 import { logger } from '../core/logger.js';
@@ -16,9 +17,12 @@ function messaging() {
   if (initFailed) return null;
   try {
     let creds;
-    if (env.FIREBASE_SERVICE_ACCOUNT_BASE64) creds = JSON.parse(Buffer.from(env.FIREBASE_SERVICE_ACCOUNT_BASE64, 'base64').toString('utf8'));
-    else if (env.FIREBASE_SERVICE_ACCOUNT_FILE) creds = JSON.parse(fs.readFileSync(env.FIREBASE_SERVICE_ACCOUNT_FILE, 'utf8'));
+    if (env.FIREBASE_SERVICE_ACCOUNT) creds = JSON.parse(env.FIREBASE_SERVICE_ACCOUNT);
+    else if (env.FIREBASE_SERVICE_ACCOUNT_BASE64) creds = JSON.parse(Buffer.from(env.FIREBASE_SERVICE_ACCOUNT_BASE64, 'base64').toString('utf8'));
+    else if (env.FIREBASE_SERVICE_ACCOUNT_FILE) creds = JSON.parse(fs.readFileSync(path.resolve(env.FIREBASE_SERVICE_ACCOUNT_FILE), 'utf8'));
     else return null;
+    // .env files often store the key with literal "\n" sequences; the SDK needs real newlines.
+    if (typeof creds.private_key === 'string') creds.private_key = creds.private_key.replace(/\\n/g, '\n');
     app = admin.initializeApp({ credential: admin.credential.cert(creds) }, 'way2cars');
     return admin.messaging(app);
   } catch (err) {
@@ -28,7 +32,7 @@ function messaging() {
   }
 }
 
-export const pushConfigured = () => Boolean(env.FIREBASE_SERVICE_ACCOUNT_BASE64 || env.FIREBASE_SERVICE_ACCOUNT_FILE);
+export const pushConfigured = () => Boolean(env.FIREBASE_SERVICE_ACCOUNT || env.FIREBASE_SERVICE_ACCOUNT_BASE64 || env.FIREBASE_SERVICE_ACCOUNT_FILE);
 
 const DEAD_TOKEN_CODES = new Set([
   'messaging/registration-token-not-registered',

@@ -3,7 +3,7 @@ import { hmac, randomDigits, safeEqual } from '../../core/crypto.js';
 import { tooMany, badRequest, unavailable } from '../../core/errors.js';
 import { normalizeIndianMobile, maskPhone } from '../../core/phone.js';
 import { logger } from '../../core/logger.js';
-import { sendSms } from '../../integrations/sms.js';
+import { sendOtpSms } from '../../integrations/sms.js';
 import { OtpChallenge } from './otp.model.js';
 
 export const STATIC_OTP = '123456';
@@ -64,7 +64,7 @@ export async function requestOtp({ phone, realm, ip }) {
   });
 
   if (mode === 'sms') {
-    const result = await sendSms(phone, 'otp', { otp: code, minutes: Math.round(env.OTP_TTL_SECONDS / 60) });
+    const result = await sendOtpSms(phone, code);
     if (result.status !== 'sent') {
       await OtpChallenge.updateOne({ _id: challenge._id }, { $set: { deliveryStatus: 'failed', consumedAt: new Date() } });
       throw unavailable('We could not send the verification code right now. Please try again shortly.', 'OTP_DELIVERY_FAILED');
