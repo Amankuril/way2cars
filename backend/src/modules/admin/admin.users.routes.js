@@ -15,7 +15,7 @@ import { Vendor, VendorBankAccount } from '../vendors/vendor.model.js';
 import { serializeVendor } from '../vendors/vendor.serializer.js';
 import { serializeBank } from '../vendors/vendor.routes.js';
 import { KycSubmission } from '../kyc/kyc.model.js';
-import { reviewKyc, serializeSubmission, latestSubmission } from '../kyc/kyc.service.js';
+import { reviewKyc, reviewKycInTransaction, serializeSubmission, latestSubmission } from '../kyc/kyc.service.js';
 import { Booking, ACTIVE_BOOKING_STATUSES } from '../bookings/booking.model.js';
 import { Vehicle } from '../vehicles/vehicle.model.js';
 import { refreshVendorListings } from '../vehicles/vehicle.service.js';
@@ -173,6 +173,65 @@ adminVendorsRouter.post('/:id/bank/verify', requirePermission('vendors.bank.revi
   if (decision === 'rejected') await Vendor.updateOne({ _id: req.valid.params.id }, { $pull: { completedSteps: 'bank' } });
   await audit(req, `vendor.bank_${decision}`, { type: 'vendor_bank_account', id: bank._id }, { reason });
   ok(res, serializeBank(bank));
+});
+
+/**
+ * One-step review of a host request (Admin → Host requests).
+ * approve: approves the pending KYC submission (the reviewer attests the ID, selfie and age checks
+ *          by approving), verifies the pending bank account and approves the host — all or nothing.
+ * reject:  sends the request back with a reason; `reopen` marks which steps the host must redo.
+ */
+adminVendorsRouter.post('/:id/review', requirePermission('vendors.manage'), requirePermission('kyc.review'), requirePermission('vendors.bank.review'), validate({
+  params: idParams,
+  body: z.object({
+    decision: z.enum(['approve', 'reject']),
+    reason: z.string().trim().max(500).optional(),
+    reopen: z.object({ kyc: z.boolean().default(false), bank: z.boolean().default(false) }).strict().default({}),
+  }).strict(),
+}), async (req, res) => {
+  const { decision, reason, reopen } = req.valid.body;
+  if (decision === 'reject' && !reason) throw badRequest('Give the host a reason so they can fix it.', undefined, 'REASON_REQUIRED');
+  const v = await withTransaction(async (session) => {
+    const doc = await Vendor.findById(req.valid.params.id).session(session);
+    if (!doc) throw notFound('Host');
+    if (doc.status !== 'pending_approval') throw conflict(`Host is ${doc.status.replace('_', ' ')}, not waiting for review.`, 'INVALID_STATE');
+    const sub = doc.kyc?.submissionId ? await KycSubmission.findById(doc.kyc.submissionId).session(session) : null;
+    const bank = await VendorBankAccount.findOne({ vendorId: doc._id, isActive: true }).session(session);
+    const reviewedAt = new Date();
+
+    if (decision === 'approve') {
+      if (!sub || sub.status === 'rejected') throw conflict('The host has no KYC to approve. Reject the request and ask them to submit it.', 'KYC_MISSING');
+      if (!bank || bank.verification?.status === 'rejected') throw conflict('The host has no bank account to verify. Reject the request and ask them to add it.', 'BANK_MISSING');
+      if (sub.status === 'pending') {
+        await reviewKycInTransaction(req, sub, { decision: 'approve', checks: { idValid: true, selfieMatches: true, ageEligible: true }, notes: 'Approved with the host request' }, session);
+      }
+      if (bank.verification?.status !== 'verified') {
+        bank.verification = { status: 'verified', reviewedBy: req.auth.id, reviewedAt, reason: undefined };
+        await bank.save({ session });
+        await audit(req, 'vendor.bank_verified', { type: 'vendor_bank_account', id: bank._id }, { session });
+      }
+      doc.status = 'approved';
+      doc.kyc.status = 'approved';
+    } else {
+      if (reopen.kyc && sub?.status === 'pending') await reviewKycInTransaction(req, sub, { decision: 'reject', reason }, session);
+      if (reopen.bank && bank) {
+        bank.verification = { status: 'rejected', reviewedBy: req.auth.id, reviewedAt, reason };
+        await bank.save({ session });
+        await Vendor.updateOne({ _id: doc._id }, { $pull: { completedSteps: 'bank' } }, { session });
+        await audit(req, 'vendor.bank_rejected', { type: 'vendor_bank_account', id: bank._id }, { reason, session });
+      }
+      doc.status = 'rejected';
+    }
+    doc.statusReason = decision === 'reject' ? reason : undefined;
+    doc.reviewedAt = reviewedAt;
+    doc.reviewedBy = req.auth.id;
+    await doc.save({ session });
+    await refreshVendorListings(doc._id, session);
+    await audit(req, decision === 'approve' ? 'vendor.approve' : 'vendor.reject', { type: 'vendor', id: doc._id }, { reason, changes: { oneStep: true, reopen }, session });
+    return doc;
+  });
+  notifyLater(decision === 'approve' ? 'vendor.approved' : 'vendor.rejected', { realm: 'vendor', id: v._id }, decision === 'approve' ? {} : { reason });
+  ok(res, serializeVendor(v.toObject()));
 });
 
 // ================================================================= KYC queue

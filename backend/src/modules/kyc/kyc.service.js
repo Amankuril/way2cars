@@ -130,35 +130,40 @@ export async function latestSubmission(realm, subjectId) {
 }
 
 /** Admin decision. Approval requires the reviewer to confirm every manual check. */
-export async function reviewKyc(req, submissionId, { decision, reason, notes, checks }) {
+export async function reviewKyc(req, submissionId, body) {
   return withTransaction(async (session) => {
     const sub = await KycSubmission.findById(submissionId).session(session);
     if (!sub) throw notFound('KYC submission');
-    if (sub.status !== 'pending') throw conflict('This submission has already been reviewed.', 'KYC_ALREADY_REVIEWED');
-    if (decision === 'approve') {
-      const required = sub.subjectType === 'user' ? ['licenceValid', 'idValid', 'selfieMatches', 'ageEligible'] : ['idValid', 'selfieMatches', 'ageEligible'];
-      const missing = required.filter((k) => !checks?.[k]);
-      if (missing.length) throw badRequest('Confirm every verification check before approving.', { missing }, 'KYC_CHECKS_INCOMPLETE');
-    } else if (!reason) {
-      throw badRequest('Give the applicant a reason so they can fix it.', undefined, 'KYC_REASON_REQUIRED');
-    }
-    sub.status = decision === 'approve' ? 'approved' : 'rejected';
-    sub.review = { by: req.auth.id, at: new Date(), reason: decision === 'reject' ? reason : undefined, notes, checks };
-    await sub.save({ session });
-    await MODELS[sub.subjectType].updateOne(
-      { _id: sub.subjectId, 'kyc.submissionId': sub._id },
-      { $set: { 'kyc.status': sub.status, 'kyc.reviewedAt': new Date(), 'kyc.rejectionReason': decision === 'reject' ? reason : null } },
-      { session },
-    );
-    if (decision === 'reject' && sub.subjectType === 'vendor') {
-      await Vendor.updateOne({ _id: sub.subjectId }, { $pull: { completedSteps: 'kyc' } }, { session });
-    }
-    await audit(req, `kyc.${sub.status}`, { type: 'kyc_submission', id: sub._id }, { reason, changes: { subjectType: sub.subjectType, subjectId: sub.subjectId, checks }, session });
-    return sub;
+    return reviewKycInTransaction(req, sub, body, session);
   }).then((sub) => {
-    if (sub.subjectType === 'user') notifyLater(sub.status === 'approved' ? 'kyc.approved' : 'kyc.rejected', { realm: 'user', id: sub.subjectId }, { reason });
+    if (sub.subjectType === 'user') notifyLater(sub.status === 'approved' ? 'kyc.approved' : 'kyc.rejected', { realm: 'user', id: sub.subjectId }, { reason: body.reason });
     return sub;
   });
+}
+
+/** Reviews a pending submission inside the caller's transaction (also used by the one-step host review). */
+export async function reviewKycInTransaction(req, sub, { decision, reason, notes, checks }, session) {
+  if (sub.status !== 'pending') throw conflict('This submission has already been reviewed.', 'KYC_ALREADY_REVIEWED');
+  if (decision === 'approve') {
+    const required = sub.subjectType === 'user' ? ['licenceValid', 'idValid', 'selfieMatches', 'ageEligible'] : ['idValid', 'selfieMatches', 'ageEligible'];
+    const missing = required.filter((k) => !checks?.[k]);
+    if (missing.length) throw badRequest('Confirm every verification check before approving.', { missing }, 'KYC_CHECKS_INCOMPLETE');
+  } else if (!reason) {
+    throw badRequest('Give the applicant a reason so they can fix it.', undefined, 'KYC_REASON_REQUIRED');
+  }
+  sub.status = decision === 'approve' ? 'approved' : 'rejected';
+  sub.review = { by: req.auth.id, at: new Date(), reason: decision === 'reject' ? reason : undefined, notes, checks };
+  await sub.save({ session });
+  await MODELS[sub.subjectType].updateOne(
+    { _id: sub.subjectId, 'kyc.submissionId': sub._id },
+    { $set: { 'kyc.status': sub.status, 'kyc.reviewedAt': new Date(), 'kyc.rejectionReason': decision === 'reject' ? reason : null } },
+    { session },
+  );
+  if (decision === 'reject' && sub.subjectType === 'vendor') {
+    await Vendor.updateOne({ _id: sub.subjectId }, { $pull: { completedSteps: 'kyc' } }, { session });
+  }
+  await audit(req, `kyc.${sub.status}`, { type: 'kyc_submission', id: sub._id }, { reason, changes: { subjectType: sub.subjectType, subjectId: sub.subjectId, checks }, session });
+  return sub;
 }
 
 // Owners read their own KYC files via the default owner rule; nobody else except permitted admins.
