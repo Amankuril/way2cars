@@ -8,7 +8,7 @@ import { cn, errorMessage } from '@/admin/lib/utils.js';
 const FOCUSABLE = 'a[href],button:not([disabled]),textarea:not([disabled]),input:not([disabled]),select:not([disabled]),[tabindex]:not([tabindex="-1"])';
 
 /** Accessible modal dialog: focus moves inside, Tab is trapped, Esc / backdrop closes. */
-export function Modal({ open, onClose, title, description, children, footer, size = 'md', dismissable = true }) {
+export function Modal({ open, onClose, title, description, children, footer, size = 'md', dismissable = true, bodyClassName }) {
   const ref = useRef(null);
   const titleId = useId();
   const descId = useId();
@@ -50,7 +50,8 @@ export function Modal({ open, onClose, title, description, children, footer, siz
   }, [open, dismissable]);
 
   if (!open) return null;
-  const widths = { sm: 'max-w-md', md: 'max-w-lg', lg: 'max-w-2xl', xl: 'max-w-4xl' };
+  const widths = { sm: 'max-w-md', md: 'max-w-lg', lg: 'max-w-2xl', xl: 'max-w-4xl', full: 'max-w-[1480px]' };
+  const full = size === 'full';
   return createPortal(
     <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-ink-950/40 p-4 sm:items-center" onMouseDown={(e) => e.target === e.currentTarget && dismissable && onClose?.()}>
       <div
@@ -60,7 +61,7 @@ export function Modal({ open, onClose, title, description, children, footer, siz
         aria-labelledby={titleId}
         aria-describedby={description ? descId : undefined}
         tabIndex={-1}
-        className={cn('my-8 w-full rounded-lg border border-line bg-surface shadow-pop focus:outline-none', widths[size])}
+        className={cn('w-full rounded-lg border border-line bg-surface shadow-pop focus:outline-none', full ? 'my-0 flex h-[calc(100dvh-2rem)] flex-col' : 'my-8', widths[size])}
       >
         <div className="flex items-start justify-between gap-4 border-b border-line px-5 py-4">
           <div className="min-w-0">
@@ -73,7 +74,7 @@ export function Modal({ open, onClose, title, description, children, footer, siz
             </button>
           ) : null}
         </div>
-        <div className="px-5 py-4">{children}</div>
+        <div className={cn(full ? 'min-h-0 flex-1' : 'px-5 py-4', bodyClassName)}>{children}</div>
         {footer ? <div className="flex flex-wrap items-center justify-end gap-2 border-t border-line bg-ink-50/60 px-5 py-3 rounded-b-lg">{footer}</div> : null}
       </div>
     </div>,

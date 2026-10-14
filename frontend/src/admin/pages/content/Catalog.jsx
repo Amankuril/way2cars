@@ -108,12 +108,63 @@ function ItemForm({ kind, item, onClose, rows = [] }) {
     });
   };
 
+  const isCity = kind === 'cities';
+  const hasCentre = f.lat !== '' && f.lng !== '';
+
+  const formBody = (
+    <form onSubmit={submit} className="space-y-4" noValidate>
+      <div className="grid gap-4 sm:grid-cols-2">
+        <Field label="Name" htmlFor="ct-name" required error={errors.name}>
+          <Input id="ct-name" value={f.name} onChange={set('name')} maxLength={80} invalid={Boolean(errors.name)} data-autofocus />
+        </Field>
+        <Field label="Slug" htmlFor="ct-slug" required error={errors.slug} hint={isNew ? 'Used in URLs. Generated from the name.' : 'Changing it may break saved links.'}>
+          <Input id="ct-slug" value={f.slug} onChange={(e) => { setSlugTouched(true); setF((x) => ({ ...x, slug: e.target.value.toLowerCase() })); }} className="font-mono text-caption" invalid={Boolean(errors.slug)} />
+        </Field>
+        {isCity ? (
+          <>
+            <Field label="State" htmlFor="ct-state"><Input id="ct-state" value={f.state} onChange={set('state')} maxLength={80} /></Field>
+            <Field label="GST state code" htmlFor="ct-gst" error={errors.gstStateCode} hint={isNew ? 'Place of supply on invoices, e.g. 29 for Karnataka.' : 'Leave blank to keep the saved code.'}>
+              <Input id="ct-gst" value={f.gstStateCode} onChange={set('gstStateCode')} maxLength={2} inputMode="numeric" className="num" invalid={Boolean(errors.gstStateCode)} />
+            </Field>
+            <Field label="Service radius (km)" htmlFor="ct-radius" required error={errors.serviceRadiusKm} hint={f.polygon?.length ? 'Not used while a zone is drawn.' : 'Used when no zone is drawn.'}><Input id="ct-radius" type="number" min={1} max={300} value={f.serviceRadiusKm} onChange={set('serviceRadiusKm')} className="num" /></Field>
+          </>
+        ) : null}
+        {kind === 'categories' ? (
+          <Field label="Body type" htmlFor="ct-body">
+            <Select id="ct-body" value={f.bodyType} onChange={set('bodyType')}>
+              {Object.entries(BODY_TYPE).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+            </Select>
+          </Field>
+        ) : null}
+        <Field label="Order" htmlFor="ct-order" error={errors.sortOrder} hint="Lower numbers show first."><Input id="ct-order" type="number" min={0} value={f.sortOrder} onChange={set('sortOrder')} className="num" /></Field>
+      </div>
+      {kind === 'categories' ? (
+        <Field label="Description" htmlFor="ct-desc"><Textarea id="ct-desc" rows={2} maxLength={300} value={f.description} onChange={set('description')} /></Field>
+      ) : null}
+      <ImageUpload
+        purpose={K.purpose}
+        label={K.imageLabel}
+        value={f.image}
+        onChange={(img) => { setImageChanged(true); setF((x) => ({ ...x, image: img })); }}
+        error={errors.image}
+        aspect={kind === 'brands' ? 'aspect-square' : 'aspect-[16/9]'}
+        previewFit={kind === 'brands' ? 'object-contain' : 'object-cover'}
+      />
+      <div className="grid gap-3 sm:grid-cols-2">
+        <Switch label="Active" description="Inactive items are hidden from the apps." checked={f.isActive} onChange={(v) => setF((x) => ({ ...x, isActive: v }))} />
+        {'isPopular' in f ? <Switch label="Popular" description="Highlighted in the apps." checked={f.isPopular} onChange={(v) => setF((x) => ({ ...x, isPopular: v }))} /> : null}
+      </div>
+      {errors.form ? <p className="text-caption font-semibold text-danger-600" role="alert">{errors.form}</p> : null}
+    </form>
+  );
+
   return (
     <Modal
       open
       onClose={() => !save.isPending && onClose()}
       title={isNew ? `New ${K.singular}` : `Edit ${item.name}`}
-      size={kind === 'cities' ? 'xl' : 'lg'}
+      description={isCity ? 'City details on the left, service zone on the right. Cars can only be listed inside the zone.' : undefined}
+      size={isCity ? 'full' : 'lg'}
       footer={
         <>
           <Button onClick={onClose} disabled={save.isPending}>Cancel</Button>
@@ -121,67 +172,27 @@ function ItemForm({ kind, item, onClose, rows = [] }) {
         </>
       }
     >
-      <form onSubmit={submit} className="space-y-4" noValidate>
-        <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Name" htmlFor="ct-name" required error={errors.name}>
-            <Input id="ct-name" value={f.name} onChange={set('name')} maxLength={80} invalid={Boolean(errors.name)} data-autofocus />
-          </Field>
-          <Field label="Slug" htmlFor="ct-slug" required error={errors.slug} hint={isNew ? 'Used in URLs. Generated from the name.' : 'Changing it may break saved links.'}>
-            <Input id="ct-slug" value={f.slug} onChange={(e) => { setSlugTouched(true); setF((x) => ({ ...x, slug: e.target.value.toLowerCase() })); }} className="font-mono text-caption" invalid={Boolean(errors.slug)} />
-          </Field>
-          {kind === 'cities' ? (
-            <>
-              <Field label="State" htmlFor="ct-state"><Input id="ct-state" value={f.state} onChange={set('state')} maxLength={80} /></Field>
-              <Field label="GST state code" htmlFor="ct-gst" error={errors.gstStateCode} hint={isNew ? 'Place of supply on invoices, e.g. 29 for Karnataka.' : 'Leave blank to keep the saved code.'}>
-                <Input id="ct-gst" value={f.gstStateCode} onChange={set('gstStateCode')} maxLength={2} inputMode="numeric" className="num" invalid={Boolean(errors.gstStateCode)} />
-              </Field>
-              <Field label="Service radius (km)" htmlFor="ct-radius" required error={errors.serviceRadiusKm} hint={f.polygon?.length ? 'Not used while a zone is drawn.' : 'Used when no zone is drawn.'}><Input id="ct-radius" type="number" min={1} max={300} value={f.serviceRadiusKm} onChange={set('serviceRadiusKm')} className="num" /></Field>
-            </>
-          ) : null}
-          {kind === 'categories' ? (
-            <Field label="Body type" htmlFor="ct-body">
-              <Select id="ct-body" value={f.bodyType} onChange={set('bodyType')}>
-                {Object.entries(BODY_TYPE).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-              </Select>
-            </Field>
-          ) : null}
-          <Field label="Order" htmlFor="ct-order" error={errors.sortOrder} hint="Lower numbers show first."><Input id="ct-order" type="number" min={0} value={f.sortOrder} onChange={set('sortOrder')} className="num" /></Field>
-        </div>
-        {kind === 'cities' ? (
-          <div>
-            <div className="mb-1.5 flex items-baseline justify-between gap-3">
-              <span className="text-label font-semibold text-ink-800">Service zone <span className="text-danger-600">*</span></span>
-              <span className="num text-caption text-ink-500">{f.lat !== '' && f.lng !== '' ? `Centre ${Number(f.lat).toFixed(4)}, ${Number(f.lng).toFixed(4)}` : 'No centre yet'}</span>
+      {isCity ? (
+        <div className="grid h-full min-h-0 lg:grid-cols-2">
+          <div className="min-h-0 overflow-y-auto px-5 py-4">{formBody}</div>
+          <section aria-label="Service zone" className="flex min-h-[460px] flex-col border-t border-line bg-ink-50/40 lg:min-h-0 lg:border-l lg:border-t-0">
+            <div className="flex items-baseline justify-between gap-3 px-4 pb-2 pt-3">
+              <h3 className="text-label font-semibold text-ink-800">Service zone <span className="text-danger-600">*</span></h3>
+              <span className="num text-caption text-ink-500">{hasCentre ? `Centre ${Number(f.lat).toFixed(4)}, ${Number(f.lng).toFixed(4)}` : 'No centre yet'}</span>
             </div>
+            {errors.zone ? <p className="mx-4 mb-2 rounded-md bg-danger-50 px-3 py-2 text-caption font-semibold text-danger-700" role="alert">{errors.zone}</p> : null}
             <ZoneMap
-              centre={f.lat !== '' && f.lng !== '' ? { lat: Number(f.lat), lng: Number(f.lng) } : null}
+              className="mx-4 mb-4 flex-1"
+              centre={hasCentre ? { lat: Number(f.lat), lng: Number(f.lng) } : null}
               polygon={f.polygon}
               radiusKm={f.serviceRadiusKm}
               others={others}
               onChange={({ polygon, centre }) => setF((x) => ({ ...x, polygon, ...(centre ? { lat: String(centre.lat), lng: String(centre.lng) } : {}) }))}
               onPlace={(p) => setF((x) => ({ ...x, ...(!x.state && p.state ? { state: p.state } : {}) }))}
             />
-            {errors.zone ? <p className="mt-1.5 text-caption font-semibold text-danger-600" role="alert">{errors.zone}</p> : null}
-          </div>
-        ) : null}
-        {kind === 'categories' ? (
-          <Field label="Description" htmlFor="ct-desc"><Textarea id="ct-desc" rows={2} maxLength={300} value={f.description} onChange={set('description')} /></Field>
-        ) : null}
-        <ImageUpload
-          purpose={K.purpose}
-          label={K.imageLabel}
-          value={f.image}
-          onChange={(img) => { setImageChanged(true); setF((x) => ({ ...x, image: img })); }}
-          error={errors.image}
-          aspect={kind === 'brands' ? 'aspect-square' : 'aspect-[16/9]'}
-          previewFit={kind === 'brands' ? 'object-contain' : 'object-cover'}
-        />
-        <div className="grid gap-3 sm:grid-cols-2">
-          <Switch label="Active" description="Inactive items are hidden from the apps." checked={f.isActive} onChange={(v) => setF((x) => ({ ...x, isActive: v }))} />
-          {'isPopular' in f ? <Switch label="Popular" description="Highlighted in the apps." checked={f.isPopular} onChange={(v) => setF((x) => ({ ...x, isPopular: v }))} /> : null}
+          </section>
         </div>
-        {errors.form ? <p className="text-caption font-semibold text-danger-600" role="alert">{errors.form}</p> : null}
-      </form>
+      ) : formBody}
     </Modal>
   );
 }

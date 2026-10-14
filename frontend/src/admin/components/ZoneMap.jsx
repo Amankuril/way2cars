@@ -63,7 +63,7 @@ const ERRORS = {
   LOAD: 'The map could not load. Check your connection.',
 };
 
-export function ZoneMap({ centre, polygon, radiusKm, others = [], onChange, onPlace }) {
+export function ZoneMap({ centre, polygon, radiusKm, others = [], onChange, onPlace, className }) {
   const el = useRef(null);
   const g = useRef({}); // google objects: maps, map, zone, draft, marker, circle, listeners
   const [status, setStatus] = useState('loading'); // loading | ready | error
@@ -231,7 +231,7 @@ export function ZoneMap({ centre, polygon, radiusKm, others = [], onChange, onPl
   };
 
   return (
-    <div className="overflow-hidden rounded-lg border border-line">
+    <div className={cn('flex flex-col overflow-hidden rounded-lg border border-line', className)}>
       <div className="flex flex-wrap items-center gap-2 border-b border-line bg-ink-50 p-2">
         <div className="relative min-w-[220px] flex-1">
           <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-400" aria-hidden="true" />
@@ -272,11 +272,11 @@ export function ZoneMap({ centre, polygon, radiusKm, others = [], onChange, onPl
           </>
         )}
       </div>
-      <div className="relative">
-        <div ref={el} className={cn('h-[380px] w-full bg-ink-100', status === 'error' && 'hidden')} />
+      <div className="relative min-h-[360px] flex-1">
+        <div ref={el} className={cn('absolute inset-0 bg-ink-100', status === 'error' && 'hidden')} />
         {status === 'loading' ? <div className="absolute inset-0 flex items-center justify-center text-bodySm text-ink-500"><Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" />Loading map…</div> : null}
         {status === 'error' ? (
-          <div className="flex h-[200px] flex-col items-center justify-center gap-2 px-6 text-center text-bodySm text-ink-600">
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 px-6 text-center text-bodySm text-ink-600">
             <AlertTriangle className="h-5 w-5 text-warning-600" aria-hidden="true" />
             {error}
           </div>
