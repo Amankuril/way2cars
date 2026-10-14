@@ -195,11 +195,12 @@ vendorVehicleRouter.delete('/:id/pricing-calendar/:date', validate({ params: z.o
 export const adminVehicleRouter = Router();
 
 adminVehicleRouter.get('/', requirePermission('vehicles.read'), validate({
-  query: z.object({ ...paginationQuery, approval: z.enum(APPROVAL_STATUSES).optional(), status: z.enum(OPERATIONAL_STATUSES).optional(), cityId: objectId.optional(), vendorId: objectId.optional(), q: z.string().trim().max(40).optional(), featured: z.enum(['true', 'false']).optional() }),
+  query: z.object({ ...paginationQuery, approval: z.enum(APPROVAL_STATUSES).optional(), notApproval: z.enum(APPROVAL_STATUSES).optional(), status: z.enum(OPERATIONAL_STATUSES).optional(), cityId: objectId.optional(), vendorId: objectId.optional(), q: z.string().trim().max(40).optional(), featured: z.enum(['true', 'false']).optional() }),
 }), async (req, res) => {
-  const { page, limit, approval, status, cityId, vendorId, q, featured } = req.valid.query;
+  const { page, limit, approval, notApproval, status, cityId, vendorId, q, featured } = req.valid.query;
   const filter = {};
   if (approval) filter['approval.status'] = approval;
+  else if (notApproval) filter['approval.status'] = { $ne: notApproval };
   if (status) filter.status = status;
   if (cityId) filter.cityId = cityId;
   if (vendorId) filter.vendorId = vendorId;
