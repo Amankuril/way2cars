@@ -13,6 +13,7 @@
     "admin:create": "node --env-file-if-exists=.env scripts/create-admin.js",
     "db:indexes": "node --env-file-if-exists=.env scripts/sync-indexes.js",
     "db:seed-catalog": "node --env-file-if-exists=.env scripts/seed-catalog.js",
+    "db:seed-indore-demo": "node --env-file-if-exists=.env scripts/seed-indore-demo.js",
     "lint": "node scripts/check-syntax.js"
   },
   "dependencies": {
