@@ -8,7 +8,7 @@ export function PriceBreakdown({ p, showPayable = true }) {
     <View>
       <KeyValue label={`Trip charges · ${p.hours} hrs`} value={money(p.rentalPaise)} />
       {p.discountPaise ? <KeyValue label={`Discount${p.coupon?.code ? ` (${p.coupon.code})` : p.couponCode ? ` (${p.couponCode})` : ''}`} value={money(-p.discountPaise)} tone="success" /> : null}
-      {p.deliveryFeePaise ? <KeyValue label="Doorstep delivery" value={money(p.deliveryFeePaise)} /> : null}
+      {p.deliveryFeePaise ? <KeyValue label={`Doorstep delivery${p.delivery?.km ? ` · ${p.delivery.km} km` : ''}`} value={money(p.deliveryFeePaise)} /> : null}
       {p.convenienceFeePaise ? <KeyValue label="Convenience fee" value={money(p.convenienceFeePaise)} /> : null}
       <KeyValue label={`GST (${percent(p.gstBps)})`} value={money(p.gstPaise, { exact: true })} />
       <DashedDivider className="my-2.5" />

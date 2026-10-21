@@ -31,6 +31,13 @@ const Option = ({ selected, icon, title, subtitle, onPress, testID }) => (
   </PressableScale>
 );
 
+/** "₹299 + ₹15/km · up to 10 km" — the host's radius, capped by the platform limit. */
+const deliveryTerms = (v, fees) => {
+  const maxKm = fees?.deliveryMaxKm != null ? Math.min(v.delivery.maxKm, fees.deliveryMaxKm) : v.delivery.maxKm;
+  const rate = fees?.deliveryPerKmPaise != null ? `${money(fees.deliveryBaseFeePaise)} + ${money(fees.deliveryPerKmPaise)}/km · ` : '';
+  return `${rate}up to ${maxKm} km`;
+};
+
 export function CheckoutScreen({ route, navigation }) {
   const { vehicleId } = route.params;
   const plan = useTripPlan();
@@ -216,7 +223,7 @@ export function CheckoutScreen({ route, navigation }) {
           {v.delivery?.enabled ? (
             <>
               <View className="w-3" />
-              <Option selected={!!delivery} icon={Truck} title="Doorstep delivery" subtitle={`Within ${v.delivery.maxKm} km · fee based on distance`} onPress={() => setPickerOpen(true)} testID="pickup-delivery" />
+              <Option selected={!!delivery} icon={Truck} title="Doorstep delivery" subtitle={deliveryTerms(v, config.data?.fees)} onPress={() => setPickerOpen(true)} testID="pickup-delivery" />
             </>
           ) : null}
         </View>
@@ -226,6 +233,9 @@ export function CheckoutScreen({ route, navigation }) {
             <View className="ml-3 flex-1">
               <T variant="caption" tone="subtle">Delivering to</T>
               <T variant="label" numberOfLines={2}>{delivery.address}</T>
+              <T variant="caption" tone="muted" className="mt-0.5">
+                {q?.delivery ? `${q.delivery.km} km from the car · ${money(q.delivery.feePaise)} delivery fee` : 'Calculating distance and fee…'}
+              </T>
             </View>
             <T variant="label" tone="brand">Change</T>
           </Pressable>

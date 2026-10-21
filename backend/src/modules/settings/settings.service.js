@@ -59,7 +59,7 @@ export function publicSettings(s) {
     },
     cancellation: s.cancellation,
     tax: { rentalGstBps: s.tax.rentalGstBps },
-    fees: { convenienceFeePaise: s.fees.convenienceFeePaise, deliveryMaxKm: s.fees.deliveryMaxKm },
+    fees: { convenienceFeePaise: s.fees.convenienceFeePaise, deliveryBaseFeePaise: s.fees.deliveryBaseFeePaise, deliveryPerKmPaise: s.fees.deliveryPerKmPaise, deliveryMaxKm: s.fees.deliveryMaxKm },
     trip: { lateGraceMinutes: s.trip.lateGraceMinutes, minPickupPhotos: s.trip.minPickupPhotos },
     referral: s.referral,
     support: s.support,
