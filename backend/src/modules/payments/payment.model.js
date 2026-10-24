@@ -6,11 +6,14 @@ const payment = new mongoose.Schema(
   {
     bookingId: { type: oid, ref: 'Booking', required: true },
     userId: { type: oid, ref: 'User', required: true },
-    purpose: { type: String, enum: ['booking', 'extension', 'settlement'], required: true },
+    purpose: { type: String, enum: ['booking', 'balance', 'extension', 'settlement'], required: true },
+    // gateway = Razorpay; offline = cash/UPI/card/bank transfer recorded by operations at the office.
+    mode: { type: String, enum: ['gateway', 'offline'], default: 'gateway' },
+    offline: { method: { type: String, enum: ['cash', 'upi', 'card', 'bank_transfer'] }, reference: String, note: String, recordedBy: { type: oid, ref: 'AdminUser' } },
     extensionId: oid,
     amountPaise: { type: Number, required: true, min: 100 },
     currency: { type: String, default: 'INR' },
-    razorpayOrderId: { type: String, required: true },
+    razorpayOrderId: { type: String, required() { return this.mode !== 'offline'; } },
     razorpayPaymentId: String,
     // created → paid | failed; amount_mismatch is held for manual review and never confirms a booking.
     status: { type: String, enum: ['created', 'paid', 'failed', 'amount_mismatch'], default: 'created' },
@@ -24,7 +27,7 @@ const payment = new mongoose.Schema(
   },
   { timestamps: true, versionKey: false },
 );
-payment.index({ razorpayOrderId: 1 }, { unique: true });
+payment.index({ razorpayOrderId: 1 }, { unique: true, partialFilterExpression: { razorpayOrderId: { $type: 'string' } } });
 payment.index({ razorpayPaymentId: 1 }, { unique: true, partialFilterExpression: { razorpayPaymentId: { $type: 'string' } } });
 payment.index({ bookingId: 1, createdAt: -1 });
 payment.index({ userId: 1, createdAt: -1 });
@@ -37,9 +40,11 @@ const refund = new mongoose.Schema(
     paymentId: { type: oid, ref: 'Payment', required: true },
     userId: { type: oid, ref: 'User', required: true },
     amountPaise: { type: Number, required: true, min: 1 },
-    reason: { type: String, enum: ['user_cancellation', 'vendor_rejection', 'approval_timeout', 'admin_cancellation', 'deposit_settlement', 'late_payment', 'admin_adjustment', 'extension_unavailable'], required: true },
+    reason: { type: String, enum: ['user_cancellation', 'vendor_rejection', 'approval_timeout', 'admin_cancellation', 'deposit_settlement', 'late_payment', 'admin_adjustment', 'extension_unavailable', 'extension_rejected'], required: true },
     // pending: recorded, provider call not yet accepted · initiated: accepted by Razorpay · processed · failed
-    status: { type: String, enum: ['pending', 'initiated', 'processed', 'failed'], default: 'pending' },
+    // manual: the money was collected offline, so finance returns it by hand and records the reference.
+    status: { type: String, enum: ['pending', 'initiated', 'processed', 'failed', 'manual'], default: 'pending' },
+    manualReference: String,
     idempotencyKey: { type: String, required: true },
     razorpayRefundId: String,
     attempts: { type: Number, default: 0 },
@@ -71,6 +76,7 @@ const invoice = new mongoose.Schema(
     totalPaise: Number,
     walletAppliedPaise: Number,
     paidPaise: Number,
+    paidOffline: Boolean,
     issuedAt: { type: Date, default: Date.now },
     supplier: { legalName: String, gstin: String, address: String, stateCode: String },
   },

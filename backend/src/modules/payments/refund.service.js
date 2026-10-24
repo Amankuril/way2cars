@@ -26,7 +26,7 @@ export async function recordBookingRefund(booking, amountPaise, reason, { key, b
     if (take <= 0) continue;
     p.refundedPaise += take;
     await p.save({ session });
-    const [r] = await Refund.create([{ bookingId: booking._id, paymentId: p._id, userId: booking.userId, amountPaise: take, reason, idempotencyKey: `${key}:${p._id}`, initiatedBy: by, note }], { session });
+    const [r] = await Refund.create([{ bookingId: booking._id, paymentId: p._id, userId: booking.userId, amountPaise: take, reason, idempotencyKey: `${key}:${p._id}`, initiatedBy: by, note, ...(p.mode === 'offline' ? { status: 'manual' } : {}) }], { session });
     refunds.push(r);
     remaining -= take;
   }
@@ -35,6 +35,10 @@ export async function recordBookingRefund(booking, amountPaise, reason, { key, b
     const b = await Booking.findByIdAndUpdate(booking._id, { $inc: { 'payment.refundedPaise': refunded } }, { new: true, session }).select('payment');
     const status = b.payment.refundedPaise >= b.payment.paidPaise ? 'refunded' : 'partially_refunded';
     await Booking.updateOne({ _id: booking._id }, { $set: { 'payment.status': status } }, { session });
+  }
+  if (refunds.some((r) => r.status === 'manual')) {
+    const manual = refunds.filter((r) => r.status === 'manual').reduce((sum, r) => sum + r.amountPaise, 0);
+    setImmediate(() => notifyAdmins('admin.alert', { title: 'Manual refund needed', body: `₹${(manual / 100).toFixed(2)} collected offline for booking ${booking.ref} must be returned by hand.`, link: `/bookings/${booking._id}` }, 'refunds.manage'));
   }
   if (remaining > 0) logger.warn({ bookingId: booking._id, remaining }, 'refund exceeds refundable payments; remainder not refunded');
   return refunds;
@@ -93,4 +97,11 @@ export async function retryPendingRefunds() {
   return stuck.length;
 }
 
-export const serializeRefund = (r) => ({ id: r._id, amountPaise: r.amountPaise, reason: r.reason, status: r.status, razorpayRefundId: r.razorpayRefundId, createdAt: r.createdAt, processedAt: r.processedAt });
+/** Finance confirms an offline (manual) refund was handed back, with its reference. */
+export async function markManualRefundProcessed(refundId, bookingId, reference) {
+  const r = await Refund.findOneAndUpdate({ _id: refundId, bookingId, status: 'manual' }, { $set: { status: 'processed', processedAt: new Date(), manualReference: reference } }, { new: true });
+  if (r) await announceRefund(r);
+  return r;
+}
+
+export const serializeRefund = (r) => ({ id: r._id, amountPaise: r.amountPaise, reason: r.reason, status: r.status, razorpayRefundId: r.razorpayRefundId, manualReference: r.manualReference, createdAt: r.createdAt, processedAt: r.processedAt });

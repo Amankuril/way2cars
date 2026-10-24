@@ -8,13 +8,14 @@ import { Vehicle, VehiclePriceOverride } from '../vehicles/vehicle.model.js';
 import { User } from '../users/user.model.js';
 import { getSettings } from '../settings/settings.service.js';
 import { computeRental, assembleQuote, deliveryFee, cancellationRefundBps } from '../pricing/pricing.js';
-import { Vendor } from '../vendors/vendor.model.js';
+import { Vendor, commissionBpsFor } from '../vendors/vendor.model.js';
 import { formatIst } from '../../core/time.js';
 import { evaluateCoupon, reserveCoupon } from '../coupons/coupon.service.js';
 import { debitUserWallet } from '../wallet/wallet.service.js';
 import { drivingRoute, fromGeoPoint, validLatLng } from '../../integrations/maps.js';
 import { isVehicleAvailable, validateTripWindow } from './availability.service.js';
-import { transition, cancelBooking, runEffects, newEffects, releaseHeldValue } from './booking.lifecycle.js';
+import { transition, cancelBooking, cancellationQuote, runEffects, newEffects, releaseHeldValue } from './booking.lifecycle.js';
+import { notify, notifyAdmins } from '../notifications/notification.service.js';
 import { openPaymentOrder } from '../payments/payment.service.js';
 
 const REF_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
@@ -45,16 +46,22 @@ async function assertUserCanBook(user, endAt, settings) {
  * Computes the full server-side price. Never trusts client totals: callers pass only the
  * vehicle, window, delivery address, coupon code and whether to use wallet credit.
  */
-export async function buildQuote({ userId, vehicleId, startAt, endAt, delivery, couponCode, useWallet }, { session, skipAvailability = false } = {}) {
+export async function buildQuote({ userId, vehicleId, startAt, endAt, delivery, couponCode, useWallet, paymentPlan = 'full' }, { session, skipAvailability = false, office = null } = {}) {
   const settings = await getSettings();
-  const window = await validateTripWindow(startAt, endAt);
-  const vehicle = await Vehicle.findOne({ _id: vehicleId, isListed: true }).populate('brandId', 'name').session(session || null).lean();
+  // Office (offline) bookings may start right away and may use approved cars that are not listed.
+  const window = await validateTripWindow(startAt, endAt, { skipLead: Boolean(office) });
+  const vehicleFilter = office ? { _id: vehicleId, 'approval.status': 'approved', adminSuspended: false } : { _id: vehicleId, isListed: true };
+  const vehicle = await Vehicle.findOne(vehicleFilter).populate('brandId', 'name').session(session || null).lean();
   if (!vehicle) throw notFound('Car');
   if (!skipAvailability && !(await isVehicleAvailable(vehicle._id, window.startAt, window.endAt, { session }))) {
     throw conflict('This car is not available for the selected time. Try different times or another car.', 'VEHICLE_UNAVAILABLE');
   }
   const overrides = await loadOverrides(vehicle._id, window.startAt, window.endAt, session);
   const rental = computeRental({ startAt: window.startAt, endAt: window.endAt, pricing: vehicle.pricing, overrides });
+  if (office?.rentalPaise !== undefined) {
+    rental.rentalPaise = office.rentalPaise;
+    rental.lines = [{ kind: 'office', hours: rental.hours, ratePaise: office.rentalPaise, amountPaise: office.rentalPaise, source: 'office' }];
+  }
 
   let deliveryInfo = null;
   if (delivery) {
@@ -73,22 +80,39 @@ export async function buildQuote({ userId, vehicleId, startAt, endAt, delivery, 
   if (couponCode) {
     ({ coupon, discountPaise } = await evaluateCoupon(couponCode, { userId, vehicle, rentalPaise: rental.rentalPaise }, session));
   }
+  if (office?.discountPaise) discountPaise = Math.min(rental.rentalPaise, discountPaise + office.discountPaise);
+  const advance = advanceOption(window, settings);
+  const wantsAdvance = paymentPlan === 'advance' && advance.available;
   const user = userId ? await User.findById(userId).select('walletBalancePaise').session(session || null).lean() : null;
   const quote = assembleQuote({
     rental,
     deliveryFeePaise: deliveryInfo?.feePaise || 0,
-    convenienceFeePaise: settings.fees.convenienceFeePaise,
+    convenienceFeePaise: office?.waiveConvenienceFee ? 0 : settings.fees.convenienceFeePaise,
     discountPaise,
     gstBps: settings.tax.rentalGstBps,
-    depositPaise: vehicle.pricing.securityDepositPaise,
+    depositPaise: office?.depositPaise ?? vehicle.pricing.securityDepositPaise,
     walletBalancePaise: user?.walletBalancePaise || 0,
-    useWallet: Boolean(useWallet),
+    useWallet: Boolean(useWallet) && !wantsAdvance && !office, // wallet credit can't be split across advance + balance
     maxRedeemBps: settings.wallet.maxRedeemBps,
   });
-  return { vehicle, window, quote, coupon, deliveryInfo, settings };
+  if (advance.available) {
+    advance.advancePaise = Math.min(quote.payablePaise, pct(quote.chargesPaise, advance.percentBps));
+    advance.balancePaise = quote.payablePaise - advance.advancePaise;
+  }
+  if (wantsAdvance) quote.advancePaise = advance.advancePaise;
+  return { vehicle, window, quote, coupon, deliveryInfo, settings, advance };
 }
 
-export function serializeQuote({ quote, coupon, deliveryInfo, window, vehicle }) {
+/** Whether "pay an advance now, rest later" is offered for this trip window, and when the rest is due. */
+export function advanceOption(window, settings, now = new Date()) {
+  const a = settings.advance;
+  const dueAt = new Date(window.startAt.getTime() - a.balanceDueHoursBeforeStart * 3600_000);
+  // The renter needs at least an hour between booking and the balance deadline.
+  const available = Boolean(a.enabled) && dueAt.getTime() > now.getTime() + 3600_000;
+  return { available, percentBps: a.percentBps, balanceDueAt: available ? dueAt : null };
+}
+
+export function serializeQuote({ quote, coupon, deliveryInfo, window, vehicle, advance }) {
   return {
     vehicleId: vehicle._id,
     startAt: window.startAt,
@@ -98,7 +122,47 @@ export function serializeQuote({ quote, coupon, deliveryInfo, window, vehicle })
     coupon: coupon ? { code: coupon.code, title: coupon.title } : null,
     delivery: deliveryInfo ? { km: deliveryInfo.km, feePaise: deliveryInfo.feePaise, address: deliveryInfo.address } : null,
     instantBooking: vehicle.instantBooking,
+    advance: advance ? { available: advance.available, percentBps: advance.percentBps, advancePaise: advance.advancePaise ?? null, balancePaise: advance.balancePaise ?? null, balanceDueAt: advance.balanceDueAt } : null,
   };
+}
+
+/** Inserts a booking (inside the caller's transaction) with a fresh unique ref. `extra` overrides defaults. */
+export async function createBookingDoc({ userId, vehicle, window, quote, session, pickup, extra = {} }) {
+  const now = new Date();
+  const doc = {
+    userId,
+    vendorId: vehicle.vendorId,
+    vehicleId: vehicle._id,
+    cityId: vehicle.cityId,
+    vehicleSnapshot: {
+      title: [vehicle.brandId?.name, vehicle.model, vehicle.variant].filter(Boolean).join(' '),
+      registrationNumber: vehicle.registrationNumber,
+      photoUrl: vehicle.photos?.[0]?.url,
+      fuelType: vehicle.fuelType,
+      transmission: vehicle.transmission,
+      seats: vehicle.seats,
+    },
+    startAt: window.startAt,
+    endAt: window.endAt,
+    originalEndAt: window.endAt,
+    blockEndAt: window.endAt,
+    status: 'pending_payment',
+    statusHistory: [{ status: 'pending_payment', at: now, by: { realm: 'user', id: userId } }],
+    instantBooking: vehicle.instantBooking,
+    pickup,
+    dropoff: pickup,
+    pricing: quote,
+    ...extra,
+  };
+  for (let i = 0; i < 4; i++) {
+    try {
+      const [created] = await Booking.create([{ ...doc, ref: newRef() }], { session });
+      return created;
+    } catch (err) {
+      if (!isDuplicateKey(err) || !/ref/.test(err.message)) throw err;
+    }
+  }
+  throw new Error('Could not allocate a booking reference');
 }
 
 /**
@@ -126,54 +190,33 @@ export async function createBooking(req, input) {
     const mine = await Booking.exists({ ...overlap, userId }).session(session);
     if (mine) throw conflict('You already have a trip during these times.', 'USER_OVERLAP');
 
-    const { vehicle, window, quote, coupon, deliveryInfo } = await buildQuote({ ...input, userId }, { session });
+    const { vehicle, window, quote, coupon, deliveryInfo, advance } = await buildQuote({ ...input, userId }, { session });
+    if (input.paymentPlan === 'advance' && !quote.advancePaise) throw conflict('Paying an advance is not available for this trip. Pay the full amount instead.', 'ADVANCE_UNAVAILABLE');
+    const owner = await Vendor.findById(vehicle.vendorId).select('isCompany commissionBps').session(session).lean();
     const pickup = deliveryInfo
       ? { type: 'doorstep', address: deliveryInfo.address, point: { type: 'Point', coordinates: [deliveryInfo.lng, deliveryInfo.lat] }, distanceKm: deliveryInfo.km }
       : { type: 'host_location', address: vehicle.location.address, point: vehicle.location.point };
     const now = new Date();
-    const doc = {
-      userId,
-      vendorId: vehicle.vendorId,
-      vehicleId: vehicle._id,
-      cityId: vehicle.cityId,
-      vehicleSnapshot: {
-        title: [vehicle.brandId?.name, vehicle.model, vehicle.variant].filter(Boolean).join(' '),
-        registrationNumber: vehicle.registrationNumber,
-        photoUrl: vehicle.photos?.[0]?.url,
-        fuelType: vehicle.fuelType,
-        transmission: vehicle.transmission,
-        seats: vehicle.seats,
+    const created = await createBookingDoc({
+      userId, vehicle, window, quote, session, pickup,
+      extra: {
+        holdExpiresAt: new Date(now.getTime() + settings.booking.holdMinutes * 60_000),
+        ownership: owner?.isCompany ? 'company' : 'host',
+        createdBy: { realm: 'user', id: userId },
+        ...(quote.advancePaise ? { balance: { duePaise: quote.payablePaise - quote.advancePaise, dueAt: advance.balanceDueAt, status: 'due', autoCancel: settings.advance.autoCancelUnpaid } } : {}),
+        pricing: {
+          ...quote,
+          extraKmChargePaise: vehicle.pricing.extraKmChargePaise,
+          hourlyPaise: vehicle.pricing.hourlyPaise,
+          dailyPaise: vehicle.pricing.dailyPaise,
+          commissionBps: commissionBpsFor(owner, settings),
+          couponCode: coupon?.code,
+          settingsVersion: settings.version,
+        },
+        couponId: coupon?._id,
+        idempotencyKey,
       },
-      startAt: window.startAt,
-      endAt: window.endAt,
-      originalEndAt: window.endAt,
-      blockEndAt: window.endAt,
-      status: 'pending_payment',
-      statusHistory: [{ status: 'pending_payment', at: now, by: { realm: 'user', id: userId } }],
-      instantBooking: vehicle.instantBooking,
-      holdExpiresAt: new Date(now.getTime() + settings.booking.holdMinutes * 60_000),
-      pickup,
-      dropoff: pickup,
-      pricing: {
-        ...quote,
-        extraKmChargePaise: vehicle.pricing.extraKmChargePaise,
-        hourlyPaise: vehicle.pricing.hourlyPaise,
-        dailyPaise: vehicle.pricing.dailyPaise,
-        commissionBps: settings.commissionBps,
-        couponCode: coupon?.code,
-        settingsVersion: settings.version,
-      },
-      couponId: coupon?._id,
-      idempotencyKey,
-    };
-    let created;
-    for (let i = 0; i < 4 && !created; i++) {
-      try {
-        [created] = await Booking.create([{ ...doc, ref: newRef() }], { session });
-      } catch (err) {
-        if (!isDuplicateKey(err) || !/ref/.test(err.message)) throw err;
-      }
-    }
+    });
     if (coupon) await reserveCoupon(coupon, { userId, bookingId: created._id, discountPaise: quote.discountPaise }, session);
     if (quote.walletAppliedPaise > 0) await debitUserWallet(userId, quote.walletAppliedPaise, 'wallet_redeemed', { bookingId: created._id, key: `wallet-redeem:${created._id}`, note: `Booking ${created.ref}` }, session);
     await audit(req, 'booking.created', { type: 'booking', id: created._id }, { changes: { totalPaise: quote.totalPaise, payablePaise: quote.payablePaise }, session });
@@ -188,7 +231,15 @@ export async function bookingPaymentOrder(userId, bookingId) {
   if (!booking) throw notFound('Booking');
   if (booking.status !== 'pending_payment') throw conflict('This booking does not need payment.', 'PAYMENT_NOT_REQUIRED');
   if (booking.holdExpiresAt < new Date()) throw new AppError(410, 'HOLD_EXPIRED', 'Your 15-minute hold has expired. Please book again.');
-  return openPaymentOrder({ booking, purpose: 'booking', amountPaise: booking.pricing.payablePaise });
+  return openPaymentOrder({ booking, purpose: 'booking', amountPaise: booking.pricing.advancePaise || booking.pricing.payablePaise });
+}
+
+/** Order for the rest of an advance / offline booking. */
+export async function balancePaymentOrder(userId, bookingId) {
+  const booking = await Booking.findOne({ _id: bookingId, userId }).lean();
+  if (!booking) throw notFound('Booking');
+  if (booking.balance?.status !== 'due' || !['pending_vendor_approval', 'confirmed'].includes(booking.status)) throw conflict('Nothing is due on this booking.', 'NOTHING_DUE');
+  return openPaymentOrder({ booking, purpose: 'balance', amountPaise: booking.balance.duePaise });
 }
 
 export async function cancelByUser(req, bookingId, reason) {
@@ -208,46 +259,45 @@ export async function cancelByUser(req, bookingId, reason) {
 export async function cancellationPreview(userId, bookingId) {
   const b = await Booking.findOne({ _id: bookingId, userId }).lean();
   if (!b) throw notFound('Booking');
-  const settings = await getSettings();
-  const paid = ['paid', 'partially_refunded'].includes(b.payment.status);
-  const hours = (b.startAt - Date.now()) / 3600_000;
-  const bps = b.status === 'confirmed' ? cancellationRefundBps(settings.cancellation.tiers, hours) : 10000;
-  const fee = b.status === 'confirmed' ? settings.cancellation.feePaise : 0;
-  const policy = Math.max(0, pct(b.pricing.chargesPaise, bps) - fee);
-  const wallet = b.pricing.chargesPaise ? Math.round((policy * b.pricing.walletAppliedPaise) / b.pricing.chargesPaise) : 0;
+  const q = cancellationQuote(b, await getSettings());
   return {
-    refundBps: bps,
-    cancellationFeePaise: fee,
-    refundToSourcePaise: paid ? policy - wallet + b.pricing.depositPaise : 0,
-    refundToWalletPaise: paid ? wallet : b.pricing.walletAppliedPaise,
-    hoursBeforeStart: Math.max(0, Math.round(hours * 10) / 10),
+    refundBps: q.refundBps,
+    cancellationFeePaise: q.feePaise,
+    refundToSourcePaise: q.gatewayRefund,
+    refundToWalletPaise: q.walletRefund,
+    hoursBeforeStart: Math.max(0, Math.round(q.hoursBeforeStart * 10) / 10),
+    balanceWaivedPaise: b.balance?.status === 'due' ? b.balance.duePaise : 0,
   };
 }
 
-export async function vendorDecision(req, bookingId, { decision, reason }) {
+/** Accept or decline a booking awaiting the host. Hosts decide their own; operations can decide any. */
+export async function decideBooking(req, bookingId, { decision, reason }) {
+  const asHost = req.auth.realm === 'vendor';
   const fx = await withTransaction(async (session) => {
-    const b = await Booking.findOne({ _id: bookingId, vendorId: req.auth.id }).session(session);
+    const b = await Booking.findOne(asHost ? { _id: bookingId, vendorId: req.auth.id } : { _id: bookingId }).session(session);
     if (!b) throw notFound('Booking');
     if (b.status !== 'pending_vendor_approval') throw conflict('This request has already been handled.', 'NOT_PENDING');
-    const by = { realm: 'vendor', id: req.auth.id };
+    const by = { realm: req.auth.realm, id: req.auth.id };
     let effects;
     if (decision === 'accept') {
       transition(b, 'confirmed', by);
       b.vendorDecisionDueAt = undefined;
       await b.save({ session });
-      await Vendor.updateOne({ _id: req.auth.id }, { $inc: { 'responseStats.accepted': 1 } }, { session });
+      if (asHost) await Vendor.updateOne({ _id: req.auth.id }, { $inc: { 'responseStats.accepted': 1 } }, { session });
       effects = newEffects();
       effects.notifications.push(['booking.confirmed', { realm: 'user', id: b.userId }, { bookingId: b._id, ref: b.ref, vehicle: b.vehicleSnapshot.title, start: formatIst(b.startAt), end: formatIst(b.endAt) }]);
+      if (!asHost) effects.notifications.push(['vendor.booking_confirmed', { realm: 'vendor', id: b.vendorId }, { bookingId: b._id, ref: b.ref, vehicle: b.vehicleSnapshot.title, start: formatIst(b.startAt), end: formatIst(b.endAt) }]);
     } else {
       if (!reason) throw badRequest('Tell the renter why (e.g. car unavailable).', undefined, 'REASON_REQUIRED');
       effects = await cancelBooking(b, { by, reason, full: true, toStatus: 'rejected', refundReason: 'vendor_rejection' }, session);
-      await Vendor.updateOne({ _id: req.auth.id }, { $inc: { 'responseStats.rejected': 1 } }, { session });
+      if (asHost) await Vendor.updateOne({ _id: req.auth.id }, { $inc: { 'responseStats.rejected': 1 } }, { session });
     }
-    await audit(req, `booking.vendor_${decision}ed`, { type: 'booking', id: b._id }, { reason, session });
+    await audit(req, `booking.${asHost ? 'vendor' : 'admin'}_${decision}ed`, { type: 'booking', id: b._id }, { reason, session });
     return effects;
   });
   await runEffects(fx);
 }
+export const vendorDecision = decideBooking;
 
 /** Admin cancellation: always a full refund unless an explicit refund amount is given. */
 export async function cancelByAdmin(req, bookingId, { reason }) {
@@ -269,11 +319,16 @@ export async function requestExtension(req, bookingId, newEndAt) {
     const b = await Booking.findOne({ _id: bookingId, userId: req.auth.id }).session(session);
     if (!b) throw notFound('Booking');
     if (!['confirmed', 'ongoing'].includes(b.status)) throw conflict('Only upcoming or active trips can be extended.', 'NOT_EXTENDABLE');
+    const cutoff = new Date(b.endAt.getTime() - settings.extension.minHoursBeforeEnd * 3600_000);
+    if (new Date() > cutoff) {
+      throw conflict(`Extensions must be requested at least ${settings.extension.minHoursBeforeEnd} hours before your return time. Please call support — late returns are charged by the hour.`, 'EXTENSION_TOO_LATE', { cutoffAt: cutoff });
+    }
     const end = new Date(newEndAt);
     if (Number.isNaN(end.getTime()) || end.getTime() % (30 * 60_000)) throw badRequest('Choose a return time on the hour or half hour.', undefined, 'INVALID_DATES');
     if (end <= b.endAt) throw badRequest('The new return time must be after the current one.', undefined, 'INVALID_DATES');
     if (end.getTime() - b.startAt.getTime() > settings.booking.maxDurationDays * 86400_000) throw badRequest(`Trips can last at most ${settings.booking.maxDurationDays} days.`, undefined, 'TRIP_TOO_LONG');
-    if (b.extensions.some((e) => e.status === 'pending_payment' && e.holdExpiresAt > new Date())) throw conflict('You already have an extension awaiting payment.', 'EXTENSION_PENDING');
+    if (b.extensions.some((e) => e.status === 'pending_approval' || (e.status === 'pending_payment' && e.holdExpiresAt > new Date()))) throw conflict('You already have an extension request in progress.', 'EXTENSION_PENDING');
+    if (b.extensions.some((e) => e.status === 'approved' && e.chargeStatus === 'due')) throw conflict('Pay for your approved extension first.', 'EXTENSION_UNPAID');
 
     await Vehicle.updateOne({ _id: b.vehicleId }, { $inc: { lockVersion: 1 } }, { session });
     if (!(await isVehicleAvailable(b.vehicleId, b.endAt, end, { session, excludeBookingId: b._id }))) {
@@ -283,18 +338,26 @@ export async function requestExtension(req, bookingId, newEndAt) {
     const overrides = await loadOverrides(b.vehicleId, b.endAt, end, session);
     const rental = computeRental({ startAt: b.endAt, endAt: end, pricing: vehicle.pricing, overrides });
     const gst = pct(rental.rentalPaise, b.pricing.gstBps);
+    const needsApproval = settings.extension.requireApproval;
     const ext = {
       previousEndAt: b.endAt,
       requestedEndAt: end,
-      status: 'pending_payment',
+      status: needsApproval ? 'pending_approval' : 'pending_payment',
       pricing: { hours: rental.hours, rentalPaise: rental.rentalPaise, gstPaise: gst, totalPaise: rental.rentalPaise + gst, includedKm: rental.includedKm, lines: rental.lines },
-      holdExpiresAt: new Date(Date.now() + settings.booking.holdMinutes * 60_000),
+      // Awaiting approval, the extra time stays reserved until operations decide (or the trip's return time passes).
+      holdExpiresAt: needsApproval ? undefined : new Date(Date.now() + settings.booking.holdMinutes * 60_000),
+      requestedBy: { realm: 'user', id: req.auth.id },
     };
     b.extensions.push(ext);
     b.blockEndAt = end;
     await b.save({ session });
+    await audit(req, 'booking.extension_requested', { type: 'booking', id: b._id }, { changes: { requestedEndAt: end, needsApproval }, session });
     return { booking: b, extension: b.extensions.at(-1) };
   });
+  if (result.extension.status === 'pending_approval') {
+    await notifyAdmins('admin.alert', { title: 'Extension request', body: `Booking ${result.booking.ref} asks to extend to ${formatIst(result.extension.requestedEndAt)}.`, link: `/bookings/${result.booking._id}` }, 'bookings.manage');
+    return { extension: result.extension, payment: null };
+  }
   const order = await openPaymentOrder({ booking: result.booking, purpose: 'extension', amountPaise: result.extension.pricing.totalPaise, extensionId: result.extension._id });
   return { extension: result.extension, payment: order };
 }
@@ -304,6 +367,7 @@ export async function extensionPaymentOrder(userId, bookingId, extensionId) {
   const b = await Booking.findOne({ _id: bookingId, userId }).lean();
   if (!b) throw notFound('Booking');
   const ext = b.extensions.find((e) => String(e._id) === String(extensionId));
+  if (ext?.status === 'approved' && ext.chargeStatus === 'due') return openPaymentOrder({ booking: b, purpose: 'extension', amountPaise: ext.pricing.totalPaise, extensionId: ext._id });
   if (!ext || ext.status !== 'pending_payment') throw conflict('This extension does not need payment.', 'PAYMENT_NOT_REQUIRED');
   if (ext.holdExpiresAt < new Date()) throw new AppError(410, 'HOLD_EXPIRED', 'This extension hold has expired. Please request it again.');
   return openPaymentOrder({ booking: b, purpose: 'extension', amountPaise: ext.pricing.totalPaise, extensionId: ext._id });
@@ -333,7 +397,39 @@ export async function expireHolds() {
     b.blockEndAt = b.endAt;
     await b.save();
   }
+  // Requests nobody reviewed before the trip's return time lapse (the renter is told).
+  const unreviewed = await Booking.find({ extensions: { $elemMatch: { status: 'pending_approval', previousEndAt: { $lt: new Date() } } } }).limit(200);
+  for (const b of unreviewed) {
+    for (const e of b.extensions) {
+      if (e.status === 'pending_approval' && e.previousEndAt < new Date()) Object.assign(e, { status: 'rejected', decidedBy: { realm: 'system' }, decidedAt: new Date(), reason: 'Not reviewed before the return time' });
+    }
+    b.blockEndAt = b.endAt;
+    await b.save();
+    await notify('booking.extension_rejected', { realm: 'user', id: b.userId }, { bookingId: b._id, ref: b.ref, reason: 'It could not be reviewed before your return time.' });
+  }
   return lapsed.length;
+}
+
+/** Job: remind renters of a balance coming due; cancel (per policy) bookings still unpaid at pickup. */
+export async function processBalances() {
+  const now = new Date();
+  const remind = await Booking.find({ status: { $in: ['pending_vendor_approval', 'confirmed'] }, 'balance.status': 'due', 'balance.reminderSent': { $ne: true }, 'balance.dueAt': { $lt: new Date(now.getTime() + 6 * 3600_000) } }).limit(200).lean();
+  for (const b of remind) {
+    await Booking.updateOne({ _id: b._id }, { $set: { 'balance.reminderSent': true } });
+    await notify('booking.balance_due', { realm: 'user', id: b.userId }, { bookingId: b._id, ref: b.ref, vehicle: b.vehicleSnapshot.title, duePaise: b.balance.duePaise, dueBy: formatIst(b.balance.dueAt) }, { dedupeKey: `balance-due:${b._id}` });
+  }
+  const unpaid = await Booking.find({ status: { $in: ['pending_vendor_approval', 'confirmed'] }, 'balance.status': 'due', 'balance.autoCancel': true, startAt: { $lte: now } }).select('_id').limit(100).lean();
+  for (const { _id } of unpaid) {
+    const fx = await withTransaction(async (session) => {
+      const b = await Booking.findOne({ _id, 'balance.status': 'due', status: { $in: ['pending_vendor_approval', 'confirmed'] } }).session(session);
+      if (!b) return null;
+      const effects = await cancelBooking(b, { by: { realm: 'system' }, reason: 'Balance not paid before pickup' }, session);
+      await audit(null, 'booking.cancelled_unpaid_balance', { type: 'booking', id: b._id }, { actor: { realm: 'system' }, session });
+      return effects;
+    }).catch(() => null);
+    await runEffects(fx);
+  }
+  return remind.length + unpaid.length;
 }
 
 /** Host didn't respond within the SLA: reject with a full refund. */

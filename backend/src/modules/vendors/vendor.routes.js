@@ -72,24 +72,27 @@ vendorAccountRouter.get('/me/bank', async (req, res) => {
   ok(res, serializeBank(b));
 });
 
-/** Replacing bank details always resets verification — payouts wait for finance to verify again. */
-vendorAccountRouter.put('/me/bank', validate({
-  body: z.object({
-    accountHolderName: z.string().trim().min(2).max(120),
-    accountNumber: z.string().regex(/^\d{9,18}$/, 'Enter a valid account number'),
-    confirmAccountNumber: z.string(),
-    ifsc: z.string().trim().toUpperCase().regex(/^[A-Z]{4}0[A-Z0-9]{6}$/, 'Enter a valid IFSC'),
-    bankName: z.string().trim().max(100).optional(),
-    upiId: z.string().trim().regex(/^[\w.-]{2,64}@[a-zA-Z]{2,64}$/, 'Enter a valid UPI ID').optional().or(z.literal('')),
-    proofFileId: objectId,
-  }).strict().refine((b) => b.accountNumber === b.confirmAccountNumber, { message: 'Account numbers do not match', path: ['confirmAccountNumber'] }),
-}), async (req, res) => {
-  const b = req.valid.body;
-  const bank = await withTransaction(async (session) => {
-    await claimFiles(req.auth, [b.proofFileId], ['bank_proof'], { session });
-    await VendorBankAccount.updateMany({ vendorId: req.auth.id, isActive: true }, { $set: { isActive: false } }, { session });
+export const bankBodySchema = z.object({
+  accountHolderName: z.string().trim().min(2).max(120),
+  accountNumber: z.string().regex(/^\d{9,18}$/, 'Enter a valid account number'),
+  confirmAccountNumber: z.string(),
+  ifsc: z.string().trim().toUpperCase().regex(/^[A-Z]{4}0[A-Z0-9]{6}$/, 'Enter a valid IFSC'),
+  bankName: z.string().trim().max(100).optional(),
+  upiId: z.string().trim().regex(/^[\w.-]{2,64}@[a-zA-Z]{2,64}$/, 'Enter a valid UPI ID').optional().or(z.literal('')),
+  proofFileId: objectId,
+}).strict();
+export const matchingBankNumbers = (schema) => schema.refine((b) => b.accountNumber === b.confirmAccountNumber, { message: 'Account numbers do not match', path: ['confirmAccountNumber'] });
+
+/**
+ * Replaces a host's active bank account. Hosts' own changes reset verification; an admin entering
+ * details on the host's behalf may record them as verified.
+ */
+export async function replaceBankAccount(req, vendorId, b, { verifiedBy } = {}) {
+  return withTransaction(async (session) => {
+    if (b.proofFileId) await claimFiles(req.auth, [b.proofFileId], ['bank_proof'], { session });
+    await VendorBankAccount.updateMany({ vendorId, isActive: true }, { $set: { isActive: false } }, { session });
     const [acc] = await VendorBankAccount.create([{
-      vendorId: req.auth.id,
+      vendorId,
       accountHolderName: b.accountHolderName,
       accountNumberEnc: encrypt(b.accountNumber),
       accountNumberLast4: b.accountNumber.slice(-4),
@@ -97,12 +100,18 @@ vendorAccountRouter.put('/me/bank', validate({
       bankName: b.bankName,
       upiId: b.upiId || undefined,
       proofFileId: b.proofFileId,
+      ...(verifiedBy ? { verification: { status: 'verified', reviewedBy: verifiedBy, reviewedAt: new Date() } } : {}),
     }], { session });
-    await attachFiles([b.proofFileId], { type: 'vendor_bank_account', id: acc._id }, session);
-    await Vendor.updateOne({ _id: req.auth.id }, { $set: { bankAccountId: acc._id }, $addToSet: { completedSteps: 'bank' } }, { session });
-    await audit(req, 'vendor.bank_updated', { type: 'vendor_bank_account', id: acc._id }, { session });
+    if (b.proofFileId) await attachFiles([b.proofFileId], { type: 'vendor_bank_account', id: acc._id }, session);
+    await Vendor.updateOne({ _id: vendorId }, { $set: { bankAccountId: acc._id }, $addToSet: { completedSteps: 'bank' } }, { session });
+    await audit(req, 'vendor.bank_updated', { type: 'vendor_bank_account', id: acc._id }, { changes: { vendorId, verified: Boolean(verifiedBy) }, session });
     return acc;
   });
+}
+
+/** Replacing bank details always resets verification — payouts wait for finance to verify again. */
+vendorAccountRouter.put('/me/bank', validate({ body: matchingBankNumbers(bankBodySchema) }), async (req, res) => {
+  const bank = await replaceBankAccount(req, req.auth.id, req.valid.body);
   ok(res, serializeBank(bank.toObject()));
 });
 

@@ -12,7 +12,7 @@ import { notify } from '../notifications/notification.service.js';
 import { getSettings } from '../settings/settings.service.js';
 import { lockForPayout, settlePayout, releaseVendorEarning } from '../wallet/wallet.service.js';
 import { LedgerEntry } from '../wallet/wallet.model.js';
-import { Vendor, VendorBankAccount } from '../vendors/vendor.model.js';
+import { Vendor, VendorBankAccount, commissionBpsFor, hostVisibilityFor } from '../vendors/vendor.model.js';
 import { Booking } from '../bookings/booking.model.js';
 import { PayoutRequest } from './payout.model.js';
 
@@ -24,7 +24,7 @@ export const vendorEarningsRouter = Router();
 
 vendorEarningsRouter.get('/summary', async (req, res) => {
   const [vendor, settings, monthly, upcoming] = await Promise.all([
-    Vendor.findById(req.auth.id).select('wallet').lean(),
+    Vendor.findById(req.auth.id).select('wallet commissionBps hostVisibility isCompany').lean(),
     getSettings(),
     LedgerEntry.aggregate([
       { $match: { 'owner.realm': 'vendor', 'owner.id': req.auth.id, type: 'trip_earning', createdAt: { $gte: new Date(Date.now() - 365 * 86400_000) } } },
@@ -36,13 +36,14 @@ vendorEarningsRouter.get('/summary', async (req, res) => {
       { $group: { _id: null, rentalPaise: { $sum: '$pricing.rentalPaise' }, count: { $sum: 1 } } },
     ]),
   ]);
+  const amounts = hostVisibilityFor(vendor, settings).bookingAmounts;
   ok(res, {
     wallet: vendor.wallet,
     payoutHoldDays: settings.payouts.holdDays,
     minWithdrawalPaise: settings.payouts.minWithdrawalPaise,
-    commissionBps: settings.commissionBps,
+    commissionBps: commissionBpsFor(vendor, settings),
     monthly: monthly.map((m) => ({ month: m._id, earnedPaise: m.earnedPaise, trips: m.trips })),
-    upcoming: { bookings: upcoming[0]?.count || 0, grossRentalPaise: upcoming[0]?.rentalPaise || 0 },
+    upcoming: { bookings: upcoming[0]?.count || 0, grossRentalPaise: amounts ? upcoming[0]?.rentalPaise || 0 : null },
   });
 });
 
@@ -126,6 +127,33 @@ adminPayoutRouter.post('/:id/decision', validate({
   if (p.status === 'paid') await notify('vendor.payout_paid', { realm: 'vendor', id: p.vendorId }, { amountPaise: p.amountPaise, utr: p.utr });
   if (p.status === 'rejected') await notify('vendor.payout_rejected', { realm: 'vendor', id: p.vendorId }, { reason: p.rejectionReason });
   ok(res, serialize(p.toObject()));
+});
+
+/**
+ * Finance settles a host directly (no withdrawal request needed): moves the amount from available to
+ * paid out against the bank transfer reference, in one step.
+ */
+adminPayoutRouter.post('/settle', validate({
+  body: z.object({ vendorId: objectId, amountPaise: z.number().int().min(100), utr: z.string().trim().regex(/^[A-Za-z0-9]{8,40}$/, 'Enter the bank UTR / reference'), note: z.string().trim().max(300).optional() }).strict(),
+}), async (req, res) => {
+  const { vendorId, amountPaise, utr, note } = req.valid.body;
+  const bank = await VendorBankAccount.findOne({ vendorId, isActive: true }).lean();
+  if (!bank) throw badRequest('Add the host’s bank account first.', undefined, 'BANK_MISSING');
+  if (bank.verification?.status !== 'verified') throw conflict('Verify the host’s bank account first.', 'BANK_UNVERIFIED');
+  if (await PayoutRequest.exists({ vendorId, status: { $in: ['requested', 'approved'] } })) throw conflict('This host has a withdrawal request open. Complete or reject it first.', 'PAYOUT_IN_PROGRESS');
+  const p = await withTransaction(async (session) => {
+    const now = new Date();
+    const [doc] = await PayoutRequest.create([{
+      vendorId, amountPaise, bankAccountId: bank._id, status: 'paid', utr, paidAt: now, note, reviewedBy: req.auth.id, reviewedAt: now,
+      bankSnapshot: { accountHolderName: bank.accountHolderName, accountNumberLast4: bank.accountNumberLast4, ifsc: bank.ifsc, bankName: bank.bankName },
+    }], { session });
+    await lockForPayout(vendorId, amountPaise, doc._id, session);
+    await settlePayout(vendorId, amountPaise, doc._id, 'paid', session);
+    await audit(req, 'payout.settled_by_admin', { type: 'payout_request', id: doc._id }, { changes: { vendorId, amountPaise, utr }, session });
+    return doc;
+  });
+  await notify('vendor.payout_paid', { realm: 'vendor', id: vendorId }, { amountPaise, utr });
+  created(res, serialize(p.toObject()));
 });
 
 /** Job: release host earnings whose hold period has passed. */

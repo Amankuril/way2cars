@@ -13,7 +13,10 @@ import { User } from '../users/user.model.js';
 import { serializeUser } from '../users/user.serializer.js';
 import { Vendor, VendorBankAccount } from '../vendors/vendor.model.js';
 import { serializeVendor } from '../vendors/vendor.serializer.js';
-import { serializeBank } from '../vendors/vendor.routes.js';
+import { serializeBank, bankBodySchema, matchingBankNumbers, replaceBankAccount } from '../vendors/vendor.routes.js';
+import { decrypt } from '../../core/crypto.js';
+import { getSettings } from '../settings/settings.service.js';
+import { commissionBpsFor, hostVisibilityFor } from '../vendors/vendor.model.js';
 import { KycSubmission } from '../kyc/kyc.model.js';
 import { reviewKyc, reviewKycInTransaction, serializeSubmission, latestSubmission } from '../kyc/kyc.service.js';
 import { Booking, ACTIVE_BOOKING_STATUSES } from '../bookings/booking.model.js';
@@ -97,7 +100,7 @@ export const adminVendorsRouter = Router();
 
 adminVendorsRouter.get('/', requirePermission('vendors.read'), validate({ query: z.object({ ...paginationQuery, q: z.string().trim().max(100).optional(), status: z.enum(['onboarding', 'pending_approval', 'approved', 'rejected', 'suspended', 'deleted']).optional(), notStatus: z.enum(['pending_approval', 'deleted']).optional() }) }), async (req, res) => {
   const { page, limit, q, status, notStatus } = req.valid.query;
-  const filter = { ...searchFilter(q) };
+  const filter = { ...searchFilter(q), isCompany: { $ne: true } };
   if (q && !filter.phone) filter.$or.push({ businessName: new RegExp(escapeRegex(q), 'i') });
   if (status) filter.status = status;
   else if (notStatus) filter.status = { $ne: notStatus };
@@ -118,9 +121,12 @@ adminVendorsRouter.get('/:id', requirePermission('vendors.read'), validate({ par
     Booking.aggregate([{ $match: { vendorId: v._id } }, { $group: { _id: '$status', n: { $sum: 1 } } }]),
     AuditLog.find({ $or: [{ 'entity.id': v._id }, { 'actor.id': v._id }] }).sort({ createdAt: -1 }).limit(30).lean(),
   ]);
+  const settings = await getSettings();
   ok(res, {
     ...serializeVendor(v),
     submittedAt: v.submittedAt,
+    effectiveCommissionBps: commissionBpsFor(v, settings),
+    effectiveHostVisibility: hostVisibilityFor(v, settings),
     bank: serializeBank(bank),
     kycSubmission: serializeSubmission(kyc),
     vehicles: vehicles.map((x) => ({ id: x._id, title: `${x.brandId?.name || ''} ${x.model}`.trim(), registrationNumber: x.registrationNumber, approval: x.approval?.status, status: x.status, isListed: x.isListed, rating: x.rating, trips: x.stats?.trips || 0 })),
@@ -164,6 +170,42 @@ adminVendorsRouter.post('/:id/decision', requirePermission('vendors.manage'), va
   if (action === 'reject') notifyLater('vendor.rejected', { realm: 'vendor', id: v._id }, { reason });
   const upcoming = action === 'suspend' ? await Booking.countDocuments({ vendorId: v._id, status: { $in: ACTIVE_BOOKING_STATUSES } }) : 0;
   ok(res, { ...serializeVendor(v.toObject()), activeBookingsNeedingAttention: upcoming });
+});
+
+/** Commission override for one host (null → platform default). Finance sets the money split. */
+adminVendorsRouter.patch('/:id/commission', requirePermission('payouts.manage'), validate({ params: idParams, body: z.object({ commissionBps: z.number().int().min(0).max(9000).nullable(), reason: z.string().trim().max(300).optional() }).strict() }), async (req, res) => {
+  const v = await Vendor.findOneAndUpdate({ _id: req.valid.params.id, isCompany: { $ne: true } }, { $set: { commissionBps: req.valid.body.commissionBps } }, { new: true }).lean();
+  if (!v) throw notFound('Host');
+  await audit(req, 'vendor.commission_updated', { type: 'vendor', id: v._id }, { changes: { commissionBps: req.valid.body.commissionBps }, reason: req.valid.body.reason });
+  ok(res, { ...serializeVendor(v), effectiveCommissionBps: commissionBpsFor(v, await getSettings()) });
+});
+
+/** What this host may see about renters and money (unset keys follow platform settings). */
+const visibilityFlag = z.boolean().nullable();
+adminVendorsRouter.patch('/:id/visibility', requirePermission('vendors.manage'), validate({ params: idParams, body: z.object({ renterName: visibilityFlag, renterPhone: visibilityFlag, renterKycStatus: visibilityFlag, bookingAmounts: visibilityFlag, paymentStatus: visibilityFlag }).partial().strict() }), async (req, res) => {
+  const set = {};
+  const unset = {};
+  for (const [k, val] of Object.entries(req.valid.body)) (val === null ? unset : set)[`hostVisibility.${k}`] = val === null ? 1 : val;
+  const v = await Vendor.findOneAndUpdate({ _id: req.valid.params.id, isCompany: { $ne: true } }, { ...(Object.keys(set).length ? { $set: set } : {}), ...(Object.keys(unset).length ? { $unset: unset } : {}) }, { new: true }).lean();
+  if (!v) throw notFound('Host');
+  await audit(req, 'vendor.visibility_updated', { type: 'vendor', id: v._id }, { changes: req.valid.body });
+  ok(res, { ...serializeVendor(v), effectiveHostVisibility: hostVisibilityFor(v, await getSettings()) });
+});
+
+/** Admin enters or replaces a host's bank account (e.g. from a cancelled cheque) — recorded as verified. */
+adminVendorsRouter.put('/:id/bank', requirePermission('vendors.bank.review'), validate({ params: idParams, body: matchingBankNumbers(bankBodySchema.extend({ proofFileId: objectId.optional() })) }), async (req, res) => {
+  const v = await Vendor.findOne({ _id: req.valid.params.id, isCompany: { $ne: true } }).select('_id').lean();
+  if (!v) throw notFound('Host');
+  const bank = await replaceBankAccount(req, v._id, req.valid.body, { verifiedBy: req.auth.id });
+  ok(res, serializeBank(bank.toObject()));
+});
+
+/** Full account number for settling a host — finance only, audited. */
+adminVendorsRouter.get('/:id/bank/details', requirePermission('payouts.manage'), validate({ params: idParams }), async (req, res) => {
+  const bank = await VendorBankAccount.findOne({ vendorId: req.valid.params.id, isActive: true }).lean();
+  if (!bank) throw notFound('Bank account');
+  await audit(req, 'vendor.bank_details_viewed', { type: 'vendor_bank_account', id: bank._id });
+  ok(res, { accountHolderName: bank.accountHolderName, accountNumber: decrypt(bank.accountNumberEnc), ifsc: bank.ifsc, bankName: bank.bankName, upiId: bank.upiId, verification: bank.verification?.status });
 });
 
 adminVendorsRouter.post('/:id/bank/verify', requirePermission('vendors.bank.review'), validate({ params: idParams, body: z.object({ decision: z.enum(['verified', 'rejected']), reason: z.string().trim().max(300).optional() }).strict() }), async (req, res) => {

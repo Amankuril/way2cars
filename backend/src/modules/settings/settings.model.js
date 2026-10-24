@@ -27,7 +27,27 @@ const schema = new mongoose.Schema(
       deliveryPerKmPaise: { type: Number, default: 1500, min: 0 },
       deliveryMaxKm: { type: Number, default: 25, min: 0 },
     },
-    commissionBps: { type: Number, default: 2000, min: 0, max: 9000 },
+    // Way2Cars' share of every attached-host booking; the host gets the rest. Hosts can carry an override.
+    commissionBps: { type: Number, default: 3000, min: 0, max: 9000 },
+    // Pay part now to block the dates; the balance is due `balanceDueHoursBeforeStart` before pickup.
+    advance: {
+      enabled: { type: Boolean, default: true },
+      percentBps: { type: Number, default: 3000, min: 1000, max: 9000 },
+      balanceDueHoursBeforeStart: { type: Number, default: 24, min: 0, max: 168 },
+      autoCancelUnpaid: { type: Boolean, default: true }, // at pickup time, cancel per policy if the balance is still due
+    },
+    extension: {
+      minHoursBeforeEnd: { type: Number, default: 12, min: 0, max: 72 },
+      requireApproval: { type: Boolean, default: true }, // operations approve before the renter pays
+    },
+    // What attached hosts may see about renters and money. Company-fleet cars are run by admins.
+    hostVisibility: {
+      renterName: { type: Boolean, default: true },
+      renterPhone: { type: Boolean, default: false },
+      renterKycStatus: { type: Boolean, default: true },
+      bookingAmounts: { type: Boolean, default: false },
+      paymentStatus: { type: Boolean, default: false },
+    },
     booking: {
       holdMinutes: { type: Number, default: 15, min: 5, max: 60 },
       minDurationHours: { type: Number, default: 4, min: 1, max: 48 },

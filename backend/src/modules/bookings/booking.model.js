@@ -43,6 +43,8 @@ const pricing = new mongoose.Schema(
     hourlyPaise: Number,
     dailyPaise: Number,
     commissionBps: Number,
+    advancePaise: Number, // set when the renter chose to pay an advance to block the dates
+    adjustedBy: { id: oid, note: String }, // admin-set price on an offline booking
     couponCode: String,
     settingsVersion: Number,
   },
@@ -54,15 +56,26 @@ const place = new mongoose.Schema(
   { _id: false },
 );
 
+/**
+ * Self-serve (no approval): pending_payment → paid | expired | failed.
+ * With operations approval: pending_approval → approved (applied at once, charge due/paid/waived) | rejected.
+ * Admin direct extensions are created `approved`. "Applied" extensions move the booking's endAt.
+ */
+export const APPLIED_EXTENSION_STATUSES = ['paid', 'approved'];
 const extension = new mongoose.Schema(
   {
     previousEndAt: Date,
     requestedEndAt: Date,
-    status: { type: String, enum: ['pending_payment', 'paid', 'expired', 'failed'], default: 'pending_payment' },
+    status: { type: String, enum: ['pending_approval', 'approved', 'rejected', 'pending_payment', 'paid', 'expired', 'failed'], default: 'pending_payment' },
     pricing: { hours: Number, rentalPaise: Number, gstPaise: Number, totalPaise: Number, includedKm: Number, lines: [priceLine] },
     holdExpiresAt: Date,
     paymentId: { type: oid, ref: 'Payment' },
     paidAt: Date,
+    requestedBy: actor,
+    decidedBy: actor,
+    decidedAt: Date,
+    reason: String, // rejection reason or admin note
+    chargeStatus: { type: String, enum: ['due', 'paid', 'waived'] }, // approved extensions only
   },
   { timestamps: true },
 );
@@ -81,6 +94,10 @@ const schema = new mongoose.Schema(
     // endAt, or a pending extension's end while its payment hold is live. Used for overlap checks.
     blockEndAt: { type: Date, required: true },
     status: { type: String, enum: BOOKING_STATUSES, default: 'pending_payment' },
+    source: { type: String, enum: ['app', 'offline'], default: 'app' }, // offline = created by operations at the office
+    ownership: { type: String, enum: ['host', 'company'], default: 'host' }, // company = Way2Cars-owned fleet
+    createdBy: actor,
+    officeNote: { type: String, maxlength: 500 },
     statusHistory: [{ _id: false, status: String, at: Date, by: actor, note: String }],
     instantBooking: Boolean,
     holdExpiresAt: Date,
@@ -95,6 +112,15 @@ const schema = new mongoose.Schema(
       paymentId: { type: oid, ref: 'Payment' },
       paidPaise: { type: Number, default: 0 }, // gateway total across booking + extensions + settlement
       refundedPaise: { type: Number, default: 0 },
+    },
+    // Advance bookings / offline bookings with money still to collect before pickup.
+    balance: {
+      duePaise: Number,
+      dueAt: Date,
+      status: { type: String, enum: ['due', 'paid', 'waived'] },
+      paidAt: Date,
+      autoCancel: Boolean, // cancel per policy at pickup time if still due (app advance bookings)
+      reminderSent: Boolean,
     },
     cancellation: { by: actor, reason: String, at: Date, hoursBeforeStart: Number, refundBps: Number, refundPaise: Number, walletRefundPaise: Number },
     extensions: [extension],
@@ -113,7 +139,7 @@ const schema = new mongoose.Schema(
     },
     settlement: {
       kmDriven: Number, extraKm: Number, extraKmPaise: Number, fuelShortEighths: Number, fuelPaise: Number,
-      lateHours: Number, lateFeePaise: Number, damagePaise: Number, damageNote: String,
+      lateHours: Number, lateFeePaise: Number, damagePaise: Number, damageNote: String, extensionDuePaise: Number,
       totalDeductionsPaise: Number, depositRefundPaise: Number, outstandingPaise: Number,
       outstandingStatus: { type: String, enum: ['none', 'due', 'paid', 'waived'] },
       outstandingPaymentId: { type: oid, ref: 'Payment' },
@@ -136,6 +162,8 @@ schema.index({ status: 1, vendorDecisionDueAt: 1 });
 schema.index({ status: 1, startAt: 1 });
 schema.index({ status: 1, 'trip.returnReviewDueAt': 1 });
 schema.index({ createdAt: -1 });
+schema.index({ 'balance.status': 1, 'balance.dueAt': 1 });
+schema.index({ 'extensions.status': 1 });
 
 export const Booking = mongoose.model('Booking', schema, 'bookings');
 
@@ -153,3 +181,7 @@ export function overlapFilter(vehicleId, startAt, endAt, bufferMinutes, { exclud
   if (excludeBookingId) filter._id = { $ne: excludeBookingId };
   return filter;
 }
+
+/** Extension charges approved but still unpaid (settled from the deposit at trip end). */
+export const unpaidExtensionPaise = (b) => (b.extensions || []).filter((e) => e.status === 'approved' && e.chargeStatus === 'due').reduce((sum, e) => sum + e.pricing.totalPaise, 0);
+export const appliedExtensions = (b) => (b.extensions || []).filter((e) => APPLIED_EXTENSION_STATUSES.includes(e.status));

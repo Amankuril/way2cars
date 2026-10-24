@@ -6,7 +6,7 @@ import { Payment, WebhookEvent } from './payment.model.js';
 import { applyRefundEvent } from './refund.service.js';
 import { Booking } from '../bookings/booking.model.js';
 import { User } from '../users/user.model.js';
-import { onBookingPaid, onExtensionPaid, onSettlementPaid, afterPaymentCommit } from '../bookings/booking.lifecycle.js';
+import { onBookingPaid, onBalancePaid, onExtensionPaid, onSettlementPaid, afterPaymentCommit } from '../bookings/booking.lifecycle.js';
 
 /**
  * Creates (or reuses) a Razorpay order for an amount the SERVER computed.
@@ -38,7 +38,7 @@ export async function openPaymentOrder({ booking, purpose, amountPaise, extensio
     amountPaise: payment.amountPaise,
     currency: 'INR',
     name: 'WAY2CARS',
-    description: `${purpose === 'booking' ? 'Booking' : purpose === 'extension' ? 'Trip extension' : 'Trip settlement'} ${booking.ref}`,
+    description: `${{ booking: booking.pricing?.advancePaise ? 'Booking advance' : 'Booking', balance: 'Booking balance', extension: 'Trip extension', settlement: 'Trip settlement' }[purpose]} ${booking.ref}`,
     prefill: { name: user?.name || '', contact: user?.phone ? `+91${user.phone}` : '', email: user?.email || '' },
     customerId: user?.razorpayCustomerId || undefined,
   };
@@ -70,6 +70,7 @@ export async function confirmCapturedPayment({ orderId, rzpPayment, via }) {
     await Booking.updateOne({ _id: booking._id }, { $inc: { 'payment.paidPaise': payment.amountPaise } }, { session });
     let effects;
     if (payment.purpose === 'booking') effects = await onBookingPaid(booking, payment, session);
+    else if (payment.purpose === 'balance') effects = await onBalancePaid(booking, payment, session);
     else if (payment.purpose === 'extension') effects = await onExtensionPaid(booking, payment, session);
     else effects = await onSettlementPaid(booking, payment, session);
     return { status: 'confirmed', payment, effects };
@@ -169,4 +170,4 @@ export async function reconcilePendingPayments() {
   return confirmed;
 }
 
-export const serializePayment = (p) => ({ id: p._id, bookingId: p.bookingId, purpose: p.purpose, amountPaise: p.amountPaise, status: p.status, method: p.method, razorpayPaymentId: p.razorpayPaymentId, paidAt: p.paidAt, refundedPaise: p.refundedPaise, createdAt: p.createdAt });
+export const serializePayment = (p) => ({ id: p._id, bookingId: p.bookingId, purpose: p.purpose, mode: p.mode || 'gateway', amountPaise: p.amountPaise, status: p.status, method: p.method || p.offline?.method, reference: p.offline?.reference, razorpayPaymentId: p.razorpayPaymentId, paidAt: p.paidAt, refundedPaise: p.refundedPaise, createdAt: p.createdAt });

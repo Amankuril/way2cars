@@ -4,7 +4,7 @@ import { badRequest, conflict, notFound } from '../../core/errors.js';
 import { sha256 } from '../../core/crypto.js';
 import { pct } from '../../core/money.js';
 import { audit } from '../../core/audit.js';
-import { Booking } from '../bookings/booking.model.js';
+import { Booking, appliedExtensions, unpaidExtensionPaise } from '../bookings/booking.model.js';
 import { Vehicle } from '../vehicles/vehicle.model.js';
 import { User } from '../users/user.model.js';
 import { KycSubmission } from '../kyc/kyc.model.js';
@@ -76,6 +76,7 @@ export async function startTrip(req, bookingId, body) {
     const b = await Booking.findOne({ _id: bookingId, userId: req.auth.id }).session(session);
     if (!b) throw notFound('Booking');
     if (b.status !== 'confirmed') throw conflict('This trip is not ready to start.', 'NOT_STARTABLE');
+    if (b.balance?.status === 'due') throw conflict(`Pay the remaining ₹${(b.balance.duePaise / 100).toFixed(2)} before pickup.`, 'BALANCE_DUE', { duePaise: b.balance.duePaise });
     const now = new Date();
     const opensAt = new Date(b.startAt.getTime() - settings.booking.pickupWindowMinutesBefore * 60_000);
     if (now < opensAt) throw conflict(`Pickup opens ${settings.booking.pickupWindowMinutesBefore} minutes before your start time.`, 'PICKUP_NOT_OPEN');
@@ -174,6 +175,7 @@ export async function previewSettlement(b, damagePaise = 0) {
     hourlyPaise: b.pricing.hourlyPaise,
     lateFeeMultiplierBps: settings.trip.lateFeeMultiplierBps,
     damagePaise,
+    extensionDuePaise: unpaidExtensionPaise(b),
     depositPaise: b.pricing.depositPaise,
     isElectric: vehicle?.fuelType === 'electric',
   });
@@ -190,12 +192,15 @@ export async function finalizeTrip(bookingId, { damagePaise = 0, damageNote, by 
   const s = await previewSettlement(b, damagePaise);
   const fx = newEffects();
 
-  const extensionRental = b.extensions.filter((e) => e.status === 'paid').reduce((sum, e) => sum + e.pricing.rentalPaise, 0);
+  const extensionRental = appliedExtensions(b).filter((e) => e.chargeStatus !== 'waived').reduce((sum, e) => sum + e.pricing.rentalPaise, 0);
   const usageCharges = b.pricing.rentalPaise + extensionRental + s.extraKmPaise + s.fuelPaise + s.lateFeePaise;
   const commissionPaise = pct(usageCharges, b.pricing.commissionBps);
-  const vendorEarningPaise = usageCharges - commissionPaise + s.damagePaise;
+  // Company-fleet cars: everything stays with Way2Cars.
+  const vendorEarningPaise = b.ownership === 'company' ? 0 : usageCharges - commissionPaise + s.damagePaise;
 
   transition(b, 'completed', by, 'Trip settled');
+  // Unpaid extension charges were taken from the deposit (or added to the dues) above.
+  for (const e of b.extensions) if (e.status === 'approved' && e.chargeStatus === 'due') e.chargeStatus = 'paid';
   b.trip.endedAt = new Date();
   b.settlement = { ...s, damageNote, outstandingStatus: s.outstandingPaise > 0 ? 'due' : 'none', commissionPaise, vendorEarningPaise, settledAt: new Date(), settledBy: by };
   await b.save({ session });

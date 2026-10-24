@@ -110,7 +110,7 @@ export function cancellationRefundBps(tiers, hoursBeforeStart) {
  * Trip settlement on return. Deductions come out of the deposit; anything beyond it is
  * outstanding and must be paid by the renter.
  */
-export function computeSettlement({ startOdometer, endOdometer, includedKm, extraKmChargePaise, startFuelEighths, endFuelEighths, fuelChargePerEighthPaise, scheduledEndAt, actualEndAt, lateGraceMinutes, hourlyPaise, lateFeeMultiplierBps, damagePaise = 0, depositPaise, isElectric = false }) {
+export function computeSettlement({ startOdometer, endOdometer, includedKm, extraKmChargePaise, startFuelEighths, endFuelEighths, fuelChargePerEighthPaise, scheduledEndAt, actualEndAt, lateGraceMinutes, hourlyPaise, lateFeeMultiplierBps, damagePaise = 0, extensionDuePaise = 0, depositPaise, isElectric = false }) {
   const kmDriven = Math.max(0, endOdometer - startOdometer);
   const extraKm = Math.max(0, kmDriven - includedKm);
   const extraKmPaise = extraKm * extraKmChargePaise;
@@ -119,8 +119,8 @@ export function computeSettlement({ startOdometer, endOdometer, includedKm, extr
   const lateMinutes = Math.max(0, (new Date(actualEndAt) - new Date(scheduledEndAt)) / 60_000 - lateGraceMinutes);
   const lateHours = lateMinutes > 0 ? Math.ceil(lateMinutes / 60) : 0;
   const lateFeePaise = lateHours * pct(hourlyPaise, lateFeeMultiplierBps);
-  const totalDeductionsPaise = extraKmPaise + fuelPaise + lateFeePaise + damagePaise;
+  const totalDeductionsPaise = extraKmPaise + fuelPaise + lateFeePaise + damagePaise + extensionDuePaise;
   const depositRefundPaise = Math.max(0, depositPaise - totalDeductionsPaise);
   const outstandingPaise = Math.max(0, totalDeductionsPaise - depositPaise);
-  return { kmDriven, extraKm, extraKmPaise, fuelShortEighths, fuelPaise, lateHours, lateFeePaise, damagePaise, totalDeductionsPaise, depositRefundPaise, outstandingPaise };
+  return { kmDriven, extraKm, extraKmPaise, fuelShortEighths, fuelPaise, lateHours, lateFeePaise, damagePaise, extensionDuePaise, totalDeductionsPaise, depositRefundPaise, outstandingPaise };
 }

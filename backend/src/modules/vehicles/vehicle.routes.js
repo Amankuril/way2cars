@@ -12,7 +12,7 @@ import { claimFiles, attachFiles } from '../files/files.service.js';
 import { FileRecord } from '../files/file.model.js';
 import { notifyLater } from '../notifications/notification.service.js';
 import { getSettings } from '../settings/settings.service.js';
-import { Vendor } from '../vendors/vendor.model.js';
+import { Vendor, companyVendor } from '../vendors/vendor.model.js';
 import { Booking, BLOCKING_STATUSES } from '../bookings/booking.model.js';
 import { Vehicle, VehicleBlock, VehiclePriceOverride, APPROVAL_STATUSES, OPERATIONAL_STATUSES } from './vehicle.model.js';
 import {
@@ -70,44 +70,50 @@ vendorVehicleRouter.patch('/:id', validate({ params: idParams, body: vehicleBase
   ok(res, { ...serializeVehicle(await Vehicle.findById(v._id).populate(POPULATE).lean(), { audience: 'owner' }), resubmittedForReview: resubmit });
 });
 
-vendorVehicleRouter.put('/:id/photos', validate({ params: idParams, body: z.object({ fileIds: z.array(objectId).min(1).max(15) }).strict() }), async (req, res) => {
-  const v = await getOwnedVehicle(req.auth.id, req.valid.params.id);
-  const updated = await withTransaction(async (session) => {
-    const files = await claimFiles(req.auth, req.valid.body.fileIds, ['vehicle_photo'], { session, allowAttachedTo: { type: 'vehicle', id: v._id } });
+/** Sets a car's photo list (order = display order). Shared by hosts and admins. */
+async function replacePhotos(req, v, fileIds) {
+  return withTransaction(async (session) => {
+    const files = await claimFiles(req.auth, fileIds, ['vehicle_photo'], { session, allowAttachedTo: { type: 'vehicle', id: v._id } });
     await attachFiles(files.map((f) => f._id), { type: 'vehicle', id: v._id }, session);
     const keep = new Set(files.map((f) => String(f._id)));
     const removed = v.photos.filter((p) => !keep.has(String(p.fileId))).map((p) => p.fileId);
     if (removed.length) await FileRecord.updateMany({ _id: { $in: removed } }, { $set: { status: 'temp', linkedTo: null } }, { session }); // purged by the orphan job
     return Vehicle.findByIdAndUpdate(v._id, { $set: { photos: files.map((f) => ({ fileId: f._id, url: publicUrl(f.storageKey) })) } }, { new: true, session }).populate(POPULATE).lean();
   });
-  ok(res, serializeVehicle(updated, { audience: 'owner' }));
+}
+
+vendorVehicleRouter.put('/:id/photos', validate({ params: idParams, body: z.object({ fileIds: z.array(objectId).min(1).max(15) }).strict() }), async (req, res) => {
+  const v = await getOwnedVehicle(req.auth.id, req.valid.params.id);
+  ok(res, serializeVehicle(await replacePhotos(req, v, req.valid.body.fileIds), { audience: 'owner' }));
 });
 
 const docSchema = z.object({ fileId: objectId, number: z.string().trim().max(40).optional(), expiry: z.coerce.date().optional() }).strict();
-vendorVehicleRouter.put('/:id/documents', validate({
-  params: idParams,
-  body: z.object({
-    rc: docSchema.optional(),
-    insurance: docSchema.extend({ provider: z.string().trim().min(2).max(80), type: z.enum(['comprehensive', 'zero_dep', 'third_party']), expiry: z.coerce.date() }).strict().optional(),
-    puc: docSchema.extend({ expiry: z.coerce.date() }).strict().optional(),
-    fitness: docSchema.optional(),
-  }).strict(),
-}), async (req, res) => {
-  const v = await getOwnedVehicle(req.auth.id, req.valid.params.id);
-  const body = req.valid.body;
+const documentsBody = z.object({
+  rc: docSchema.optional(),
+  insurance: docSchema.extend({ provider: z.string().trim().min(2).max(80), type: z.enum(['comprehensive', 'zero_dep', 'third_party']), expiry: z.coerce.date() }).strict().optional(),
+  puc: docSchema.extend({ expiry: z.coerce.date() }).strict().optional(),
+  fitness: docSchema.optional(),
+}).strict();
+
+/** Replaces documents. A host's new documents on a live car send it back for review; an admin's don't. */
+async function replaceDocuments(req, v, body) {
   for (const [k, d] of Object.entries(body)) if (d.expiry && d.expiry < new Date()) throw badRequest(`The ${k.toUpperCase()} document has already expired.`, undefined, 'DOCUMENT_EXPIRED');
   const updated = await withTransaction(async (session) => {
     const ids = Object.values(body).map((d) => d.fileId);
     await claimFiles(req.auth, ids, ['vehicle_document'], { session, allowAttachedTo: { type: 'vehicle', id: v._id } });
     await attachFiles(ids, { type: 'vehicle', id: v._id }, session);
     const set = Object.fromEntries(Object.entries(body).map(([k, d]) => [`documents.${k}`, d]));
-    // New documents on a live car need a fresh review.
-    if (v.approval.status === 'approved') Object.assign(set, { 'approval.status': 'pending_review', 'approval.submittedAt': new Date() });
+    if (req.auth.realm === 'vendor' && v.approval.status === 'approved') Object.assign(set, { 'approval.status': 'pending_review', 'approval.submittedAt': new Date() });
     return Vehicle.findByIdAndUpdate(v._id, { $set: set }, { new: true, session }).populate(POPULATE).lean();
   });
   await refreshListing(v._id);
   await audit(req, 'vehicle.documents_updated', { type: 'vehicle', id: v._id }, { changes: { documents: Object.keys(body) } });
-  ok(res, serializeVehicle(updated, { audience: 'owner' }));
+  return updated;
+}
+
+vendorVehicleRouter.put('/:id/documents', validate({ params: idParams, body: documentsBody }), async (req, res) => {
+  const v = await getOwnedVehicle(req.auth.id, req.valid.params.id);
+  ok(res, serializeVehicle(await replaceDocuments(req, v, req.valid.body), { audience: 'owner' }));
 });
 
 vendorVehicleRouter.post('/:id/submit', validate({ params: idParams }), async (req, res) => {
@@ -153,7 +159,8 @@ vendorVehicleRouter.get('/:id/calendar', validate({ params: idParams, query: ran
   ok(res, await vehicleCalendar(v._id, req.valid.query.from, req.valid.query.to));
 });
 
-vendorVehicleRouter.post('/:id/blocks', validate({ params: idParams, body: z.object({ startAt: z.coerce.date(), endAt: z.coerce.date(), reason: z.enum(['personal', 'maintenance', 'other']).default('personal'), note: z.string().trim().max(200).optional() }).strict() }), async (req, res) => {
+const blockBody = z.object({ startAt: z.coerce.date(), endAt: z.coerce.date(), reason: z.enum(['personal', 'maintenance', 'other']).default('personal'), note: z.string().trim().max(200).optional() }).strict();
+vendorVehicleRouter.post('/:id/blocks', validate({ params: idParams, body: blockBody }), async (req, res) => {
   const v = await getOwnedVehicle(req.auth.id, req.valid.params.id);
   // Serialise against concurrent bookings by taking the vehicle lock in a transaction.
   const block = await withTransaction(async (session) => {
@@ -171,17 +178,17 @@ vendorVehicleRouter.delete('/:id/blocks/:blockId', validate({ params: z.object({
   noContent(res);
 });
 
-vendorVehicleRouter.put('/:id/pricing-calendar', validate({
-  params: idParams,
-  body: z.object({ entries: z.array(z.object({ date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), dailyPaise: z.number().int().min(10000).max(10_000_000), hourlyPaise: z.number().int().min(1000).max(1_000_000).optional() }).strict()).min(1).max(120) }).strict(),
-}), async (req, res) => {
-  const v = await getOwnedVehicle(req.auth.id, req.valid.params.id);
+const pricingCalendarBody = z.object({ entries: z.array(z.object({ date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), dailyPaise: z.number().int().min(10000).max(10_000_000), hourlyPaise: z.number().int().min(1000).max(1_000_000).optional() }).strict()).min(1).max(120) }).strict();
+async function setPricingCalendar(req, v) {
   const today = new Date(Date.now() + 330 * 60000).toISOString().slice(0, 10);
   if (req.valid.body.entries.some((e) => e.date < today)) throw badRequest('Past dates cannot be priced.');
   await VehiclePriceOverride.bulkWrite(req.valid.body.entries.map((e) => ({
     updateOne: { filter: { vehicleId: v._id, date: e.date }, update: { $set: { dailyPaise: e.dailyPaise, hourlyPaise: e.hourlyPaise } }, upsert: true },
   })));
   await audit(req, 'vehicle.pricing_calendar_updated', { type: 'vehicle', id: v._id }, { changes: { dates: req.valid.body.entries.map((e) => e.date) } });
+}
+vendorVehicleRouter.put('/:id/pricing-calendar', validate({ params: idParams, body: pricingCalendarBody }), async (req, res) => {
+  await setPricingCalendar(req, await getOwnedVehicle(req.auth.id, req.valid.params.id));
   noContent(res);
 });
 
@@ -195,10 +202,11 @@ vendorVehicleRouter.delete('/:id/pricing-calendar/:date', validate({ params: z.o
 export const adminVehicleRouter = Router();
 
 adminVehicleRouter.get('/', requirePermission('vehicles.read'), validate({
-  query: z.object({ ...paginationQuery, approval: z.enum(APPROVAL_STATUSES).optional(), notApproval: z.enum(APPROVAL_STATUSES).optional(), status: z.enum(OPERATIONAL_STATUSES).optional(), cityId: objectId.optional(), vendorId: objectId.optional(), q: z.string().trim().max(40).optional(), featured: z.enum(['true', 'false']).optional() }),
+  query: z.object({ ...paginationQuery, approval: z.enum(APPROVAL_STATUSES).optional(), notApproval: z.enum(APPROVAL_STATUSES).optional(), status: z.enum(OPERATIONAL_STATUSES).optional(), cityId: objectId.optional(), vendorId: objectId.optional(), q: z.string().trim().max(40).optional(), featured: z.enum(['true', 'false']).optional(), ownership: z.enum(['host', 'company']).optional() }),
 }), async (req, res) => {
-  const { page, limit, approval, notApproval, status, cityId, vendorId, q, featured } = req.valid.query;
+  const { page, limit, approval, notApproval, status, cityId, vendorId, q, featured, ownership } = req.valid.query;
   const filter = {};
+  if (ownership) filter.ownership = ownership === 'host' ? { $ne: 'company' } : 'company';
   if (approval) filter['approval.status'] = approval;
   else if (notApproval) filter['approval.status'] = { $ne: notApproval };
   if (status) filter.status = status;
@@ -207,12 +215,12 @@ adminVehicleRouter.get('/', requirePermission('vehicles.read'), validate({
   if (featured) filter.isFeatured = featured === 'true';
   if (q) filter.$or = [{ registrationNumber: new RegExp(escapeRegex(q.replace(/\s/g, '').toUpperCase())) }, { model: new RegExp(escapeRegex(q), 'i') }];
   const sort = approval === 'pending_review' ? { 'approval.submittedAt': 1 } : { createdAt: -1 };
-  const { items, meta } = await paginate(Vehicle, filter, { page, limit, sort, populate: [...POPULATE, { path: 'vendorId', select: 'name businessName phone status' }] });
+  const { items, meta } = await paginate(Vehicle, filter, { page, limit, sort, populate: [...POPULATE, { path: 'vendorId', select: 'name businessName phone status isCompany' }] });
   ok(res, items.map((v) => ({ ...serializeVehicle(v, { audience: 'admin' }), vendor: v.vendorId?.name !== undefined ? { id: v.vendorId._id, name: v.vendorId.businessName || v.vendorId.name, phone: v.vendorId.phone, status: v.vendorId.status } : null })), meta);
 });
 
 adminVehicleRouter.get('/:id', requirePermission('vehicles.read'), validate({ params: idParams }), async (req, res) => {
-  const v = await Vehicle.findById(req.valid.params.id).populate([...POPULATE, { path: 'vendorId', select: 'name businessName phone status rating' }]).lean();
+  const v = await Vehicle.findById(req.valid.params.id).populate([...POPULATE, { path: 'vendorId', select: 'name businessName phone status rating isCompany' }]).lean();
   if (!v) throw notFound('Car');
   const [upcoming, { trip }] = await Promise.all([
     Booking.find({ vehicleId: v._id, status: { $in: BLOCKING_STATUSES } }).select('ref status startAt endAt').sort({ startAt: 1 }).limit(20).lean(),
@@ -260,4 +268,97 @@ adminVehicleRouter.patch('/:id/flags', requirePermission('vehicles.manage'), val
 adminVehicleRouter.get('/:id/calendar', requirePermission('vehicles.read'), validate({ params: idParams, query: range }), async (req, res) => {
   if (!(await Vehicle.exists({ _id: req.valid.params.id }))) throw notFound('Car');
   ok(res, await vehicleCalendar(req.valid.params.id, req.valid.query.from, req.valid.query.to));
+});
+
+// ---- full admin control: Way2Cars' own fleet, and any car's details, pricing and availability
+async function adminVehicle(id) {
+  const v = await Vehicle.findById(id);
+  if (!v) throw notFound('Car');
+  return v;
+}
+const adminView = async (id) => serializeVehicle(await Vehicle.findById(id).populate(POPULATE).lean(), { audience: 'admin' });
+
+/** Adds a car to the company fleet (draft until photos/documents are in and it's published). */
+adminVehicleRouter.post('/', requirePermission('vehicles.manage'), validate({ body: vehicleBaseSchema }), async (req, res) => {
+  await validateRefs(req.valid.body);
+  const company = await companyVendor();
+  const v = await Vehicle.create({ ...toVehicleDoc(req.valid.body), vendorId: company._id, ownership: 'company' }).catch(dup);
+  await audit(req, 'vehicle.created', { type: 'vehicle', id: v._id }, { changes: { ownership: 'company' } });
+  created(res, await adminView(v._id));
+});
+
+/** Edits any car. Admin edits never send a car back for review. */
+adminVehicleRouter.patch('/:id', requirePermission('vehicles.manage'), validate({ params: idParams, body: vehicleBaseSchema.partial() }), async (req, res) => {
+  const body = req.valid.body;
+  const v = await adminVehicle(req.valid.params.id);
+  await validateRefs({ cityId: body.cityId ?? (body.location ? String(v.cityId) : undefined), brandId: body.brandId, categoryId: body.categoryId, location: body.location });
+  Object.assign(v, toVehicleDoc(body));
+  await v.save().catch(dup);
+  await refreshListing(v._id);
+  await audit(req, 'vehicle.admin_updated', { type: 'vehicle', id: v._id }, { changes: { fields: Object.keys(body) } });
+  ok(res, await adminView(v._id));
+});
+
+adminVehicleRouter.put('/:id/photos', requirePermission('vehicles.manage'), validate({ params: idParams, body: z.object({ fileIds: z.array(objectId).min(1).max(15) }).strict() }), async (req, res) => {
+  const v = await adminVehicle(req.valid.params.id);
+  await replacePhotos(req, v, req.valid.body.fileIds);
+  await audit(req, 'vehicle.photos_updated', { type: 'vehicle', id: v._id });
+  ok(res, await adminView(v._id));
+});
+
+adminVehicleRouter.put('/:id/documents', requirePermission('vehicles.manage'), validate({ params: idParams, body: documentsBody }), async (req, res) => {
+  const v = await adminVehicle(req.valid.params.id);
+  await replaceDocuments(req, v, req.valid.body);
+  ok(res, await adminView(v._id));
+});
+
+adminVehicleRouter.patch('/:id/status', requirePermission('vehicles.manage'), validate({ params: idParams, body: z.object({ status: z.enum(OPERATIONAL_STATUSES) }).strict() }), async (req, res) => {
+  const v = await adminVehicle(req.valid.params.id);
+  v.status = req.valid.body.status;
+  await v.save();
+  await refreshListing(v._id);
+  await audit(req, 'vehicle.status_changed', { type: 'vehicle', id: v._id }, { changes: { status: v.status } });
+  const upcoming = v.status !== 'active' ? await Booking.countDocuments({ vehicleId: v._id, status: { $in: ['pending_vendor_approval', 'confirmed', 'ongoing'] } }) : 0;
+  ok(res, { ...(await adminView(v._id)), upcomingBookings: upcoming });
+});
+
+/** Puts a company-fleet car live once it has everything a listing needs. */
+adminVehicleRouter.post('/:id/publish', requirePermission('vehicles.manage'), validate({ params: idParams }), async (req, res) => {
+  const v = await adminVehicle(req.valid.params.id);
+  if (v.ownership !== 'company') throw conflict('Host cars go through review instead.', 'NOT_COMPANY_FLEET');
+  const { trip } = await getSettings();
+  const gaps = submissionGaps(v, trip.minPickupPhotos);
+  if (gaps.length) throw badRequest('Add the missing details before publishing.', { missing: gaps }, 'VEHICLE_INCOMPLETE');
+  v.approval = { status: 'approved', submittedAt: v.approval?.submittedAt || new Date(), reviewedAt: new Date(), reviewedBy: req.auth.id };
+  await v.save();
+  await refreshListing(v._id);
+  await audit(req, 'vehicle.approved', { type: 'vehicle', id: v._id }, { changes: { ownership: 'company' } });
+  ok(res, await adminView(v._id));
+});
+
+adminVehicleRouter.post('/:id/blocks', requirePermission('vehicles.manage'), validate({ params: idParams, body: blockBody }), async (req, res) => {
+  const v = await adminVehicle(req.valid.params.id);
+  const block = await withTransaction(async (session) => {
+    await Vehicle.updateOne({ _id: v._id }, { $inc: { lockVersion: 1 } }, { session });
+    return addBlock(v, req.valid.body, session);
+  });
+  await audit(req, 'vehicle.block_added', { type: 'vehicle', id: v._id }, { changes: req.valid.body });
+  created(res, { id: block._id, startAt: block.startAt, endAt: block.endAt, reason: block.reason, note: block.note });
+});
+
+adminVehicleRouter.delete('/:id/blocks/:blockId', requirePermission('vehicles.manage'), validate({ params: z.object({ id: objectId, blockId: objectId }) }), async (req, res) => {
+  const r = await VehicleBlock.deleteOne({ _id: req.valid.params.blockId, vehicleId: req.valid.params.id });
+  if (!r.deletedCount) throw notFound('Blocked period');
+  await audit(req, 'vehicle.block_removed', { type: 'vehicle', id: req.valid.params.id });
+  noContent(res);
+});
+
+adminVehicleRouter.put('/:id/pricing-calendar', requirePermission('vehicles.manage'), validate({ params: idParams, body: pricingCalendarBody }), async (req, res) => {
+  await setPricingCalendar(req, await adminVehicle(req.valid.params.id));
+  noContent(res);
+});
+
+adminVehicleRouter.delete('/:id/pricing-calendar/:date', requirePermission('vehicles.manage'), validate({ params: z.object({ id: objectId, date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) }) }), async (req, res) => {
+  await VehiclePriceOverride.deleteOne({ vehicleId: req.valid.params.id, date: req.valid.params.date });
+  noContent(res);
 });

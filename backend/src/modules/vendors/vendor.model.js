@@ -36,6 +36,18 @@ const schema = new mongoose.Schema(
     reviewedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'AdminUser' },
     kyc: { type: kycSummary, default: () => ({}) },
     bankAccountId: { type: mongoose.Schema.Types.ObjectId, ref: 'VendorBankAccount' },
+    // The single internal account that owns Way2Cars' own fleet. It never logs in and earns nothing:
+    // company-fleet revenue stays with the platform.
+    isCompany: { type: Boolean, default: false },
+    // Per-host overrides set by admins; null/unset falls back to platform settings.
+    commissionBps: { type: Number, min: 0, max: 9000, default: null },
+    hostVisibility: {
+      renterName: { type: Boolean, default: undefined },
+      renterPhone: { type: Boolean, default: undefined },
+      renterKycStatus: { type: Boolean, default: undefined },
+      bookingAmounts: { type: Boolean, default: undefined },
+      paymentStatus: { type: Boolean, default: undefined },
+    },
     wallet: {
       pendingPaise: { type: Number, default: 0, min: 0 }, // earned, inside hold period
       availablePaise: { type: Number, default: 0, min: 0 }, // withdrawable
@@ -53,6 +65,7 @@ const schema = new mongoose.Schema(
 );
 schema.index({ phone: 1 }, { unique: true, partialFilterExpression: { phone: { $type: 'string' } } });
 schema.index({ status: 1, submittedAt: -1 });
+schema.index({ isCompany: 1 }, { unique: true, partialFilterExpression: { isCompany: true } });
 schema.index({ name: 'text', businessName: 'text', email: 'text' });
 
 export const Vendor = mongoose.model('Vendor', schema, 'vendor_accounts');
@@ -78,3 +91,31 @@ const bank = new mongoose.Schema(
   { timestamps: true, versionKey: false },
 );
 export const VendorBankAccount = mongoose.model('VendorBankAccount', bank, 'vendor_bank_accounts');
+
+export const COMPANY_FLEET_NAME = 'WAY2CARS Fleet';
+
+/** The company-fleet owner account, created on first use. */
+export async function companyVendor(session) {
+  const found = await Vendor.findOne({ isCompany: true }).session(session || null).lean();
+  if (found) return found;
+  try {
+    const [doc] = await Vendor.create([{ isCompany: true, name: COMPANY_FLEET_NAME, businessName: COMPANY_FLEET_NAME, businessType: 'company', status: 'approved', completedSteps: [...VENDOR_ONBOARDING_STEPS] }], { session });
+    return doc.toObject();
+  } catch (err) {
+    if (err?.code !== 11000) throw err;
+    return Vendor.findOne({ isCompany: true }).session(session || null).lean();
+  }
+}
+
+/** Way2Cars' share for a booking on this host's car (basis points). */
+export function commissionBpsFor(vendor, settings) {
+  if (vendor?.isCompany) return 10000;
+  return vendor?.commissionBps ?? settings.commissionBps;
+}
+
+/** Effective renter/money visibility for an attached host. */
+export function hostVisibilityFor(vendor, settings) {
+  const base = settings.hostVisibility || {};
+  const own = vendor?.hostVisibility || {};
+  return Object.fromEntries(Object.keys(base).map((k) => [k, own[k] ?? base[k]]));
+}

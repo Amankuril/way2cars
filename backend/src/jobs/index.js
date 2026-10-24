@@ -1,6 +1,6 @@
 import { schedule } from '../core/jobs.js';
 import { purgeOrphanFiles } from '../modules/files/files.service.js';
-import { expireHolds, timeoutVendorApprovals } from '../modules/bookings/booking.service.js';
+import { expireHolds, timeoutVendorApprovals, processBalances } from '../modules/bookings/booking.service.js';
 import { reconcilePendingPayments } from '../modules/payments/payment.service.js';
 import { retryPendingRefunds } from '../modules/payments/refund.service.js';
 import { autoCompleteReturns } from '../modules/trips/trip.service.js';
@@ -13,6 +13,7 @@ const MIN = 60_000;
 export function startJobs() {
   schedule('bookings.expire-holds', 1 * MIN, expireHolds);
   schedule('bookings.vendor-approval-timeouts', 2 * MIN, timeoutVendorApprovals);
+  schedule('bookings.balances', 5 * MIN, processBalances);
   schedule('payments.reconcile', 5 * MIN, reconcilePendingPayments);
   schedule('refunds.retry', 5 * MIN, retryPendingRefunds);
   schedule('trips.auto-complete-returns', 15 * MIN, autoCompleteReturns);

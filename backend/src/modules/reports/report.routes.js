@@ -4,7 +4,7 @@ import { ok } from '../../core/http.js';
 import { validate } from '../../middleware/validate.js';
 import { requirePermission } from '../../middleware/auth.js';
 import { User } from '../users/user.model.js';
-import { Vendor } from '../vendors/vendor.model.js';
+import { Vendor, VendorBankAccount } from '../vendors/vendor.model.js';
 import { Vehicle } from '../vehicles/vehicle.model.js';
 import { Booking } from '../bookings/booking.model.js';
 import { Payment, Refund } from '../payments/payment.model.js';
@@ -14,6 +14,7 @@ import { PayoutRequest } from '../payouts/payout.model.js';
 import { DamageClaim } from '../trips/trip.model.js';
 import { LedgerEntry } from '../wallet/wallet.model.js';
 import mongoose from 'mongoose';
+import { bookingSplit } from '../bookings/booking.serializer.js';
 
 /**
  * Metric definitions (documented in docs/REPORTS.md):
@@ -166,3 +167,73 @@ adminReportsRouter.get('/payments', requirePermission('payments.read'), validate
   const rows = await Payment.find(filter).sort({ createdAt: -1 }).limit(5000).populate('bookingId', 'ref').lean();
   out(req, res, 'payments', rows.map((p) => ({ createdAt: p.createdAt.toISOString(), booking: p.bookingId?.ref, purpose: p.purpose, amountPaise: p.amountPaise, status: p.status, method: p.method || '', razorpayOrderId: p.razorpayOrderId, razorpayPaymentId: p.razorpayPaymentId || '', refundedPaise: p.refundedPaise, verifiedVia: p.verifiedVia || '' })));
 });
+
+/**
+ * Booking-wise money split: what was collected, GST, Way2Cars' share and the car owner's share, and
+ * where the owner's share is (awaiting the trip, on hold, or released for payout). Trips by start date.
+ */
+adminReportsRouter.get('/settlements', requirePermission('payments.read'), validate({
+  query: range.and(z.object({ vendorId: z.string().regex(/^[a-f0-9]{24}$/).optional(), ownership: z.enum(['host', 'company']).optional() })),
+}), async (req, res) => {
+  const { from, to, cityId, vendorId, ownership } = req.valid.query;
+  const match = { startAt: { $gte: from, $lt: to }, 'payment.paidPaise': { $gt: 0 }, ...cityMatch(cityId) };
+  if (vendorId) match.vendorId = new mongoose.Types.ObjectId(vendorId);
+  if (ownership) match.ownership = ownership === 'host' ? { $ne: 'company' } : 'company';
+  const bookings = await Booking.find(match).sort({ startAt: -1 }).limit(2000).lean();
+  const ids = bookings.map((b) => b._id);
+  const [earnings, vendors] = await Promise.all([
+    LedgerEntry.find({ bookingId: { $in: ids }, type: 'trip_earning' }).select('bookingId amountPaise released releaseAt').lean(),
+    Vendor.find({ _id: { $in: [...new Set(bookings.map((b) => String(b.vendorId)))] } }).select('name businessName isCompany').lean(),
+  ]);
+  const eMap = new Map();
+  for (const e of earnings) eMap.set(String(e.bookingId), [...(eMap.get(String(e.bookingId)) || []), e]);
+  const vMap = new Map(vendors.map((v) => [String(v._id), v]));
+  const rows = bookings.map((b) => {
+    const split = bookingSplit(b);
+    const entries = eMap.get(String(b._id)) || [];
+    const ownerPayout = !entries.length ? (split.ownership === 'company' ? 'not_applicable' : split.status) : entries.every((e) => e.released) ? 'released' : 'on_hold';
+    return {
+      bookingId: String(b._id),
+      ref: b.ref,
+      startAt: b.startAt.toISOString(),
+      status: b.status,
+      source: b.source || 'app',
+      ownership: split.ownership,
+      vehicle: b.vehicleSnapshot?.title,
+      host: vMap.get(String(b.vendorId))?.businessName || vMap.get(String(b.vendorId))?.name,
+      vendorId: String(b.vendorId),
+      collectedPaise: split.collectedPaise,
+      gstPaise: split.gstPaise,
+      commissionBps: split.commissionBps,
+      ownerSharePaise: split.ownerPaise,
+      platformSharePaise: split.platformPaise ?? split.collectedPaise - split.ownerPaise - (split.depositHeldPaise || 0),
+      depositHeldPaise: split.depositHeldPaise || 0,
+      balanceDuePaise: b.balance?.status === 'due' ? b.balance.duePaise : 0,
+      ownerPayout,
+    };
+  });
+  const sum = (k) => rows.reduce((t, r) => t + (r[k] || 0), 0);
+  out(req, res, 'settlements', rows, {
+    totals: { bookings: rows.length, collectedPaise: sum('collectedPaise'), gstPaise: sum('gstPaise'), ownerSharePaise: sum('ownerSharePaise'), platformSharePaise: sum('platformSharePaise'), depositHeldPaise: sum('depositHeldPaise'), balanceDuePaise: sum('balanceDuePaise') },
+  });
+});
+
+/** Every attached host's money: on hold, available to pay out, requested, and paid out so far. */
+adminReportsRouter.get('/host-balances', requirePermission('payments.read'), validate({ query: z.object({ format: z.enum(['json', 'csv']).default('json') }) }), async (req, res) => {
+  const vendors = await Vendor.find({ isCompany: { $ne: true }, status: { $ne: 'deleted' }, $or: [{ 'wallet.lifetimeEarnedPaise': { $gt: 0 } }, { status: 'approved' }] })
+    .select('name businessName phone status wallet commissionBps').sort({ 'wallet.availablePaise': -1 }).limit(1000).lean();
+  const banks = await VendorBankAccount.find({ vendorId: { $in: vendors.map((v) => v._id) }, isActive: true }).select('vendorId accountNumberLast4 ifsc bankName verification.status').lean();
+  const bMap = new Map(banks.map((b) => [String(b.vendorId), b]));
+  const rows = vendors.map((v) => {
+    const bank = bMap.get(String(v._id));
+    return {
+      vendorId: String(v._id), host: v.businessName || v.name, phone: v.phone, status: v.status, commissionBps: v.commissionBps ?? null,
+      onHoldPaise: v.wallet?.pendingPaise || 0, availablePaise: v.wallet?.availablePaise || 0, requestedPaise: v.wallet?.lockedPaise || 0,
+      paidOutPaise: v.wallet?.lifetimePaidOutPaise || 0, earnedPaise: v.wallet?.lifetimeEarnedPaise || 0,
+      bank: bank ? `${bank.bankName || bank.ifsc} ••${bank.accountNumberLast4}` : null, bankStatus: bank?.verification?.status || 'missing',
+    };
+  });
+  const sum = (k) => rows.reduce((t, r) => t + r[k], 0);
+  out(req, res, 'host-balances', rows, { totals: { onHoldPaise: sum('onHoldPaise'), availablePaise: sum('availablePaise'), requestedPaise: sum('requestedPaise'), paidOutPaise: sum('paidOutPaise') } });
+});
+

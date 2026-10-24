@@ -73,9 +73,11 @@ export async function claimFiles(auth, ids, purposes, { session, allowAttachedTo
   const byId = new Map(files.map((f) => [String(f._id), f]));
   for (const id of list) {
     const f = byId.get(id);
-    const ownedByCaller = f && f.owner.realm === auth.realm && String(f.owner.id) === String(auth.id);
+    const attachedHere = Boolean(f && allowAttachedTo && f.linkedTo?.type === allowAttachedTo.type && String(f.linkedTo?.id) === String(allowAttachedTo.id));
+    // Files already on this entity may be re-sent by anyone allowed to edit it (e.g. admins keeping a host's photos).
+    const ownedByCaller = f && ((f.owner.realm === auth.realm && String(f.owner.id) === String(auth.id)) || attachedHere);
     const purposeOk = f && [].concat(purposes).includes(f.purpose);
-    const free = f && (f.status === 'temp' || (allowAttachedTo && f.linkedTo?.type === allowAttachedTo.type && String(f.linkedTo?.id) === String(allowAttachedTo.id)));
+    const free = f && (f.status === 'temp' || attachedHere);
     if (!ownedByCaller || !purposeOk || !free) throw badRequest('One of the uploaded files is invalid or already used. Please upload it again.', { fileId: id }, 'FILE_INVALID');
   }
   return list.map((id) => byId.get(id));

@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { ok, created, noContent } from '../../core/http.js';
-import { notFound } from '../../core/errors.js';
+import { notFound, conflict } from '../../core/errors.js';
 import { paginate, paginationQuery, escapeRegex } from '../../core/pagination.js';
 import { validate } from '../../middleware/validate.js';
 import { requirePermission } from '../../middleware/auth.js';
@@ -9,22 +9,29 @@ import { Booking, BOOKING_STATUSES } from './booking.model.js';
 import { serializeBooking } from './booking.serializer.js';
 import {
   buildQuote, serializeQuote, createBooking, bookingPaymentOrder, cancelByUser, cancellationPreview,
-  vendorDecision, cancelByAdmin, requestExtension, extensionPaymentOrder,
+  decideBooking, cancelByAdmin, requestExtension, extensionPaymentOrder, balancePaymentOrder,
 } from './booking.service.js';
-import { startTrip, submitReturn, agreementFor, pickupSchema, returnSchema, vendorReturnReview, resolveDamageClaim, settlementPaymentOrder, inspectionsFor, previewSettlement } from '../trips/trip.service.js';
+import { createOfflineBooking, decideExtension, adminExtend, extensionCheck, recordOfficeCollection } from './booking.admin.service.js';
+import { withTransaction } from '../../core/db.js';
+import { runEffects } from './booking.lifecycle.js';
+import { getSettings } from '../settings/settings.service.js';
+import { serializeRefund, markManualRefundProcessed } from '../payments/refund.service.js';
+import { startTrip, submitReturn, agreementFor, pickupSchema, returnSchema, vendorReturnReview, resolveDamageClaim, settlementPaymentOrder, inspectionsFor, previewSettlement, finalizeTrip } from '../trips/trip.service.js';
 import { verifyCheckout, markPaymentFailed, serializePayment } from '../payments/payment.service.js';
 import { Payment, Refund, Invoice } from '../payments/payment.model.js';
-import { serializeRefund } from '../payments/refund.service.js';
 import { renderInvoicePdf } from '../payments/invoice.service.js';
 import { User } from '../users/user.model.js';
-import { Vendor } from '../vendors/vendor.model.js';
+import { Vendor, hostVisibilityFor } from '../vendors/vendor.model.js';
 import { audit } from '../../core/audit.js';
+import { DamageClaim } from '../trips/trip.model.js';
 
 const objectId = z.string().regex(/^[a-f0-9]{24}$/);
 const idParams = z.object({ id: objectId });
 const tripWindow = { vehicleId: objectId, startAt: z.coerce.date(), endAt: z.coerce.date() };
 const delivery = z.object({ address: z.string().trim().min(5).max(300), lat: z.number().min(-90).max(90), lng: z.number().min(-180).max(180), placeId: z.string().max(300).optional() }).strict().optional();
-const quoteBody = z.object({ ...tripWindow, delivery, couponCode: z.string().trim().toUpperCase().max(20).optional(), useWallet: z.boolean().default(false) }).strict();
+const quoteBody = z.object({ ...tripWindow, delivery, couponCode: z.string().trim().toUpperCase().max(20).optional(), useWallet: z.boolean().default(false), paymentPlan: z.enum(['full', 'advance']).default('full') }).strict();
+const officeMethod = z.enum(['cash', 'upi', 'card', 'bank_transfer']);
+const officeRef = z.string().trim().max(60).optional();
 const TABS = {
   upcoming: ['pending_payment', 'pending_vendor_approval', 'confirmed'],
   active: ['ongoing', 'return_pending'],
@@ -88,6 +95,7 @@ userBookingRouter.get('/:id', validate({ params: idParams }), async (req, res) =
 });
 
 userBookingRouter.post('/:id/payment-order', validate({ params: idParams }), async (req, res) => ok(res, await bookingPaymentOrder(req.auth.id, req.valid.params.id)));
+userBookingRouter.post('/:id/balance-payment-order', validate({ params: idParams }), async (req, res) => ok(res, await balancePaymentOrder(req.auth.id, req.valid.params.id)));
 userBookingRouter.post('/:id/settlement-payment-order', validate({ params: idParams }), async (req, res) => ok(res, await settlementPaymentOrder(req.auth.id, req.valid.params.id)));
 
 /** Called by the app after Razorpay checkout succeeds. Verified server-side; never trusted as-is. */
@@ -109,7 +117,7 @@ userBookingRouter.post('/:id/cancel', validate({ params: idParams, body: z.objec
 
 userBookingRouter.post('/:id/extensions', validate({ params: idParams, body: z.object({ endAt: z.coerce.date() }).strict() }), async (req, res) => {
   const r = await requestExtension(req, req.valid.params.id, req.valid.body.endAt);
-  created(res, { extension: { id: r.extension._id, requestedEndAt: r.extension.requestedEndAt, pricing: r.extension.pricing, holdExpiresAt: r.extension.holdExpiresAt }, payment: r.payment });
+  created(res, { extension: { id: r.extension._id, status: r.extension.status, requestedEndAt: r.extension.requestedEndAt, pricing: r.extension.pricing, holdExpiresAt: r.extension.holdExpiresAt }, payment: r.payment });
 });
 
 userBookingRouter.post('/:id/extensions/:extensionId/payment-order', validate({ params: z.object({ id: objectId, extensionId: objectId }) }), async (req, res) => {
@@ -146,6 +154,11 @@ userPaymentsRouter.get('/', validate({ query: z.object(paginationQuery) }), asyn
 
 // ================================================================= vendor
 export const vendorBookingRouter = Router();
+
+async function visibilityFor(vendorId) {
+  const [vendor, settings] = await Promise.all([Vendor.findById(vendorId).select('hostVisibility isCompany').lean(), getSettings()]);
+  return hostVisibilityFor(vendor, settings);
+}
 const VENDOR_TABS = { requests: ['pending_vendor_approval'], upcoming: ['confirmed'], active: ['ongoing', 'return_pending'], completed: ['completed'], cancelled: ['cancelled', 'rejected'] };
 
 vendorBookingRouter.get('/', validate({ query: z.object({ ...paginationQuery, tab: z.enum(Object.keys(VENDOR_TABS)).optional(), vehicleId: objectId.optional() }) }), async (req, res) => {
@@ -154,24 +167,24 @@ vendorBookingRouter.get('/', validate({ query: z.object({ ...paginationQuery, ta
   if (vehicleId) filter.vehicleId = vehicleId;
   const sort = ['requests', 'upcoming'].includes(tab) ? { startAt: 1 } : { startAt: -1 };
   const { items, meta } = await paginate(Booking, filter, { page, limit, sort });
-  const users = await User.find({ _id: { $in: items.map((b) => b.userId) } }).select('name phone kyc stats').lean();
+  const [users, visibility] = await Promise.all([User.find({ _id: { $in: items.map((b) => b.userId) } }).select('name phone kyc stats').lean(), visibilityFor(req.auth.id)]);
   const uMap = new Map(users.map((u) => [String(u._id), u]));
-  ok(res, items.map((b) => serializeBooking(b, { audience: 'vendor', user: uMap.get(String(b.userId)) })), meta);
+  ok(res, items.map((b) => serializeBooking(b, { audience: 'vendor', user: uMap.get(String(b.userId)), visibility })), meta);
 });
 
 vendorBookingRouter.get('/:id', validate({ params: idParams }), async (req, res) => {
   const b = await Booking.findOne({ _id: req.valid.params.id, vendorId: req.auth.id, status: { $nin: ['pending_payment', 'expired'] } }).lean();
   if (!b) throw notFound('Booking');
-  const user = await User.findById(b.userId).select('name phone kyc stats').lean();
-  const out = serializeBooking(b, { audience: 'vendor', user });
+  const [user, visibility] = await Promise.all([User.findById(b.userId).select('name phone kyc stats').lean(), visibilityFor(req.auth.id)]);
+  const out = serializeBooking(b, { audience: 'vendor', user, visibility });
   out.inspections = await inspectionsFor(b._id);
   if (b.status === 'return_pending') out.settlementPreview = await previewSettlement(b);
   ok(res, out);
 });
 
 vendorBookingRouter.post('/:id/decision', validate({ params: idParams, body: z.object({ decision: z.enum(['accept', 'reject']), reason: z.string().trim().max(300).optional() }).strict() }), async (req, res) => {
-  await vendorDecision(req, req.valid.params.id, req.valid.body);
-  ok(res, serializeBooking(await Booking.findById(req.valid.params.id).lean(), { audience: 'vendor' }));
+  await decideBooking(req, req.valid.params.id, req.valid.body);
+  ok(res, serializeBooking(await Booking.findById(req.valid.params.id).lean(), { audience: 'vendor', visibility: await visibilityFor(req.auth.id) }));
 });
 
 vendorBookingRouter.post('/:id/return-review', validate({
@@ -182,17 +195,21 @@ vendorBookingRouter.post('/:id/return-review', validate({
   ]),
 }), async (req, res) => {
   await vendorReturnReview(req, req.valid.params.id, req.valid.body);
-  ok(res, serializeBooking(await Booking.findById(req.valid.params.id).lean(), { audience: 'vendor' }));
+  ok(res, serializeBooking(await Booking.findById(req.valid.params.id).lean(), { audience: 'vendor', visibility: await visibilityFor(req.auth.id) }));
 });
 
 // ================================================================= admin
 export const adminBookingRouter = Router();
 
 adminBookingRouter.get('/', requirePermission('bookings.read'), validate({
-  query: z.object({ ...paginationQuery, status: z.enum(BOOKING_STATUSES).optional(), userId: objectId.optional(), vendorId: objectId.optional(), vehicleId: objectId.optional(), cityId: objectId.optional(), ref: z.string().trim().max(20).optional(), from: z.coerce.date().optional(), to: z.coerce.date().optional() }),
+  query: z.object({ ...paginationQuery, status: z.enum(BOOKING_STATUSES).optional(), userId: objectId.optional(), vendorId: objectId.optional(), vehicleId: objectId.optional(), cityId: objectId.optional(), ref: z.string().trim().max(20).optional(), from: z.coerce.date().optional(), to: z.coerce.date().optional(), source: z.enum(['app', 'offline']).optional(), ownership: z.enum(['host', 'company']).optional(), attention: z.enum(['extension_requests', 'balance_due']).optional() }),
 }), async (req, res) => {
-  const { page, limit, status, userId, vendorId, vehicleId, cityId, ref, from, to } = req.valid.query;
+  const { page, limit, status, userId, vendorId, vehicleId, cityId, ref, from, to, source, ownership, attention } = req.valid.query;
   const filter = {};
+  if (source) filter.source = source === 'app' ? { $ne: 'offline' } : 'offline';
+  if (ownership) filter.ownership = ownership === 'host' ? { $ne: 'company' } : 'company';
+  if (attention === 'extension_requests') filter['extensions.status'] = 'pending_approval';
+  if (attention === 'balance_due') Object.assign(filter, { 'balance.status': 'due', status: { $in: ['pending_vendor_approval', 'confirmed'] } });
   if (status) filter.status = status;
   if (userId) filter.userId = userId;
   if (vendorId) filter.vendorId = vendorId;
@@ -253,4 +270,100 @@ adminBookingRouter.get('/:id/invoices/:invoiceId.pdf', requirePermission('paymen
   if (!inv) throw notFound('Invoice');
   res.set({ 'Content-Type': 'application/pdf', 'Content-Disposition': `attachment; filename="${inv.number.replace(/\//g, '-')}.pdf"` });
   renderInvoicePdf(inv, b, res);
+});
+
+// ---- office (offline) bookings
+const officeBooking = z.object({
+  phone: z.string().trim().min(10).max(14),
+  name: z.string().trim().min(2).max(100).optional(),
+  vehicleId: objectId,
+  startAt: z.coerce.date(),
+  endAt: z.coerce.date(),
+  pricing: z.object({
+    rentalPaise: z.number().int().min(0).max(100_000_000).optional(),
+    depositPaise: z.number().int().min(0).max(10_000_000).optional(),
+    discountPaise: z.number().int().min(0).max(100_000_000).optional(),
+    waiveConvenienceFee: z.boolean().optional(),
+    note: z.string().trim().max(200).optional(),
+  }).strict().optional(),
+  payment: z.discriminatedUnion('status', [
+    z.object({ status: z.literal('paid'), method: officeMethod, reference: officeRef }).strict(),
+    z.object({ status: z.literal('partial'), amountPaise: z.number().int().min(100), method: officeMethod, reference: officeRef }).strict(),
+    z.object({ status: z.literal('unpaid') }).strict(),
+  ]),
+  balanceDueAt: z.coerce.date().optional(),
+  note: z.string().trim().max(500).optional(),
+}).strict();
+
+/** Price + availability for an office booking before staff confirm it. */
+adminBookingRouter.post('/offline/quote', requirePermission('bookings.manage'), validate({ body: officeBooking.pick({ vehicleId: true, startAt: true, endAt: true, pricing: true }) }), async (req, res) => {
+  const { vehicleId, startAt, endAt, pricing } = req.valid.body;
+  try {
+    const q = await buildQuote({ vehicleId, startAt, endAt }, { office: { ...pricing } });
+    ok(res, { available: true, ...serializeQuote(q), commissionBps: undefined });
+  } catch (err) {
+    if (err.code === 'VEHICLE_UNAVAILABLE') return ok(res, { available: false, message: err.message });
+    throw err;
+  }
+});
+
+adminBookingRouter.post('/offline', requirePermission('bookings.manage'), validate({ body: officeBooking }), async (req, res) => {
+  const b = await createOfflineBooking(req, req.valid.body);
+  created(res, serializeBooking(b, { audience: 'admin' }));
+});
+
+// ---- operations acting for the car owner (company fleet, or when a host is unreachable)
+adminBookingRouter.post('/:id/decision', requirePermission('bookings.manage'), validate({ params: idParams, body: z.object({ decision: z.enum(['accept', 'reject']), reason: z.string().trim().max(300).optional() }).strict() }), async (req, res) => {
+  await decideBooking(req, req.valid.params.id, req.valid.body);
+  ok(res, serializeBooking(await Booking.findById(req.valid.params.id).lean(), { audience: 'admin' }));
+});
+
+adminBookingRouter.post('/:id/return-review', requirePermission('trips.manage'), validate({ params: idParams, body: z.object({ decision: z.literal('accept') }).strict() }), async (req, res) => {
+  if (await DamageClaim.exists({ bookingId: req.valid.params.id, status: 'pending' })) throw conflict('Resolve the host’s damage claim instead.', 'CLAIM_EXISTS');
+  const fx = await withTransaction((session) => finalizeTrip(req.valid.params.id, { by: { realm: 'admin', id: req.auth.id } }, session));
+  await runEffects(fx);
+  await audit(req, 'trip.return_accepted', { type: 'booking', id: req.valid.params.id });
+  ok(res, serializeBooking(await Booking.findById(req.valid.params.id).lean(), { audience: 'admin' }));
+});
+
+// ---- extensions
+adminBookingRouter.get('/:id/extension-check', requirePermission('bookings.read'), validate({ params: idParams, query: z.object({ endAt: z.coerce.date() }) }), async (req, res) => {
+  ok(res, await extensionCheck(req.valid.params.id, req.valid.query.endAt));
+});
+
+adminBookingRouter.post('/:id/extensions/:extensionId/decision', requirePermission('bookings.manage'), validate({ params: z.object({ id: objectId, extensionId: objectId }), body: z.object({ decision: z.enum(['approve', 'reject']), reason: z.string().trim().max(300).optional() }).strict() }), async (req, res) => {
+  await decideExtension(req, req.valid.params.id, req.valid.params.extensionId, req.valid.body);
+  ok(res, serializeBooking(await Booking.findById(req.valid.params.id).lean(), { audience: 'admin' }));
+});
+
+adminBookingRouter.post('/:id/extensions', requirePermission('bookings.manage'), validate({
+  params: idParams,
+  body: z.object({
+    endAt: z.coerce.date(),
+    rentalPaise: z.number().int().min(0).max(100_000_000).optional(),
+    charge: z.enum(['collect_in_app', 'paid_offline', 'waive']),
+    method: officeMethod.optional(),
+    reference: officeRef,
+    note: z.string().trim().max(300).optional(),
+  }).strict().refine((b) => b.charge !== 'paid_offline' || b.method, { message: 'Choose how it was paid', path: ['method'] }),
+}), async (req, res) => {
+  await adminExtend(req, req.valid.params.id, req.valid.body);
+  ok(res, serializeBooking(await Booking.findById(req.valid.params.id).lean(), { audience: 'admin' }));
+});
+
+// ---- money collected at the office, and refunds handed back by hand
+adminBookingRouter.post('/:id/office-payments', requirePermission('bookings.manage'), validate({
+  params: idParams,
+  body: z.object({ purpose: z.enum(['balance', 'extension', 'settlement']), extensionId: objectId.optional(), method: officeMethod, reference: officeRef, note: z.string().trim().max(300).optional() }).strict()
+    .refine((b) => b.purpose !== 'extension' || b.extensionId, { message: 'Choose the extension', path: ['extensionId'] }),
+}), async (req, res) => {
+  await recordOfficeCollection(req, req.valid.params.id, req.valid.body);
+  ok(res, serializeBooking(await Booking.findById(req.valid.params.id).lean(), { audience: 'admin' }));
+});
+
+adminBookingRouter.post('/:id/refunds/:refundId/manual-processed', requirePermission('refunds.manage'), validate({ params: z.object({ id: objectId, refundId: objectId }), body: z.object({ reference: z.string().trim().min(3).max(60) }).strict() }), async (req, res) => {
+  const r = await markManualRefundProcessed(req.valid.params.refundId, req.valid.params.id, req.valid.body.reference);
+  if (!r) throw conflict('This refund is not awaiting a manual payout.', 'NOT_MANUAL');
+  await audit(req, 'refund.manual_processed', { type: 'booking', id: req.valid.params.id }, { changes: { refundId: r._id, reference: req.valid.body.reference, amountPaise: r.amountPaise } });
+  ok(res, serializeRefund(r.toObject()));
 });

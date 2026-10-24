@@ -7,13 +7,14 @@ const TTL_MS = 30_000;
 /** Returns the platform settings (lean), creating defaults on first use. Cached for 30s. */
 export async function getSettings({ fresh = false } = {}) {
   if (!fresh && cache && Date.now() - cachedAt < TTL_MS) return cache;
-  let doc = await Settings.findById('platform').lean();
+  // Not lean: hydrating applies schema defaults to sections added after the document was stored.
+  let doc = (await Settings.findById('platform'))?.toObject();
   if (!doc) {
     try {
       doc = (await Settings.create({ _id: 'platform' })).toObject();
     } catch (err) {
       if (err?.code !== 11000) throw err;
-      doc = await Settings.findById('platform').lean();
+      doc = (await Settings.findById('platform')).toObject();
     }
   }
   cache = doc;
@@ -60,7 +61,9 @@ export function publicSettings(s) {
     cancellation: s.cancellation,
     tax: { rentalGstBps: s.tax.rentalGstBps },
     fees: { convenienceFeePaise: s.fees.convenienceFeePaise, deliveryBaseFeePaise: s.fees.deliveryBaseFeePaise, deliveryPerKmPaise: s.fees.deliveryPerKmPaise, deliveryMaxKm: s.fees.deliveryMaxKm },
-    trip: { lateGraceMinutes: s.trip.lateGraceMinutes, minPickupPhotos: s.trip.minPickupPhotos },
+    trip: { lateGraceMinutes: s.trip.lateGraceMinutes, minPickupPhotos: s.trip.minPickupPhotos, lateFeeMultiplierBps: s.trip.lateFeeMultiplierBps },
+    advance: s.advance,
+    extension: s.extension,
     referral: s.referral,
     support: s.support,
   };

@@ -18,6 +18,8 @@ const doc = { fileId: { type: oid, ref: 'File' }, expiry: Date, number: String }
 const schema = new mongoose.Schema(
   {
     vendorId: { type: oid, ref: 'Vendor', required: true },
+    // company = Way2Cars-owned fleet (managed in the admin panel); host = attached by an external owner.
+    ownership: { type: String, enum: ['host', 'company'], default: 'host' },
     cityId: { type: oid, ref: 'City', required: true },
     brandId: { type: oid, ref: 'Brand', required: true },
     categoryId: { type: oid, ref: 'Category', required: true },
@@ -81,6 +83,7 @@ const schema = new mongoose.Schema(
 );
 schema.index({ registrationNumber: 1 }, { unique: true });
 schema.index({ vendorId: 1, createdAt: -1 });
+schema.index({ ownership: 1, createdAt: -1 });
 schema.index({ 'location.point': '2dsphere' });
 schema.index({ isListed: 1, cityId: 1, 'pricing.dailyPaise': 1 });
 schema.index({ isListed: 1, isFeatured: 1, featuredRank: -1 });

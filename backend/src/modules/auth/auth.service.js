@@ -30,7 +30,7 @@ export function vendorNextStep(v) {
   return v.status === 'rejected' ? 'resubmit' : 'review';
 }
 
-async function findOrCreate(realm, phone) {
+export async function findOrCreate(realm, phone) {
   const Model = realmModels[realm];
   let account = await Model.findOne({ phone });
   if (account) return { account, isNew: false };

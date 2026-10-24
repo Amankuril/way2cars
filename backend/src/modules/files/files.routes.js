@@ -14,7 +14,7 @@ import { storeUpload, getReadableFile } from './files.service.js';
 const PURPOSES_BY_REALM = {
   user: ['avatar', 'kyc_document', 'kyc_selfie', 'inspection_photo', 'damage_photo', 'ticket_attachment'],
   vendor: ['avatar', 'vehicle_photo', 'vehicle_document', 'kyc_document', 'kyc_selfie', 'bank_proof', 'inspection_photo', 'damage_photo', 'ticket_attachment'],
-  admin: ['banner', 'brand_logo', 'category_image', 'city_image', 'vehicle_photo', 'ticket_attachment'],
+  admin: ['banner', 'brand_logo', 'category_image', 'city_image', 'vehicle_photo', 'vehicle_document', 'bank_proof', 'ticket_attachment'],
 };
 
 /** POST /{realm}/uploads  multipart: file=<binary>, purpose=<purpose> */

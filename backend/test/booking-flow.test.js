@@ -316,7 +316,14 @@ describe('trip lifecycle and settlement', () => {
     const det = await api().get(`/api/v1/vendor/bookings/${ctx.booking.id}`).set(auth(ctx.vendorToken)).expect(200);
     const photo = det.body.data.inspections.pickup.photos[0];
     await api().get(photo.url).set(auth(ctx.vendorToken)).expect(200);
-    expect(det.body.data.renter.phone).toBeDefined();
+    // Hosts see renter phone and money only when admins allow it.
+    expect(det.body.data.renter.phone).toBeUndefined();
+    expect(det.body.data.pricing.rentalPaise).toBeUndefined();
+    expect(det.body.data.payment).toBeNull();
+    await api().patch(`/api/v1/admin/vendors/${ctx.vendor._id}/visibility`).set(auth(ctx.adminToken)).send({ renterPhone: true, bookingAmounts: true }).expect(200);
+    const again = await api().get(`/api/v1/vendor/bookings/${ctx.booking.id}`).set(auth(ctx.vendorToken)).expect(200);
+    expect(again.body.data.renter.phone).toBeDefined();
+    expect(again.body.data.pricing.rentalPaise).toBeGreaterThan(0);
   });
 
   it('return with extra km and less fuel → host accepts → settled with deposit refund and earnings', async () => {

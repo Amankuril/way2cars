@@ -20,6 +20,9 @@ export function serializeVendor(v) {
     hasBankAccount: Boolean(v.bankAccountId),
     wallet: v.wallet,
     rating: v.rating,
+    isCompany: Boolean(v.isCompany),
+    commissionBps: v.commissionBps ?? null,
+    hostVisibility: v.hostVisibility || {},
     notificationPrefs: v.notificationPrefs,
     createdAt: v.createdAt,
   };

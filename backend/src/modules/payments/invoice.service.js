@@ -61,6 +61,7 @@ export async function issueInvoice({ booking, payment, type }, session) {
       ...(s.fuelPaise ? [{ description: 'Fuel shortfall', sac, amountPaise: s.fuelPaise }] : []),
       ...(s.lateFeePaise ? [{ description: `Late return (${s.lateHours} h)`, sac, amountPaise: s.lateFeePaise }] : []),
       ...(s.damagePaise ? [{ description: 'Damage charges', sac, amountPaise: s.damagePaise }] : []),
+      ...(s.extensionDuePaise ? [{ description: 'Trip extension (unpaid, incl. GST)', sac, amountPaise: s.extensionDuePaise }] : []),
       { description: 'Less: adjusted against security deposit', sac, amountPaise: -(s.totalDeductionsPaise - s.outstandingPaise) },
     ];
     taxable = s.outstandingPaise;
@@ -81,11 +82,13 @@ export async function issueInvoice({ booking, payment, type }, session) {
     totalPaise: total,
     walletAppliedPaise: wallet,
     paidPaise: payment.amountPaise,
+    paidOffline: payment.mode === 'offline',
     supplier: { legalName: settings.tax.legalName, gstin: settings.tax.gstin, address: settings.tax.registeredAddress, stateCode: settings.tax.stateCode },
   }], { session });
   return inv;
 }
 
+const paidLabel = (inv) => (inv.paidOffline ? 'Paid at the WAY2CARS office' : 'Paid online');
 const inr = (p) => `Rs ${(p / 100).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 /** Streams a PDF rendering of an invoice. */
@@ -134,7 +137,7 @@ export function renderInvoicePdf(inv, booking, out) {
   doc.moveTo(48, doc.y).lineTo(547, doc.y).stroke().moveDown(0.5);
   row('Invoice total', inr(inv.totalPaise), { bold: true });
   if (inv.walletAppliedPaise) row('Paid from WAY2CARS wallet', inr(inv.walletAppliedPaise), { color: muted });
-  row('Paid online', inr(inv.paidPaise), { color: muted });
+  row(paidLabel(inv), inr(inv.paidPaise), { color: muted });
   doc.moveDown(2).fontSize(8).fillColor(muted).text('This is a computer-generated invoice and does not require a signature.', { align: 'center' });
   doc.end();
 }

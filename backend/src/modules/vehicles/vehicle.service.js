@@ -179,6 +179,7 @@ export function serializeVehicle(v, { audience = 'public', distanceMeters } = {}
   return {
     ...base,
     vendorId: v.vendorId?._id || v.vendorId,
+    ownership: v.ownership || 'host',
     registrationNumber: v.registrationNumber,
     location: { ...base.location, address: v.location?.address, placeId: v.location?.placeId, point: fromGeoPoint(v.location?.point) },
     photoFiles: (v.photos || []).map((p) => ({ fileId: p.fileId, url: p.url })),
