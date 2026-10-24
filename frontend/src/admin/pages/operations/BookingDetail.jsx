@@ -21,6 +21,8 @@ import { DetailSkeleton } from '@/admin/components/Skeleton.jsx';
 import { ErrorState, EmptyState } from '@/admin/components/EmptyState.jsx';
 import { SecureImage } from '@/admin/components/SecureImage.jsx';
 import { useToast } from '@/admin/components/Toast.jsx';
+import { OwnerActionsPanel, ExtensionsPanel, BalancePanel, SplitPanel, ManualRefundAction, OfficePaymentDialog } from './bookingOps.jsx';
+import { OWNERSHIP, BOOKING_SOURCE, OFFICE_METHOD } from '@/admin/lib/labels.js';
 
 const CANCELLABLE = ['pending_payment', 'pending_vendor_approval', 'confirmed'];
 
@@ -221,6 +223,7 @@ export default function BookingDetail() {
   const toast = useToast();
   const [confirm, setConfirm] = useState(null);
   const [downloading, setDownloading] = useState(null);
+  const [duesOpen, setDuesOpen] = useState(false);
   const { data: b, isLoading, error, refetch } = useQuery({ queryKey: ['booking', id], queryFn: () => api.get(`${ADMIN}/bookings/${id}`) });
 
   const invalidate = [['booking', id], ['bookings'], ['dashboard']];
@@ -259,9 +262,11 @@ export default function BookingDetail() {
             <StatusPill map={BOOKING_STATUS} value={b.status} />
             <StatusPill map={PAYMENT_STATUS} value={b.payment?.status} dot={false} />
             {b.instantBooking ? <Tag tone="info">Instant</Tag> : null}
+            <StatusPill map={OWNERSHIP} value={b.ownership} dot={false} />
+            {b.source === 'offline' ? <StatusPill map={BOOKING_SOURCE} value="offline" dot={false} /> : null}
           </>
         }
-        description={`Created ${dateTime(b.createdAt)} IST`}
+        description={`Created ${dateTime(b.createdAt)} IST${b.source === 'offline' ? ' at the office' : ''}${b.officeNote ? ` · ${b.officeNote}` : ''}`}
         actions={
           can('bookings.manage') && CANCELLABLE.includes(b.status) ? (
             <Button variant="danger-outline" icon={Ban} onClick={() => setConfirm('cancel')}>
@@ -273,6 +278,7 @@ export default function BookingDetail() {
 
       <div className="grid gap-5 lg:grid-cols-3">
         <div className="min-w-0 space-y-5 lg:col-span-2">
+          <OwnerActionsPanel b={b} />
           <Panel title="Trip">
             <div className="flex flex-col gap-5 sm:flex-row">
               {b.vehicle?.photoUrl ? <img src={b.vehicle.photoUrl} alt="" className="h-28 w-44 shrink-0 rounded-md border border-line object-cover" /> : null}
@@ -322,23 +328,12 @@ export default function BookingDetail() {
                 { label: 'Payable via gateway', value: money(p.payablePaise) },
                 { label: 'Included distance', value: `${p.includedKm ?? '—'} km · then ${money(p.extraKmChargePaise)}/km` },
                 { label: 'Platform commission', value: `${(p.commissionBps || 0) / 100}%` },
+                p.adjustedBy ? { label: 'Price set at the office', value: p.adjustedBy.note || 'Yes' } : null,
               ]}
             />
           </Panel>
 
-          {b.extensions?.length ? (
-            <Panel title="Extensions" flush>
-              <MiniTable
-                rows={b.extensions}
-                columns={[
-                  { key: 'from', header: 'From → to', cell: (e) => `${dateTime(e.previousEndAt)} → ${dateTime(e.requestedEndAt)}` },
-                  { key: 'hours', header: 'Hours', cell: (e) => e.pricing?.hours },
-                  { key: 'status', header: 'Status', cell: (e) => humanize(e.status) },
-                  { key: 'amt', header: 'Amount', align: 'right', cell: (e) => money(e.pricing?.totalPaise) },
-                ]}
-              />
-            </Panel>
-          ) : null}
+          <ExtensionsPanel b={b} MiniTable={MiniTable} />
 
           <Panel title="Inspections" description="Pickup and return evidence side by side.">
             <div className="grid gap-6 md:grid-cols-2">
@@ -381,16 +376,19 @@ export default function BookingDetail() {
                   !isEv ? { label: `Fuel shortfall (${settlement.fuelShortEighths ?? 0}/8)`, value: money(settlement.fuelPaise) } : null,
                   { label: `Late return (${settlement.lateHours ?? 0} h)`, value: money(settlement.lateFeePaise) },
                   { label: 'Damage', value: money(settlement.damagePaise) },
+                settlement.extensionDuePaise ? { label: 'Unpaid extension (incl. GST)', value: money(settlement.extensionDuePaise) } : null,
                   { label: 'Total deductions', value: money(settlement.totalDeductionsPaise), strong: true },
                   { label: 'Deposit refund to renter', value: money(settlement.depositRefundPaise), tone: 'success' },
                   { label: 'Outstanding from renter', value: money(settlement.outstandingPaise), tone: settlement.outstandingPaise ? 'danger' : undefined },
                 ]}
               />
-              {b.settlement?.outstandingStatus === 'due' && can('refunds.manage') ? (
-                <div className="mt-4">
-                  <Button variant="secondary" size="sm" onClick={() => setConfirm('waive')}>Waive outstanding amount…</Button>
+              {b.settlement?.outstandingStatus === 'due' ? (
+                <div className="mt-4 flex flex-wrap gap-2">
+                  {can('bookings.manage') ? <Button size="sm" onClick={() => setDuesOpen(true)}>Record office payment…</Button> : null}
+                  {can('refunds.manage') ? <Button variant="secondary" size="sm" onClick={() => setConfirm('waive')}>Waive outstanding amount…</Button> : null}
                 </div>
               ) : null}
+              <OfficePaymentDialog booking={b} due={duesOpen ? { purpose: 'settlement', amountPaise: b.settlement?.outstandingPaise, label: 'Trip dues' } : null} onClose={() => setDuesOpen(false)} />
             </Panel>
           ) : null}
 
@@ -404,8 +402,13 @@ export default function BookingDetail() {
                 { key: 'status', header: 'Status', cell: (x) => <StatusPill map={PAYMENT_STATUS} value={x.status} /> },
                 {
                   key: 'ref',
-                  header: 'Gateway reference',
-                  cell: (x) => (
+                  header: 'Reference',
+                  cell: (x) => x.mode === 'offline' ? (
+                    <div className="text-caption">
+                      <div className="font-semibold">Office · {OFFICE_METHOD[x.method] || humanize(x.method)}</div>
+                      {x.reference ? <div className="num text-ink-500">{x.reference}</div> : null}
+                    </div>
+                  ) : (
                     <div className="num text-caption">
                       <div>{x.razorpayPaymentId || '—'}</div>
                       <div className="text-ink-500">{x.razorpayOrderId}</div>
@@ -434,6 +437,8 @@ export default function BookingDetail() {
                       <StatusPill map={REFUND_STATUS} value={x.status} />
                       {x.status === 'failed' && x.lastError ? <p className="mt-1 max-w-[260px] text-caption text-danger-600">{x.lastError} · {x.attempts} attempts</p> : null}
                       {x.razorpayRefundId ? <p className="num mt-1 text-caption text-ink-500">{x.razorpayRefundId}</p> : null}
+                      {x.manualReference ? <p className="num mt-1 text-caption text-ink-500">{x.manualReference}</p> : null}
+                      <ManualRefundAction bookingId={b.id} refund={x} />
                     </div>
                   ),
                 },
@@ -444,6 +449,8 @@ export default function BookingDetail() {
         </div>
 
         <div className="min-w-0 space-y-5">
+          <BalancePanel b={b} />
+          {can('payments.read') ? <SplitPanel b={b} /> : null}
           <Panel title="People">
             <div className="space-y-4">
               <div>
@@ -544,7 +551,7 @@ export default function BookingDetail() {
               columns={1}
               items={[
                 ['Paid', b.payment?.paidAt ? dateTime(b.payment.paidAt) : '—'],
-                ['Collected via gateway', money(b.payment?.paidPaise)],
+                ['Collected', money(b.payment?.paidPaise)],
                 ['Refunded', money(b.payment?.refundedPaise)],
                 ['Odometer', b.trip?.startOdometerKm !== undefined ? `${b.trip.startOdometerKm} → ${b.trip.endOdometerKm ?? '…'} km` : '—'],
                 ['Reviewed by renter', b.reviewed?.byUser ? 'Yes' : 'No'],
@@ -558,7 +565,7 @@ export default function BookingDetail() {
         open={confirm === 'cancel'}
         onClose={() => setConfirm(null)}
         title={`Cancel booking ${b.ref}?`}
-        description="The renter gets a full refund of everything paid (including the deposit), the car is released and both parties are notified. This cannot be undone."
+        description={`The renter gets a full refund of everything paid (including the deposit), the car is released and both parties are notified. This cannot be undone.${b.source === 'offline' ? ' Money collected at the office is listed as a manual refund for finance to return.' : ''}`}
         confirmLabel="Cancel booking"
         tone="danger"
         reason={{ label: 'Reason (shared with renter and host)', minLength: 5, placeholder: 'e.g. Car unavailable due to breakdown' }}

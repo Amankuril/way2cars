@@ -13,6 +13,9 @@ const MfaSetup = page(() => import('@/admin/pages/auth/MfaSetup.jsx'));
 const Dashboard = page(() => import('@/admin/pages/Dashboard.jsx'));
 const BookingsList = page(() => import('@/admin/pages/operations/BookingsList.jsx'));
 const BookingDetail = page(() => import('@/admin/pages/operations/BookingDetail.jsx'));
+const OfficeBooking = page(() => import('@/admin/pages/operations/OfficeBooking.jsx'));
+const Settlements = page(() => import('@/admin/pages/finance/Settlements.jsx'));
+const VehicleEdit = page(() => import('@/admin/pages/fleet/VehicleEdit.jsx'));
 const TicketsList = page(() => import('@/admin/pages/operations/TicketsList.jsx'));
 const TicketDetail = page(() => import('@/admin/pages/operations/TicketDetail.jsx'));
 const KycQueue = page(() => import('@/admin/pages/verification/KycQueue.jsx'));
@@ -86,6 +89,7 @@ const router = createBrowserRouter(
       children: [
         { index: true, element: guard('dashboard.read', Dashboard) },
         { path: 'bookings', element: guard('bookings.read', BookingsList) },
+        { path: 'bookings/new', element: guard('bookings.manage', OfficeBooking) },
         { path: 'bookings/:id', element: guard('bookings.read', BookingDetail) },
         { path: 'support', element: guard('support.manage', TicketsList) },
         { path: 'support/:id', element: guard('support.manage', TicketDetail) },
@@ -96,6 +100,8 @@ const router = createBrowserRouter(
         { path: 'vehicles', element: guard('vehicles.read', VehiclesList) },
         { path: 'vehicles/requests', element: guard('vehicles.read', VehicleRequests) },
         { path: 'vehicles/requests/:id', element: guard('vehicles.read', VehicleRequestDetail) },
+        { path: 'vehicles/new', element: guard('vehicles.manage', VehicleEdit) },
+        { path: 'vehicles/:id/edit', element: guard('vehicles.manage', VehicleEdit) },
         { path: 'vehicles/:id', element: guard('vehicles.read', VehicleDetail) },
         { path: 'hosts', element: guard('vendors.read', HostsList) },
         { path: 'hosts/requests', element: guard('vendors.read', HostRequests) },
@@ -104,6 +110,7 @@ const router = createBrowserRouter(
         { path: 'users', element: guard('users.read', UsersList) },
         { path: 'users/:id', element: guard('users.read', UserDetail) },
         { path: 'payouts', element: guard('payouts.manage', Payouts) },
+        { path: 'settlements', element: guard('payments.read', Settlements) },
         { path: 'reports', element: guard('reports.read', Reports) },
         { path: 'coupons', element: guard('coupons.manage', CouponsList) },
         { path: 'coupons/new', element: guard('coupons.manage', CouponEdit) },

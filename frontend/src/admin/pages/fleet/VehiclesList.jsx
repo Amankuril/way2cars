@@ -1,9 +1,11 @@
 import { Link, Navigate } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
-import { ArrowRight, Car, ClipboardCheck, Star } from 'lucide-react';
+import { ArrowRight, Car, ClipboardCheck, Plus, Star } from 'lucide-react';
 import { api, ADMIN } from '@/admin/lib/api.js';
 import { money, dateLong, dateTime, maskPhone } from '@shared/lib/format.js';
-import { VEHICLE_APPROVAL, VEHICLE_STATUS } from '@/admin/lib/labels.js';
+import { VEHICLE_APPROVAL, VEHICLE_STATUS, OWNERSHIP } from '@/admin/lib/labels.js';
+import { ButtonLink } from '@/admin/components/Button.jsx';
+import { useAuth } from '@/admin/auth/AuthContext.jsx';
 import { useCatalog, useListQuery, useSearchState } from '@/admin/lib/hooks.js';
 import { compact, shortId } from '@/admin/lib/utils.js';
 import { PageHeader } from '@/admin/components/PageHeader.jsx';
@@ -15,13 +17,14 @@ import { EmptyState } from '@/admin/components/EmptyState.jsx';
 import { Tabs } from '@/admin/components/Tabs.jsx';
 
 export default function VehiclesList() {
-  const [s, set] = useSearchState({ page: 1, approval: '', status: '', cityId: '', q: '', featured: '', vendorId: '' });
+  const { can } = useAuth();
+  const [s, set] = useSearchState({ page: 1, approval: '', status: '', cityId: '', q: '', featured: '', vendorId: '', ownership: '' });
   const cities = useCatalog('cities');
   // Cars awaiting review live on the Vehicle requests page.
-  const query = compact({ page: s.page, limit: 25, approval: s.approval, notApproval: s.approval ? undefined : 'pending_review', status: s.status, cityId: s.cityId, q: s.q, featured: s.featured, vendorId: s.vendorId });
+  const query = compact({ page: s.page, limit: 25, approval: s.approval, notApproval: s.approval ? undefined : 'pending_review', status: s.status, cityId: s.cityId, q: s.q, featured: s.featured, vendorId: s.vendorId, ownership: s.ownership });
   const { rows, meta, isLoading, error, refetch } = useListQuery(['vehicles'], `${ADMIN}/vehicles`, query);
   const pendingCount = useQuery({ queryKey: ['vehicles', 'requests', 'count'], queryFn: () => api.list(`${ADMIN}/vehicles`, { approval: 'pending_review', limit: 1 }) }).data?.meta?.total;
-  const filtered = s.approval || s.status || s.cityId || s.q || s.featured || s.vendorId;
+  const filtered = s.approval || s.status || s.cityId || s.q || s.featured || s.vendorId || s.ownership;
   const carHref = (v) => (v.approval?.status === 'pending_review' ? `/vehicles/requests/${v.id}` : `/vehicles/${v.id}`);
   if (s.approval === 'pending_review') return <Navigate to="/vehicles/requests" replace />;
 
@@ -45,7 +48,7 @@ export default function VehiclesList() {
         </div>
       ),
     },
-    { key: 'host', header: 'Host', cell: (v) => <CellStack primary={v.vendor?.name} secondary={v.vendor?.phone ? maskPhone(v.vendor.phone) : null} className="max-w-[180px]" /> },
+    { key: 'host', header: 'Owner', cell: (v) => (v.ownership === 'company' ? <StatusPill map={OWNERSHIP} value="company" dot={false} /> : <CellStack primary={v.vendor?.name} secondary={v.vendor?.phone ? maskPhone(v.vendor.phone) : null} className="max-w-[180px]" />) },
     { key: 'city', header: 'City', cell: (v) => <CellStack primary={v.city?.name} secondary={v.location?.area} className="max-w-[160px]" /> },
     {
       key: 'approval',
@@ -83,7 +86,11 @@ export default function VehiclesList() {
 
   return (
     <>
-      <PageHeader title="Vehicles" description="Cars listed by hosts. Feature cars on the home screen or suspend a listing. New listings are reviewed in Vehicle requests." />
+      <PageHeader
+        title="Vehicles"
+        description="WAY2CARS fleet cars and cars attached by hosts. Edit any car's details, pricing and availability; host listings are reviewed in Vehicle requests."
+        actions={can('vehicles.manage') ? <ButtonLink to="/vehicles/new" variant="primary" icon={Plus}>Add fleet car</ButtonLink> : null}
+      />
       {pendingCount ? (
         <Link to="/vehicles/requests" className="group mb-4 flex items-center gap-3 rounded-lg border border-warning-100 bg-warning-50 px-4 py-3 text-bodySm text-warning-700 hover:border-warning-500">
           <ClipboardCheck className="h-4 w-4 shrink-0" aria-hidden="true" />
@@ -107,6 +114,7 @@ export default function VehiclesList() {
         <SearchInput value={s.q} onChange={(v) => set({ q: v })} placeholder="Registration or model" label="Search by registration number or model" className="sm:w-56" />
         <FilterSelect label="Availability" value={s.status} onChange={(v) => set({ status: v })} options={VEHICLE_STATUS} allLabel="Any availability" />
         <FilterSelect label="City" value={s.cityId} onChange={(v) => set({ cityId: v })} options={(cities.data || []).map((c) => ({ value: c.id, label: c.name }))} allLabel="All cities" />
+        <FilterSelect label="Owner" value={s.ownership} onChange={(v) => set({ ownership: v })} options={[{ value: 'company', label: 'WAY2CARS fleet' }, { value: 'host', label: 'Attached hosts' }]} allLabel="All owners" />
         <FilterSelect label="Featured" value={s.featured} onChange={(v) => set({ featured: v })} options={[{ value: 'true', label: 'Featured only' }, { value: 'false', label: 'Not featured' }]} allLabel="All cars" />
       </FilterBar>
       {s.vendorId ? (
@@ -125,7 +133,7 @@ export default function VehiclesList() {
           <EmptyState
             icon={Car}
             title={filtered ? 'No cars match these filters' : 'No cars listed yet'}
-            description={filtered ? 'Try another tab, city or search.' : 'Cars appear here once hosts add them from the host app.'}
+            description={filtered ? 'Try another tab, city or search.' : 'Cars appear here once hosts add them from the host app, or you add a WAY2CARS fleet car.'}
           />
         }
         footer={<Pagination meta={meta} onPage={(p) => set({ page: p })} />}

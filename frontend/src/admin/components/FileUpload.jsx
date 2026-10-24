@@ -79,3 +79,43 @@ export function ImageUpload({ purpose, value, onChange, label = 'Image', hint, e
     </div>
   );
 }
+
+/**
+ * Document picker (image or PDF) for private files — bank proofs, RC, insurance. Uploads
+ * immediately and reports { id, name } through onChange.
+ */
+export function DocumentUpload({ purpose, value, onChange, label, hint, error, id, className }) {
+  const auto = useId();
+  const inputId = id || auto;
+  const input = useRef(null);
+  const [busy, setBusy] = useState(false);
+  const [localError, setLocalError] = useState(null);
+  const pick = async (file) => {
+    if (!file) return;
+    setLocalError(null);
+    if (!/^image\/(jpeg|png|webp)$|^application\/pdf$/.test(file.type)) return setLocalError('Choose a PDF, JPG, PNG or WebP file.');
+    if (file.size > MAX_MB * 1024 * 1024) return setLocalError(`The file must be smaller than ${MAX_MB} MB.`);
+    setBusy(true);
+    try {
+      const f = await uploadFile(file, purpose);
+      onChange?.({ id: f.id, name: file.name });
+    } catch (err) {
+      setLocalError(errorMessage(err));
+    } finally {
+      setBusy(false);
+      if (input.current) input.current.value = '';
+    }
+  };
+  const shownError = localError || error;
+  return (
+    <div className={cn('min-w-0', className)}>
+      {label ? <label htmlFor={inputId} className="mb-1.5 block text-label text-ink-800">{label}</label> : null}
+      <div className="flex flex-wrap items-center gap-3">
+        <input ref={input} id={inputId} type="file" accept="application/pdf,image/jpeg,image/png,image/webp" className="sr-only" onChange={(e) => pick(e.target.files?.[0])} />
+        <Button size="sm" icon={Upload} loading={busy} onClick={() => input.current?.click()}>{value ? 'Replace file' : 'Upload file'}</Button>
+        <span className="min-w-0 truncate text-caption text-ink-600">{value ? value.name || 'Uploaded' : hint || 'PDF or image, up to 8 MB.'}</span>
+      </div>
+      {shownError ? <p className="mt-1.5 text-caption font-semibold text-danger-600" role="alert">{shownError}</p> : null}
+    </div>
+  );
+}

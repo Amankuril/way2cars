@@ -31,7 +31,7 @@ const SECTIONS = [
   {
     key: 'fees', title: 'Fees and commission', description: 'Charged to renters per booking; commission is deducted from host earnings.',
     fields: [
-      { path: 'commissionBps', label: 'Platform commission', unit: 'pct', min: 0, max: 90, hint: 'Share of the rental kept by WAY2CARS.' },
+      { path: 'commissionBps', label: 'Platform commission', unit: 'pct', min: 0, max: 90, hint: 'Share of each attached-host rental kept by WAY2CARS (typically 30–40%); the rest settles to the car owner. Override per host on the host page. Company-fleet cars keep 100%.' },
       { path: 'fees.convenienceFeePaise', label: 'Convenience fee', unit: 'rupees', hint: 'Per booking.' },
       { path: 'fees.deliveryBaseFeePaise', label: 'Doorstep delivery — base fee', unit: 'rupees' },
       { path: 'fees.deliveryPerKmPaise', label: 'Doorstep delivery — per km', unit: 'rupees' },
@@ -51,6 +51,32 @@ const SECTIONS = [
       { path: 'booking.pickupWindowMinutesBefore', label: 'Early pickup window', unit: 'int', suffix: 'min', min: 0, max: 240 },
       { path: 'booking.kycRequired', label: 'Require verified KYC to book', unit: 'bool' },
       { path: 'booking.requireUserApproval', label: 'Approve new renter accounts manually', unit: 'bool' },
+    ],
+  },
+  {
+    key: 'advance', title: 'Advance payment', description: 'Renters can pay part of the price to block their dates, and the rest before pickup.',
+    fields: [
+      { path: 'advance.enabled', label: 'Offer “pay advance now”', unit: 'bool' },
+      { path: 'advance.percentBps', label: 'Advance amount', unit: 'pct', min: 10, max: 90, hint: 'Of the trip charges (typically 30–40%). The deposit is collected with the balance.' },
+      { path: 'advance.balanceDueHoursBeforeStart', label: 'Balance due', unit: 'int', suffix: 'hrs before', min: 0, max: 168, hint: 'Renters are reminded 6 hours before this deadline.' },
+      { path: 'advance.autoCancelUnpaid', label: 'Cancel if the balance is unpaid at pickup time', unit: 'bool', hint: 'The cancellation policy decides how much of the advance is kept.' },
+    ],
+  },
+  {
+    key: 'extension', title: 'Trip extensions', description: 'Late returns without an extension are charged by the hour (see Trip charges).',
+    fields: [
+      { path: 'extension.minHoursBeforeEnd', label: 'Request at least', unit: 'int', suffix: 'hrs before', min: 0, max: 72, hint: 'Renters cannot request an extension later than this before their return time.' },
+      { path: 'extension.requireApproval', label: 'Operations approve extension requests', unit: 'bool', hint: 'Off: renters extend instantly by paying, if the car is free.' },
+    ],
+  },
+  {
+    key: 'hostVisibility', title: 'What hosts can see', description: 'Applies to attached hosts in the host app. Override per host on the host page.',
+    fields: [
+      { path: 'hostVisibility.renterName', label: 'Renter name', unit: 'bool' },
+      { path: 'hostVisibility.renterPhone', label: 'Renter phone number', unit: 'bool', hint: 'Only during confirmed and active trips.' },
+      { path: 'hostVisibility.renterKycStatus', label: 'Renter verification status', unit: 'bool' },
+      { path: 'hostVisibility.bookingAmounts', label: 'Booking amounts', unit: 'bool', hint: 'Rental, deposit and charges. Hosts always see their own earnings.' },
+      { path: 'hostVisibility.paymentStatus', label: 'Payment status', unit: 'bool' },
     ],
   },
   { key: 'cancellation', title: 'Cancellation policy', description: 'Refund of trip charges by how early the renter cancels. The deposit is always refunded.', custom: 'tiers', fields: [{ path: 'cancellation.feePaise', label: 'Cancellation fee', unit: 'rupees', hint: 'Flat fee deducted from any refund.' }] },

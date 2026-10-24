@@ -46,6 +46,26 @@ export const REFUND_STATUS = {
   initiated: { label: 'In progress', tone: 'info' },
   processed: { label: 'Refunded', tone: 'success' },
   failed: { label: 'Failed', tone: 'danger' },
+  manual: { label: 'To return by hand', tone: 'warning' },
+};
+export const EXTENSION_STATUS = {
+  pending_approval: { label: 'Awaiting approval', tone: 'warning' },
+  approved: { label: 'Approved', tone: 'success' },
+  rejected: { label: 'Not approved', tone: 'danger' },
+  pending_payment: { label: 'Awaiting payment', tone: 'warning' },
+  paid: { label: 'Paid', tone: 'success' },
+  expired: { label: 'Payment not completed', tone: 'neutral' },
+  failed: { label: 'Refunded — car unavailable', tone: 'neutral' },
+};
+export const CHARGE_STATUS = {
+  due: { label: 'Payment due', tone: 'warning' },
+  paid: { label: 'Paid', tone: 'success' },
+  waived: { label: 'Waived', tone: 'neutral' },
+};
+export const BALANCE_STATUS = {
+  due: { label: 'Balance due', tone: 'warning' },
+  paid: { label: 'Fully paid', tone: 'success' },
+  waived: { label: 'Not collected', tone: 'neutral' },
 };
 export const TICKET_STATUS = {
   open: { label: 'Open', tone: 'info' },

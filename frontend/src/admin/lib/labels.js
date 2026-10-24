@@ -66,11 +66,18 @@ export const SETTLEMENT_OUTSTANDING = {
   waived: { label: 'Waived', tone: 'neutral' },
 };
 export const CAMPAIGN = { discount: 'Discount', referral: 'Referral', festival: 'Festival', first_ride: 'First ride' };
-export const PAYMENT_PURPOSE = { booking: 'Booking', extension: 'Extension', settlement: 'Settlement dues' };
+export const PAYMENT_PURPOSE = { booking: 'Booking', balance: 'Booking balance', extension: 'Extension', settlement: 'Settlement dues' };
+export const OFFICE_METHOD = { cash: 'Cash', upi: 'UPI', card: 'Card', bank_transfer: 'Bank transfer' };
+export const OWNERSHIP = { host: { label: 'Attached host', tone: 'neutral' }, company: { label: 'WAY2CARS fleet', tone: 'info' } };
+export const BOOKING_SOURCE = { app: { label: 'App', tone: 'neutral' }, offline: { label: 'Office', tone: 'info' } };
+export const OWNER_PAYOUT = {
+  pending_trip: { label: 'After trip', tone: 'neutral' }, on_hold: { label: 'On hold', tone: 'warning' }, released: { label: 'Released', tone: 'success' },
+  closed: { label: 'Closed', tone: 'neutral' }, settled: { label: 'Settled', tone: 'success' }, not_applicable: { label: 'Company car', tone: 'info' },
+};
 export const REFUND_REASON = {
   user_cancellation: 'Cancelled by renter', vendor_rejection: 'Declined by host', approval_timeout: 'Host did not respond',
   admin_cancellation: 'Cancelled by admin', deposit_settlement: 'Deposit refund', late_payment: 'Late payment', admin_adjustment: 'Admin adjustment',
-  extension_unavailable: 'Extension unavailable',
+  extension_unavailable: 'Extension unavailable', extension_rejected: 'Extension not approved',
 };
 export const LEDGER_TYPE = {
   referral_reward: 'Referral reward', loyalty_reward: 'Loyalty reward', wallet_redeemed: 'Used on booking',

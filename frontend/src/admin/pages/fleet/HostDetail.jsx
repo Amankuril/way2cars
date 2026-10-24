@@ -18,6 +18,7 @@ import { ErrorState } from '@/admin/components/EmptyState.jsx';
 import { SecureFileLink } from '@/admin/components/SecureImage.jsx';
 import { MiniTable } from '@/admin/components/MiniTable.jsx';
 import { HistoryList } from '@/admin/components/HistoryList.jsx';
+import { CommissionPanel, VisibilityPanel, BankFormDialog, RevealBankButton, SettleHostDialog } from './hostCommercials.jsx';
 
 const STEPS = [
   ['profile', 'Profile'],
@@ -38,8 +39,10 @@ export default function HostDetail() {
   const { can } = useAuth();
   const [decision, setDecision] = useState(null);
   const [bankDecision, setBankDecision] = useState(null);
+  const [bankForm, setBankForm] = useState(false);
+  const [settling, setSettling] = useState(false);
   const { data: v, isLoading, error, refetch } = useQuery({ queryKey: ['host', id], queryFn: () => api.get(`${ADMIN}/vendors/${id}`) });
-  const invalidate = [['host', id], ['hosts'], ['dashboard'], ['kyc']];
+  const invalidate = [['host', id], ['hosts'], ['dashboard'], ['kyc'], ['host-balances'], ['payouts']];
 
   const decide = useAction((body) => api.post(`${ADMIN}/vendors/${id}/decision`, body), {
     success: (d, b) => {
@@ -168,10 +171,11 @@ export default function HostDetail() {
                     ['Status', <StatusPill map={BANK_STATUS} value={bank.verification?.status} />],
                     ['Account holder', bank.accountHolderName],
                     ['Account number', <span className="num font-mono">{bank.accountNumberMasked}</span>],
+                    can('payouts.manage') ? ['Full number', <RevealBankButton vendorId={v.id} />] : null,
                     ['IFSC', <span className="num font-mono">{bank.ifsc}</span>],
                     ['Bank', bank.bankName],
                     ['UPI', bank.upiId],
-                    ['Proof', <SecureFileLink fileId={bank.proofFileId}>Open cheque / statement</SecureFileLink>],
+                    ['Proof', bank.proofFileId ? <SecureFileLink fileId={bank.proofFileId}>Open cheque / statement</SecureFileLink> : 'Not uploaded'],
                     bank.verification?.reason ? ['Rejection reason', bank.verification.reason] : null,
                     bank.verification?.reviewedAt ? ['Reviewed', dateTime(bank.verification.reviewedAt)] : null,
                   ]}
@@ -191,7 +195,15 @@ export default function HostDetail() {
             ) : (
               <p className="text-bodySm text-ink-500">No bank account added yet.</p>
             )}
+            {can('vendors.bank.review') ? (
+              <div className="mt-4 border-t border-line pt-4">
+                <Button size="sm" onClick={() => setBankForm(true)}>{bank ? 'Replace bank account…' : 'Add bank account…'}</Button>
+              </div>
+            ) : null}
           </Panel>
+
+          <CommissionPanel v={v} invalidate={invalidate} />
+          <VisibilityPanel v={v} invalidate={invalidate} />
 
           <Panel title="Earnings wallet">
             <AmountRows
@@ -203,7 +215,13 @@ export default function HostDetail() {
                 { label: 'Lifetime paid out', value: money(w.lifetimePaidOutPaise || 0) },
               ]}
             />
-            {can('payouts.manage') ? <Link to={`/payouts?vendorId=${v.id}`} className="link mt-3 inline-block text-caption">View payout requests</Link> : null}
+            {can('payouts.manage') ? (
+              <div className="mt-3 flex flex-wrap items-center gap-3">
+                {(w.availablePaise || 0) >= 100 ? <Button size="sm" variant="primary" onClick={() => setSettling(true)}>Settle now…</Button> : null}
+                <Link to={`/payouts?vendorId=${v.id}`} className="link text-caption">Payout requests</Link>
+                <Link to={`/settlements?vendorId=${v.id}`} className="link text-caption">Booking-wise split</Link>
+              </div>
+            ) : null}
           </Panel>
 
           <Panel title="Bookings" description={`${fmtNumber(totalBookings)} in total`}>
@@ -235,6 +253,8 @@ export default function HostDetail() {
         </div>
       </div>
 
+      <BankFormDialog v={v} open={bankForm} onClose={() => setBankForm(false)} invalidate={invalidate} />
+      <SettleHostDialog v={v} open={settling} onClose={() => setSettling(false)} invalidate={invalidate} />
       <ConfirmDialog
         open={Boolean(d)}
         onClose={() => setDecision(null)}

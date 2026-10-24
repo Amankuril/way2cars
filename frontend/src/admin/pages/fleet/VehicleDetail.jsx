@@ -1,19 +1,19 @@
 import { useState } from 'react';
 import { Link, Navigate, useParams } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
-import { Star, Ban, RotateCcw, CalendarRange } from 'lucide-react';
+import { Star, Ban, RotateCcw, CalendarRange, Pencil, Rocket, Trash2, Plus } from 'lucide-react';
 import { api, ADMIN } from '@/admin/lib/api.js';
 import { money, dateTime, dateLong, maskPhone } from '@shared/lib/format.js';
-import { VEHICLE_APPROVAL, VEHICLE_STATUS, VENDOR_STATUS, BOOKING_STATUS, FUEL, TRANSMISSION, FEATURES } from '@/admin/lib/labels.js';
+import { VEHICLE_APPROVAL, VEHICLE_STATUS, VENDOR_STATUS, BOOKING_STATUS, FUEL, TRANSMISSION, FEATURES, OWNERSHIP } from '@/admin/lib/labels.js';
 import { useAction } from '@/admin/lib/hooks.js';
-import { humanize, fmtNumber } from '@/admin/lib/utils.js';
+import { humanize, fmtNumber, errorMessage, istDateTimeInput, fromIstDateTime } from '@/admin/lib/utils.js';
 import { useAuth } from '@/admin/auth/AuthContext.jsx';
 import { PageHeader } from '@/admin/components/PageHeader.jsx';
 import { Panel, KeyValue, AmountRows } from '@/admin/components/Panel.jsx';
 import { StatusPill, Tag } from '@/admin/components/StatusPill.jsx';
-import { Button } from '@/admin/components/Button.jsx';
-import { ConfirmDialog } from '@/admin/components/Modal.jsx';
-import { Field, Input, Switch } from '@/admin/components/Form.jsx';
+import { Button, ButtonLink, IconButton } from '@/admin/components/Button.jsx';
+import { ConfirmDialog, Modal } from '@/admin/components/Modal.jsx';
+import { Field, Input, Select, Switch } from '@/admin/components/Form.jsx';
 import { DetailSkeleton } from '@/admin/components/Skeleton.jsx';
 import { ErrorState } from '@/admin/components/EmptyState.jsx';
 import { MiniTable } from '@/admin/components/MiniTable.jsx';
@@ -70,7 +70,63 @@ function FlagsPanel({ v }) {
   );
 }
 
+function BlockDialog({ id, open, onClose }) {
+  const [startAt, setStartAt] = useState('');
+  const [endAt, setEndAt] = useState('');
+  const [reason, setReason] = useState('maintenance');
+  const [note, setNote] = useState('');
+  const [err, setErr] = useState(null);
+  const add = useAction((body) => api.post(`${ADMIN}/vehicles/${id}/blocks`, body), { success: 'Dates blocked', invalidate: [['vehicle-calendar', id], ['vehicle', id]], toastError: false, onSuccess: onClose });
+  const submit = () => {
+    setErr(null);
+    if (!startAt || !endAt || endAt <= startAt) return setErr('The end must be after the start.');
+    add.mutate({ startAt: fromIstDateTime(startAt), endAt: fromIstDateTime(endAt), reason, note: note.trim() || undefined }, {
+      onError: (e) => setErr(e?.details?.bookings?.length ? `${errorMessage(e)} (${e.details.bookings.map((b) => b.ref).join(', ')})` : errorMessage(e)),
+    });
+  };
+  return (
+    <Modal
+      open={open}
+      onClose={() => !add.isPending && onClose()}
+      title="Block dates"
+      description="The car cannot be booked (in the app or at the office) during this time."
+      footer={<><Button onClick={onClose} disabled={add.isPending}>Cancel</Button><Button variant="primary" loading={add.isPending} onClick={submit}>Block dates</Button></>}
+    >
+      <div className="grid gap-4 sm:grid-cols-2">
+        <Field label="From (IST)" htmlFor="blk-from"><Input id="blk-from" type="datetime-local" value={startAt} onChange={(e) => setStartAt(e.target.value)} min={istDateTimeInput(new Date())} className="num" /></Field>
+        <Field label="Until (IST)" htmlFor="blk-to"><Input id="blk-to" type="datetime-local" value={endAt} onChange={(e) => setEndAt(e.target.value)} className="num" /></Field>
+        <Field label="Reason" htmlFor="blk-reason">
+          <Select id="blk-reason" value={reason} onChange={(e) => setReason(e.target.value)}>
+            <option value="maintenance">Maintenance</option>
+            <option value="personal">Owner use</option>
+            <option value="other">Other</option>
+          </Select>
+        </Field>
+        <Field label="Note" htmlFor="blk-note"><Input id="blk-note" value={note} onChange={(e) => setNote(e.target.value)} maxLength={200} /></Field>
+        {err ? <p className="text-caption font-semibold text-danger-600 sm:col-span-2" role="alert">{err}</p> : null}
+      </div>
+    </Modal>
+  );
+}
+
+function StatusControl({ v }) {
+  const change = useAction((status) => api.patch(`${ADMIN}/vehicles/${v.id}/status`, { status }), {
+    success: (d) => (d.upcomingBookings ? `Availability updated — ${d.upcomingBookings} upcoming bookings still need handling` : 'Availability updated'),
+    invalidate: [['vehicle', v.id], ['vehicles']],
+  });
+  return (
+    <Field label="Availability" htmlFor="veh-status" hint="Offline or in maintenance hides the car from search. Existing bookings are kept.">
+      <Select id="veh-status" value={v.status} disabled={change.isPending} onChange={(e) => change.mutate(e.target.value)}>
+        {Object.entries(VEHICLE_STATUS).map(([k, o]) => <option key={k} value={k}>{o.label || o}</option>)}
+      </Select>
+    </Field>
+  );
+}
+
 function CalendarPanel({ id }) {
+  const { can } = useAuth();
+  const [blocking, setBlocking] = useState(false);
+  const remove = useAction((blockId) => api.del(`${ADMIN}/vehicles/${id}/blocks/${blockId}`), { success: 'Blocked period removed', invalidate: [['vehicle-calendar', id]] });
   const from = new Date();
   from.setHours(0, 0, 0, 0);
   const to = new Date(from.getTime() + 60 * 86400000);
@@ -79,7 +135,8 @@ function CalendarPanel({ id }) {
     queryFn: () => api.get(`${ADMIN}/vehicles/${id}/calendar`, { from: from.toISOString(), to: to.toISOString() }),
   });
   return (
-    <Panel title="Calendar · next 60 days" description="Host blocks and special prices." flush actions={<CalendarRange className="h-4 w-4 text-ink-400" aria-hidden="true" />}>
+    <Panel title="Calendar · next 60 days" description="Blocked periods and special prices." flush actions={can('vehicles.manage') ? <Button size="sm" icon={Plus} onClick={() => setBlocking(true)}>Block dates</Button> : <CalendarRange className="h-4 w-4 text-ink-400" aria-hidden="true" />}>
+      <BlockDialog id={id} open={blocking} onClose={() => setBlocking(false)} />
       {isLoading ? (
         <p className="px-5 py-4 text-caption text-ink-500">Loading calendar…</p>
       ) : error ? (
@@ -90,6 +147,7 @@ function CalendarPanel({ id }) {
             columns={[
               { key: 'when', header: 'Blocked (IST)', cell: (b) => <span className="whitespace-nowrap">{dateTime(b.startAt)} → {dateTime(b.endAt)}</span> },
               { key: 'reason', header: 'Reason', cell: (b) => [humanize(b.reason), b.note].filter(Boolean).join(' · ') || '—' },
+              { key: 'x', header: '', align: 'right', cell: (b) => (can('vehicles.manage') ? <IconButton icon={Trash2} size="sm" label="Remove blocked period" disabled={remove.isPending} onClick={() => remove.mutate(b.id)} /> : null) },
             ]}
             rows={data.blocks}
             empty="No blocked periods."
@@ -113,6 +171,25 @@ function CalendarPanel({ id }) {
   );
 }
 
+function PublishButton({ v }) {
+  const [open, setOpen] = useState(false);
+  const publish = useAction(() => api.post(`${ADMIN}/vehicles/${v.id}/publish`), { success: 'Car published — it is now bookable', invalidate: [['vehicle', v.id], ['vehicles']], toastError: false });
+  const gaps = v.submissionGaps || [];
+  return (
+    <>
+      <Button variant="primary" icon={Rocket} onClick={() => setOpen(true)}>Publish…</Button>
+      <ConfirmDialog
+        open={open}
+        onClose={() => setOpen(false)}
+        title={gaps.length ? 'This car is not ready yet' : 'Publish this car?'}
+        description={gaps.length ? `Add: ${gaps.join(', ')}.` : 'It appears in search and can be booked in the app and at the office.'}
+        confirmLabel="Publish"
+        onConfirm={() => publish.mutateAsync()}
+      />
+    </>
+  );
+}
+
 export default function VehicleDetail() {
   const { id } = useParams();
   const { can } = useAuth();
@@ -125,6 +202,7 @@ export default function VehicleDetail() {
 
   const p = v.pricing || {};
   const host = v.vendor || {};
+  const company = v.ownership === 'company';
   const isEv = v.fuelType === 'electric';
 
   return (
@@ -139,8 +217,15 @@ export default function VehicleDetail() {
             {v.adminSuspended ? <StatusPill tone="danger" dot={false}>Suspended by admin</StatusPill> : null}
             {v.isLuxury ? <Tag tone="warning">Luxury</Tag> : null}
             {v.isFeatured ? <Tag tone="info">Featured</Tag> : null}
+            <StatusPill map={OWNERSHIP} value={v.ownership} dot={false} />
           </>
         }
+        actions={can('vehicles.manage') ? (
+          <>
+            <ButtonLink icon={Pencil} to={`/vehicles/${v.id}/edit`}>Edit car</ButtonLink>
+            {company && v.approval?.status !== 'approved' ? <PublishButton v={v} /> : null}
+          </>
+        ) : null}
         description={
           <>
             <span className="num font-semibold text-ink-700">{v.registrationNumber}</span> · {v.city?.name} · {v.isListed ? 'Bookable now' : 'Not bookable'}
@@ -215,7 +300,9 @@ export default function VehicleDetail() {
             />
           </Panel>
 
-          <Panel title="Host">
+          {company ? (
+            <Panel title="Owner"><p className="text-bodySm text-ink-800">WAY2CARS fleet — managed by operations. All revenue stays with WAY2CARS.</p></Panel>
+          ) : <Panel title="Host">
             <div className="space-y-3">
               <div>
                 {can('vendors.read') && host._id ? <Link to={`/hosts/${host._id}`} className="link">{host.businessName || host.name || 'Unnamed host'}</Link> : <p className="font-semibold">{host.businessName || host.name}</p>}
@@ -226,13 +313,13 @@ export default function VehicleDetail() {
                 {host.rating?.count ? <span className="inline-flex items-center gap-1 text-caption text-ink-600"><Star className="h-3.5 w-3.5 fill-warning-500 text-warning-500" aria-hidden="true" />{host.rating.avg.toFixed(1)} ({host.rating.count})</span> : null}
               </div>
             </div>
-          </Panel>
+          </Panel>}
 
           <Panel title="Performance">
             <KeyValue
               items={[
                 ['Completed trips', fmtNumber(v.stats?.trips || 0)],
-                ['Host earnings', money(v.stats?.earningsPaise || 0)],
+                company ? null : ['Host earnings', money(v.stats?.earningsPaise || 0)],
                 ['Rating', v.rating?.count ? `${v.rating.avg.toFixed(1)} from ${v.rating.count} reviews` : 'No reviews yet'],
                 ['Listed since', dateLong(v.createdAt)],
                 ['Submitted for review', v.approval?.submittedAt ? dateTime(v.approval.submittedAt) : null],
@@ -241,6 +328,7 @@ export default function VehicleDetail() {
             />
           </Panel>
 
+          {can('vehicles.manage') ? <Panel title="Availability"><StatusControl v={v} /></Panel> : null}
           {can('vehicles.manage') ? <FlagsPanel v={v} /> : null}
           <CalendarPanel id={v.id} />
         </div>
