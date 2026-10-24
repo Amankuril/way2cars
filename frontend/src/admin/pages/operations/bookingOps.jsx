@@ -110,8 +110,8 @@ export function SplitPanel({ b }) {
           { label: 'Collected from renter (net of refunds)', value: money(s.collectedPaise), strong: true },
           { label: 'GST (to be remitted)', value: money(s.gstPaise) },
           s.depositHeldPaise ? { label: 'Security deposit held', value: money(s.depositHeldPaise) } : null,
-          company ? null : { label: s.status === 'settled' ? 'Owner earning' : 'Owner share (expected)', value: money(s.ownerPaise), tone: 'success' },
-          s.platformPaise !== null && s.platformPaise !== undefined ? { label: 'WAY2CARS share', value: money(s.platformPaise), strong: true } : null,
+          company ? null : { label: { settled: 'Owner earning', closed: 'Owner kept (late cancellation)', pending_trip: 'Owner share (expected)' }[s.status], value: money(s.ownerPaise), tone: 'success' },
+          { label: s.status === 'pending_trip' ? 'WAY2CARS share (expected)' : 'WAY2CARS share', value: money(s.platformPaise), strong: true },
         ]}
       />
     </Panel>

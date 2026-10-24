@@ -105,7 +105,7 @@ export default function Settlements() {
           {s.vendorId ? <div className="-mt-1 mb-4"><FilterChip label={`Host …${shortId(s.vendorId)}`} onClear={() => set({ vendorId: '' })} /></div> : null}
           <div className="mb-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
             <StatTile label="Collected" value={t ? money(t.collectedPaise) : '…'} sub={t ? `${t.bookings} bookings` : undefined} />
-            <StatTile label="WAY2CARS share" value={t ? money(t.platformSharePaise) : '…'} sub="Commission, fees, company fleet" />
+            <StatTile label="WAY2CARS share" value={t ? money(t.platformSharePaise) : '…'} sub="Excl. GST · expected for trips not yet settled" />
             <StatTile label="Owner share" value={t ? money(t.ownerSharePaise) : '…'} />
             <StatTile label="GST to remit" value={t ? money(t.gstPaise) : '…'} />
             <StatTile label="Deposits held" value={t ? money(t.depositHeldPaise) : '…'} sub={t?.balanceDuePaise ? `${money(t.balanceDuePaise)} balances due` : undefined} />

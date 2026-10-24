@@ -6,23 +6,50 @@ const ALL_VISIBLE = { renterName: true, renterPhone: true, renterKycStatus: true
 // Used for host views when the caller did not resolve the host's settings: reveal nothing optional.
 const MINIMAL = { renterName: false, renterPhone: false, renterKycStatus: false, bookingAmounts: false, paymentStatus: false };
 
-/** Expected money split for admins: Way2Cars' share vs the car owner's, from the booking snapshot. */
-export function bookingSplit(b) {
+/**
+ * Money split for admins: Way2Cars' share vs the car owner's. Before the trip settles the shares are
+ * expected values from the booking snapshot; settled trips use the recorded earning; cancelled ones
+ * use `ownerEarnedPaise` (credited on late cancellations) when the caller knows it.
+ */
+export function bookingSplit(b, { ownerEarnedPaise } = {}) {
   const p = b.pricing || {};
-  const ext = (b.extensions || []).filter((e) => ['paid', 'approved'].includes(e.status) && e.chargeStatus !== 'waived').reduce((s, e) => s + e.pricing.rentalPaise, 0);
+  const applied = (b.extensions || []).filter((e) => ['paid', 'approved'].includes(e.status) && e.chargeStatus !== 'waived');
+  const extRental = applied.reduce((s, e) => s + e.pricing.rentalPaise, 0);
+  const extTotal = applied.reduce((s, e) => s + e.pricing.totalPaise, 0);
   const settled = Boolean(b.settlement?.settledAt);
-  const ownerBase = settled ? null : (p.rentalPaise || 0) + ext;
-  const ownerPaise = settled ? b.settlement.vendorEarningPaise : b.ownership === 'company' ? 0 : ownerBase - pct(ownerBase, p.commissionBps || 0);
+  const closed = ['cancelled', 'rejected', 'expired'].includes(b.status);
+  const company = b.ownership === 'company';
   const collectedPaise = Math.max(0, (b.payment?.paidPaise || 0) - (b.payment?.refundedPaise || 0));
+  const fullGst = (p.gstPaise || 0) + applied.reduce((s, e) => s + (e.pricing.gstPaise || 0), 0);
+  const charges = (p.chargesPaise || 0) + extTotal;
+
+  let ownerPaise;
+  let gstPaise = fullGst;
+  let depositHeldPaise = 0;
+  let platformPaise;
+  if (settled) {
+    ownerPaise = b.settlement.vendorEarningPaise || 0;
+    platformPaise = collectedPaise - ownerPaise - gstPaise;
+  } else if (closed) {
+    ownerPaise = company ? 0 : ownerEarnedPaise || 0;
+    // Only the share of charges actually kept carries GST.
+    gstPaise = charges ? Math.round(fullGst * Math.min(1, collectedPaise / charges)) : 0;
+    platformPaise = collectedPaise - ownerPaise - gstPaise;
+  } else {
+    const base = (p.rentalPaise || 0) + extRental;
+    ownerPaise = company ? 0 : base - pct(base, p.commissionBps || 0);
+    depositHeldPaise = Math.max(0, Math.min(p.depositPaise || 0, collectedPaise + (p.walletAppliedPaise || 0) - charges));
+    platformPaise = charges - fullGst - ownerPaise; // expected once everything is collected
+  }
   return {
     ownership: b.ownership || 'host',
     commissionBps: p.commissionBps,
     collectedPaise,
     ownerPaise,
-    platformPaise: settled ? collectedPaise - ownerPaise : null, // known once the trip settles
-    gstPaise: (p.gstPaise || 0) + (b.extensions || []).filter((e) => ['paid', 'approved'].includes(e.status)).reduce((s, e) => s + (e.pricing.gstPaise || 0), 0),
-    depositHeldPaise: settled ? 0 : p.depositPaise,
-    status: settled ? 'settled' : ['cancelled', 'rejected', 'expired'].includes(b.status) ? 'closed' : 'pending_trip',
+    platformPaise,
+    gstPaise,
+    depositHeldPaise,
+    status: settled ? 'settled' : closed ? 'closed' : 'pending_trip',
   };
 }
 

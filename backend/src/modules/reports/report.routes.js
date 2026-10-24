@@ -189,9 +189,9 @@ adminReportsRouter.get('/settlements', requirePermission('payments.read'), valid
   for (const e of earnings) eMap.set(String(e.bookingId), [...(eMap.get(String(e.bookingId)) || []), e]);
   const vMap = new Map(vendors.map((v) => [String(v._id), v]));
   const rows = bookings.map((b) => {
-    const split = bookingSplit(b);
     const entries = eMap.get(String(b._id)) || [];
-    const ownerPayout = !entries.length ? (split.ownership === 'company' ? 'not_applicable' : split.status) : entries.every((e) => e.released) ? 'released' : 'on_hold';
+    const split = bookingSplit(b, { ownerEarnedPaise: entries.reduce((t, e) => t + e.amountPaise, 0) });
+    const ownerPayout = split.ownership === 'company' ? 'not_applicable' : !entries.length ? split.status : entries.every((e) => e.released) ? 'released' : 'on_hold';
     return {
       bookingId: String(b._id),
       ref: b.ref,
@@ -206,7 +206,7 @@ adminReportsRouter.get('/settlements', requirePermission('payments.read'), valid
       gstPaise: split.gstPaise,
       commissionBps: split.commissionBps,
       ownerSharePaise: split.ownerPaise,
-      platformSharePaise: split.platformPaise ?? split.collectedPaise - split.ownerPaise - (split.depositHeldPaise || 0),
+      platformSharePaise: split.platformPaise,
       depositHeldPaise: split.depositHeldPaise || 0,
       balanceDuePaise: b.balance?.status === 'due' ? b.balance.duePaise : 0,
       ownerPayout,

@@ -6,7 +6,8 @@ import { paginate, paginationQuery, escapeRegex } from '../../core/pagination.js
 import { validate } from '../../middleware/validate.js';
 import { requirePermission } from '../../middleware/auth.js';
 import { Booking, BOOKING_STATUSES } from './booking.model.js';
-import { serializeBooking } from './booking.serializer.js';
+import { serializeBooking, bookingSplit } from './booking.serializer.js';
+import { LedgerEntry } from '../wallet/wallet.model.js';
 import {
   buildQuote, serializeQuote, createBooking, bookingPaymentOrder, cancelByUser, cancellationPreview,
   decideBooking, cancelByAdmin, requestExtension, extensionPaymentOrder, balancePaymentOrder,
@@ -242,6 +243,10 @@ adminBookingRouter.get('/:id', requirePermission('bookings.read'), validate({ pa
     Invoice.find({ bookingId: b._id }).lean(),
   ]);
   const out = serializeBooking(b, { audience: 'admin', user, vendor });
+  if (['cancelled', 'rejected'].includes(b.status) && b.ownership !== 'company') {
+    const earned = await LedgerEntry.find({ bookingId: b._id, type: 'trip_earning' }).select('amountPaise').lean();
+    out.split = bookingSplit(b, { ownerEarnedPaise: earned.reduce((t, e) => t + e.amountPaise, 0) });
+  }
   out.inspections = inspections;
   out.payments = payments.map((p) => ({ ...serializePayment(p), razorpayOrderId: p.razorpayOrderId, failureReason: p.failureReason, verifiedVia: p.verifiedVia }));
   out.refunds = refunds.map((r) => ({ ...serializeRefund(r), lastError: r.lastError, attempts: r.attempts }));

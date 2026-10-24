@@ -175,6 +175,32 @@ the vendor ledger as `pending`, released to `available` after `PAYOUT_HOLD_DAYS`
 Withdrawals are requests; they become `paid` only when finance records the bank UTR (or a future
 RazorpayX payout confirms) — a request is never presented as a completed payout.
 
+### Commission, fleet ownership and settlements
+* Commission (`settings.commissionBps`, default 30%) can be overridden per host (`vendor.commissionBps`)
+  and is snapshotted on each booking. Way2Cars' own fleet belongs to one internal `isCompany` vendor
+  account (`vehicle.ownership = 'company'`): commission 100%, no host earnings.
+* The split is ledger-based: money is captured by Razorpay into the Way2Cars account; the owner's
+  share is credited at trip completion, held `payouts.holdDays`, then settled by finance against a
+  bank UTR (host withdrawal request, or "Settle now" in admin). Gateway-level splitting (Razorpay
+  Route linked accounts) is not used. Admin → Finance → Settlements shows the booking-wise split.
+* What attached hosts see about renters and money is set by `settings.hostVisibility`, overridable per
+  host; the booking serializer enforces it for the vendor realm.
+
+### Advance payments, office bookings, extensions
+* Advance: renter pays `advance.percentBps` of the trip charges; the booking blocks the calendar like
+  any paid booking and carries `balance { duePaise, dueAt, status }`. The balance is paid via a
+  `balance` payment; pickup is refused while it is due; an unpaid balance at pickup time cancels the
+  booking under the cancellation policy (part-paid refunds = paid − amount the policy keeps).
+* Office bookings (`source: 'offline'`) are created by operations for a mobile number (the user
+  account is found or created), go straight to `confirmed`, and use the same vehicle lock and
+  overlap check as app bookings. Money taken at the office is a `Payment` with `mode: 'offline'`;
+  refunds of it are `manual` until finance records the reference.
+* Extensions: renters must request at least `extension.minHoursBeforeEnd` hours before return. With
+  `extension.requireApproval`, a request is `pending_approval` (extra time held) → operations
+  approve (`approved`, end time moves at once, `chargeStatus: due`) or reject. Operations can also
+  extend directly (charge collected in app, at the office, or waived). Approved charges still unpaid
+  at trip end are deducted from the deposit. Late returns without an extension pay the hourly late fee.
+
 ## 7. Files
 
 * `integrations/storage` is the only code that touches disk. Validation (magic-byte sniffing via
