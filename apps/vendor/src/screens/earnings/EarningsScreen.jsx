@@ -75,7 +75,7 @@ export function EarningsScreen({ navigation }) {
         <Panel>
           <KeyValue label="Lifetime earned" value={money(w.lifetimeEarnedPaise)} />
           <KeyValue label="Paid out to bank" value={money(w.lifetimePaidOutPaise)} />
-          <KeyValue label="Upcoming confirmed trips" value={`${d.upcoming.bookings} · ${money(d.upcoming.grossRentalPaise)} gross`} />
+          <KeyValue label="Upcoming confirmed trips" value={d.upcoming.grossRentalPaise != null ? `${d.upcoming.bookings} · ${money(d.upcoming.grossRentalPaise)} gross` : `${d.upcoming.bookings}`} />
           <KeyValue label="Platform commission" value={`${d.commissionBps / 100}% of rental`} />
         </Panel>
       </Section>

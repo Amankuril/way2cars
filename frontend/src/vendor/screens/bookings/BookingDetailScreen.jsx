@@ -61,7 +61,8 @@ export function BookingDetailScreen({ route, navigation }) {
   if (q.error) return <Screen header={<Header title="Booking" />} scroll={false}><ErrorState error={q.error} onRetry={q.refetch} /></Screen>;
   const b = q.data;
   const s = BOOKING_STATUS[b.status];
-  const estEarning = b.pricing.rentalPaise - pct(b.pricing.rentalPaise, b.pricing.commissionBps);
+  const amounts = b.pricing?.rentalPaise != null; // hidden unless WAY2CARS allows this host to see booking amounts
+  const estEarning = amounts ? b.pricing.rentalPaise - pct(b.pricing.rentalPaise, b.pricing.commissionBps) : null;
   const claim = b.inspections?.damageClaim;
 
   let footer = null;
@@ -92,7 +93,7 @@ export function BookingDetailScreen({ route, navigation }) {
           <View className="flex-1"><T variant="overline" tone="subtle">Pickup</T><T variant="body" className="mt-1 font-bold">{dayLabel(b.startAt)}</T><T variant="bodySm" tone="muted">{timeLabel(b.startAt)}</T></View>
           <View className="flex-1 items-end"><T variant="overline" tone="subtle">Return</T><T variant="body" className="mt-1 font-bold">{dayLabel(b.endAt)}</T><T variant="bodySm" tone="muted">{timeLabel(b.endAt)}</T></View>
         </View>
-        <T variant="caption" tone="subtle" className="mt-2">{duration(b.startAt, b.endAt)} · {b.vehicle.registrationNumber}{b.extensions?.some((e) => e.status === 'paid') ? ' · extended' : ''}</T>
+        <T variant="caption" tone="subtle" className="mt-2">{duration(b.startAt, b.endAt)} · {b.vehicle.registrationNumber}{b.extensions?.some((e) => ['paid', 'approved'].includes(e.status)) ? ' · extended' : ''}</T>
       </Panel>
 
       {b.status === 'pending_vendor_approval' ? <Notice tone="warning" className="mx-4 mt-3" title="Respond before the deadline">If you don’t respond, the request is declined automatically and the renter is refunded.</Notice> : null}
@@ -113,9 +114,13 @@ export function BookingDetailScreen({ route, navigation }) {
 
       <Section title="Earnings">
         <Panel>
-          <KeyValue label={`Rental · ${b.pricing.hours} hrs`} value={money(b.pricing.rentalPaise)} />
-          <KeyValue label={`WAY2CARS commission (${b.pricing.commissionBps / 100}%)`} value={money(-pct(b.pricing.rentalPaise, b.pricing.commissionBps))} />
-          <Divider className="my-2" />
+          {amounts ? (
+            <>
+              <KeyValue label={`Rental · ${b.pricing.hours} hrs`} value={money(b.pricing.rentalPaise)} />
+              <KeyValue label={`WAY2CARS commission (${b.pricing.commissionBps / 100}%)`} value={money(-pct(b.pricing.rentalPaise, b.pricing.commissionBps))} />
+              <Divider className="my-2" />
+            </>
+          ) : null}
           {b.settlement ? (
             <>
               {b.settlement.extraKmPaise ? <KeyValue label={`Extra km (${b.settlement.extraKm})`} value={money(b.settlement.extraKmPaise)} /> : null}
@@ -124,8 +129,8 @@ export function BookingDetailScreen({ route, navigation }) {
               {b.settlement.damagePaise ? <KeyValue label="Damage compensation" value={money(b.settlement.damagePaise)} /> : null}
               <KeyValue label="Your earning" value={money(b.settlement.vendorEarningPaise)} strong tone="success" />
             </>
-          ) : <KeyValue label="Estimated earning" value={money(estEarning)} strong />}
-          <T variant="caption" tone="subtle" className="mt-1">Deposit {money(b.pricing.depositPaise)} is held by WAY2CARS and covers extra km, fuel, late fees and approved damage.</T>
+          ) : amounts ? <KeyValue label="Estimated earning" value={money(estEarning)} strong /> : <T variant="bodySm" tone="muted">Payments for this booking are handled by WAY2CARS. Your earning appears here once the trip is settled.</T>}
+          <T variant="caption" tone="subtle" className="mt-1">{amounts ? `Deposit ${money(b.pricing.depositPaise)} is held` : 'The renter’s deposit is held'} by WAY2CARS and covers extra km, fuel, late fees and approved damage.</T>
         </Panel>
       </Section>
 
@@ -133,9 +138,9 @@ export function BookingDetailScreen({ route, navigation }) {
         <Section title="Return summary">
           <Panel>
             <KeyValue label="Distance driven" value={`${b.settlementPreview.kmDriven} km (${b.pricing.includedKm} included)`} />
-            <KeyValue label="Extra km" value={`${b.settlementPreview.extraKm} km · ${money(b.settlementPreview.extraKmPaise)}`} />
-            <KeyValue label="Fuel shortfall" value={`${b.settlementPreview.fuelShortEighths}/8 · ${money(b.settlementPreview.fuelPaise)}`} />
-            <KeyValue label="Late by" value={`${b.settlementPreview.lateHours} h · ${money(b.settlementPreview.lateFeePaise)}`} />
+            <KeyValue label="Extra km" value={`${b.settlementPreview.extraKm} km${b.settlementPreview.extraKmPaise != null ? ` · ${money(b.settlementPreview.extraKmPaise)}` : ''}`} />
+            <KeyValue label="Fuel shortfall" value={`${b.settlementPreview.fuelShortEighths}/8${b.settlementPreview.fuelPaise != null ? ` · ${money(b.settlementPreview.fuelPaise)}` : ''}`} />
+            <KeyValue label="Late by" value={`${b.settlementPreview.lateHours} h${b.settlementPreview.lateFeePaise != null ? ` · ${money(b.settlementPreview.lateFeePaise)}` : ''}`} />
             <T variant="caption" tone="subtle" className="mt-1">Compare the pickup and return photos below before accepting. If you don’t respond, the return is accepted automatically.</T>
           </Panel>
         </Section>

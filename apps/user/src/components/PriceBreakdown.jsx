@@ -18,10 +18,12 @@ export function PriceBreakdown({ p, showPayable = true }) {
       {showPayable ? (
         <>
           <DashedDivider className="my-2.5" />
+          {p.advancePaise ? <KeyValue label="Booking total" value={money(p.payablePaise, { exact: true })} /> : null}
           <View className="flex-row items-center justify-between py-1">
-            <T variant="body" className="font-bold">To pay now</T>
-            <AnimatedNumber value={money(p.payablePaise, { exact: true })} variant="headline" className="font-extrabold text-brand-700" />
+            <T variant="body" className="font-bold">{p.advancePaise ? 'Advance to pay now' : 'To pay now'}</T>
+            <AnimatedNumber value={money(p.advancePaise || p.payablePaise, { exact: true })} variant="headline" className="font-extrabold text-brand-700" />
           </View>
+          {p.advancePaise ? <KeyValue label="Balance before pickup" hint="Includes the security deposit" value={money(p.payablePaise - p.advancePaise, { exact: true })} /> : null}
         </>
       ) : null}
       <View className="mt-3 rounded-xl bg-ink-50 px-3 py-2.5">

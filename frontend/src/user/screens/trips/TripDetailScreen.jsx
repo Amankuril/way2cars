@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { View, Image, Linking } from '@/mobile/rn';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Phone, Navigation, CarFront, KeyRound, CalendarPlus, LifeBuoy, FileText, Star, XCircle, Clock, MessageSquare, Receipt, MapPin, Truck, UserRound, Timer, Flag, Gauge, CalendarClock, RotateCcw } from 'lucide-react';
+import { Phone, Navigation, CarFront, KeyRound, CalendarPlus, LifeBuoy, FileText, Star, XCircle, Clock, MessageSquare, Receipt, MapPin, Truck, UserRound, Timer, Flag, Gauge, CalendarClock, RotateCcw, Wallet, Hourglass } from 'lucide-react';
 import { DateTimePickerAndroid } from '@/mobile/app/datetime';
 import { Screen, Header, HeroHeader, T, Button, KeyValue, Pill, Notice, ErrorState, Sheet, ListItem, useToast, Field, Card, SectionHeader, FadeInView, TripRoute, Timeline, ActionTile, SpecChip, IconTile, DashedDivider, PressableScale, Skeleton, SkeletonCard, cn } from '@/mobile/ui';
 import { colors } from '@shared/theme/tokens';
@@ -23,7 +23,7 @@ function progressItems(b) {
   const st = b.status;
   const tr = b.trip || {};
   const items = [{ key: 'booked', title: 'Booking placed', subtitle: dateTime(b.createdAt), state: 'done' }];
-  if (b.payment?.paidAt) items.push({ key: 'paid', title: 'Payment received', subtitle: dateTime(b.payment.paidAt), state: 'done' });
+  if (b.payment?.paidAt) items.push({ key: 'paid', title: b.pricing?.advancePaise ? 'Advance received' : 'Payment received', subtitle: dateTime(b.payment.paidAt), state: 'done' });
   else if (st === 'pending_payment') items.push({ key: 'paid', title: 'Complete payment', subtitle: b.holdExpiresAt ? `Car held until ${timeLabel(b.holdExpiresAt)}` : undefined, state: 'current' });
   else if (st === 'expired') items.push({ key: 'paid', title: 'Payment not completed', state: 'stopped' });
   if (st === 'expired') return items;
@@ -31,6 +31,8 @@ function progressItems(b) {
   if (st === 'cancelled') return [...items, { key: 'cancel', title: 'Booking cancelled', subtitle: b.cancellation?.at ? dateTime(b.cancellation.at) : undefined, state: 'stopped' }];
 
   const confirmed = CONFIRMED.includes(st);
+  if (b.balance?.status === 'paid') items.push({ key: 'balance', title: 'Balance paid', subtitle: b.balance.paidAt ? dateTime(b.balance.paidAt) : undefined, state: 'done' });
+  else if (b.balance?.status === 'due' && st !== 'pending_payment') items.push({ key: 'balance', title: `Pay balance ${money(b.balance.duePaise)}`, subtitle: `By ${dateTime(b.balance.dueAt)}`, state: 'current' });
   items.push({
     key: 'confirm',
     title: st === 'pending_vendor_approval' ? 'Waiting for the host' : b.instantBooking ? 'Booking confirmed' : confirmed ? 'Confirmed by host' : 'Host confirms',
@@ -150,6 +152,11 @@ export function TripDetailScreen({ route, navigation }) {
     try {
       const r = await api.post(`/api/v1/user/bookings/${id}/extensions`, { endAt: extendTo.toISOString() });
       setSheet(null);
+      if (!r.payment) {
+        // Operations check the car's availability first; you pay once it's approved.
+        toast('Extension requested — we’ll notify you once it’s reviewed', 'success');
+        return;
+      }
       const pr = await payOrder(r.payment);
       toast(pr.status === 'paid' ? 'Trip extended' : pr.message || 'Confirming payment…', pr.status === 'paid' ? 'success' : 'neutral');
     } catch (e) {
@@ -168,6 +175,15 @@ export function TripDetailScreen({ route, navigation }) {
   const pickupOpensAt = new Date(new Date(b.startAt).getTime() - (config.data?.booking?.pickupWindowMinutesBefore ?? 30) * 60000);
   const canStart = b.status === 'confirmed' && now >= pickupOpensAt.getTime();
   const pendingExt = b.extensions?.find((e) => e.status === 'pending_payment' && new Date(e.holdExpiresAt) > new Date());
+  const requestedExt = b.extensions?.find((e) => e.status === 'pending_approval');
+  const dueExt = b.extensions?.find((e) => e.status === 'approved' && e.chargeStatus === 'due');
+  const lastExt = b.extensions?.[b.extensions.length - 1];
+  const rejectedExt = lastExt?.status === 'rejected' && ['confirmed', 'ongoing'].includes(b.status) ? lastExt : null;
+  const balanceDue = b.balance?.status === 'due' && ['pending_vendor_approval', 'confirmed'].includes(b.status) ? b.balance : null;
+  const extPolicy = config.data?.extension || { minHoursBeforeEnd: 12 };
+  const extCutoff = new Date(new Date(b.endAt).getTime() - extPolicy.minHoursBeforeEnd * 3600000);
+  const canRequestExt = now < extCutoff.getTime() && !requestedExt && !pendingExt && !dueExt;
+  const lateHourly = b.pricing?.hourlyPaise && config.data?.trip?.lateFeeMultiplierBps ? Math.round((b.pricing.hourlyPaise * config.data.trip.lateFeeMultiplierBps) / 10000) : null;
   const st = b.settlement;
   const live = ['confirmed', 'ongoing', 'return_pending'].includes(b.status);
   const canCancel = ['pending_payment', 'pending_vendor_approval', 'confirmed'].includes(b.status);
@@ -175,6 +191,7 @@ export function TripDetailScreen({ route, navigation }) {
 
   let primary = null;
   if (b.status === 'pending_payment' && holdLeft > 0) primary = <Button title={`Complete payment · ${mmss(holdLeft)}`} size="lg" block loading={busy} onPress={() => runPayment(() => api.post(`/api/v1/user/bookings/${id}/payment-order`))} />;
+  else if (balanceDue) primary = <Button title={`Pay balance ${money(balanceDue.duePaise)}`} icon={Wallet} size="lg" block loading={busy} onPress={() => runPayment(() => api.post(`/api/v1/user/bookings/${id}/balance-payment-order`))} />;
   else if (b.status === 'confirmed') primary = <Button title={canStart ? 'Start trip' : `Pickup opens ${timeLabel(pickupOpensAt)}`} icon={KeyRound} size="lg" block disabled={!canStart} onPress={() => navigation.navigate('Pickup', { id })} />;
   else if (b.status === 'ongoing') primary = <Button title="End trip & return car" size="lg" block onPress={() => navigation.navigate('Return', { id })} />;
   else if (b.status === 'completed' && st?.outstandingStatus === 'due') primary = <Button title={`Pay dues ${money(st.outstandingPaise)}`} size="lg" block loading={busy} onPress={() => runPayment(() => api.post(`/api/v1/user/bookings/${id}/settlement-payment-order`))} />;
@@ -238,6 +255,10 @@ export function TripDetailScreen({ route, navigation }) {
       {b.status === 'pending_vendor_approval' ? <Notice tone="info" title="Waiting for the host" className="mx-4 mt-4">The host will confirm by {dateTime(b.vendorDecisionDueAt)}. If they can’t, you get a full refund automatically.</Notice> : null}
       {b.status === 'return_pending' ? <Notice tone="info" title="Return under review" className="mx-4 mt-4">The host is checking the car. Your deposit refund is calculated after their review.</Notice> : null}
       {['cancelled', 'rejected'].includes(b.status) && b.cancellation ? <Notice tone="neutral" title={b.status === 'rejected' ? 'Declined by host' : 'Cancelled'} className="mx-4 mt-4">{b.cancellation.reason}{b.cancellation.refundPaise ? ` · Refund of ${money(b.cancellation.refundPaise)} to your payment method.` : ''}{b.cancellation.walletRefundPaise ? ` ${money(b.cancellation.walletRefundPaise)} returned to wallet.` : ''}</Notice> : null}
+      {balanceDue ? <Notice tone="warning" title={`Balance ${money(balanceDue.duePaise)} due by ${dateTime(balanceDue.dueAt)}`} className="mx-4 mt-4">{b.source === 'offline' ? 'Pay it here or at the WAY2CARS office.' : 'Your dates are blocked. Pay the balance before the deadline — pickup opens once it’s paid.'}</Notice> : null}
+      {requestedExt ? <Notice tone="info" title="Extension requested" className="mx-4 mt-4">We’re checking the car is free until {dateTime(requestedExt.requestedEndAt)}. You’ll be notified, and pay {money(requestedExt.pricing.totalPaise)} once it’s approved.</Notice> : null}
+      {dueExt ? <Notice tone="warning" title="Extension approved — payment due" className="mx-4 mt-4" action={<Button title={`Pay ${money(dueExt.pricing.totalPaise)}`} size="sm" loading={busy} onPress={() => runPayment(() => api.post(`/api/v1/user/bookings/${id}/extensions/${dueExt.id}/payment-order`))} />}>Your trip now ends {dateTime(dueExt.requestedEndAt)}. Unpaid extension charges are taken from your deposit at the end of the trip.</Notice> : null}
+      {rejectedExt ? <Notice tone="neutral" title="Extension not approved" className="mx-4 mt-4">{rejectedExt.reason ? `${rejectedExt.reason} ` : ''}Please return the car by {dateTime(b.endAt)}.</Notice> : null}
       {pendingExt ? <Notice tone="warning" title="Extension awaiting payment" className="mx-4 mt-4" action={<Button title={`Pay ${money(pendingExt.pricing.totalPaise)}`} size="sm" loading={busy} onPress={() => runPayment(() => api.post(`/api/v1/user/bookings/${id}/extensions/${pendingExt.id}/payment-order`))} />}>Extension to {dateTime(pendingExt.requestedEndAt)} is reserved until {timeLabel(pendingExt.holdExpiresAt)}.</Notice> : null}
 
       {tiles.length ? <FadeInView index={next()} className="mt-4 flex-row px-3">{tiles}</FadeInView> : null}
@@ -357,6 +378,7 @@ export function TripDetailScreen({ route, navigation }) {
               <KeyValue label="Refund to your payment method" value={money(preview.data.refundToSourcePaise)} strong tone="success" />
               {preview.data.refundToWalletPaise ? <KeyValue label="Back to wallet" value={money(preview.data.refundToWalletPaise)} /> : null}
               {preview.data.cancellationFeePaise ? <KeyValue label="Cancellation fee" value={money(preview.data.cancellationFeePaise)} /> : null}
+              {preview.data.balanceWaivedPaise ? <KeyValue label="Unpaid balance (not charged)" value={money(preview.data.balanceWaivedPaise)} /> : null}
               <DashedDivider className="my-2.5" />
               <T variant="caption" tone="muted">{preview.data.refundBps === 10000 ? 'Full refund of trip charges.' : `${preview.data.refundBps / 100}% of trip charges refunded (${preview.data.hoursBeforeStart} hrs before pickup). Deposit refunded in full.`}</T>
             </View>
@@ -365,8 +387,12 @@ export function TripDetailScreen({ route, navigation }) {
         </View>
       </Sheet>
 
-      <Sheet visible={sheet === 'extend'} onClose={() => setSheet(null)} title="Extend your trip" footer={<Button title={extendTo ? 'Check & pay' : 'Choose new return time'} size="lg" block loading={busy} onPress={extendTo ? extend : pickExtension} />}>
+      <Sheet visible={sheet === 'extend'} onClose={() => setSheet(null)} title="Extend your trip" footer={canRequestExt ? <Button title={extendTo ? (extPolicy.requireApproval ? 'Request extension' : 'Check & pay') : 'Choose new return time'} size="lg" block loading={busy} onPress={extendTo ? extend : pickExtension} /> : <Button title="Contact support" size="lg" block variant="secondary" onPress={() => { setSheet(null); navigation.navigate('NewTicket', { bookingId: id, ref: b.ref }); }} />}>
         <View className="px-5 pb-3">
+          {!canRequestExt && !(requestedExt || pendingExt || dueExt) ? (
+            <Notice tone="warning" title="Too late to extend in the app" className="mb-3">Extensions must be requested at least {extPolicy.minHoursBeforeEnd} hours before your return time ({dateTime(extCutoff)}). Contact support — or return on time to avoid late charges.</Notice>
+          ) : null}
+          {requestedExt || pendingExt || dueExt ? <Notice tone="info" title="You already have an extension in progress" className="mb-3">Check the notice on your trip page.</Notice> : null}
           <View className="flex-row items-center rounded-2xl bg-ink-50 px-3.5 py-3">
             <IconTile icon={Flag} tone="neutral" size={40} />
             <View className="ml-3 flex-1">
@@ -382,7 +408,11 @@ export function TripDetailScreen({ route, navigation }) {
             </View>
             <T variant="label" tone="brand">Change</T>
           </PressableScale>
-          <T variant="caption" tone="subtle" className="mt-3">We’ll check the car is free, then you pay only for the extra time (plus GST). Extra kilometres are added pro rata.</T>
+          <T variant="caption" tone="subtle" className="mt-3">{extPolicy.requireApproval ? 'Our team checks the car is free and approves your request; then you pay only for the extra time (plus GST).' : 'We’ll check the car is free, then you pay only for the extra time (plus GST).'} Extra kilometres are added pro rata. Request at least {extPolicy.minHoursBeforeEnd} hours before your return time.</T>
+          <View className="mt-3 flex-row items-start rounded-2xl bg-warning-50 px-3.5 py-3">
+            <Hourglass size={16} color={colors.warning[700]} />
+            <T variant="caption" className="ml-2 flex-1 text-warning-700">Late returns without an extension are charged {lateHourly ? `${money(lateHourly)} per hour` : 'by the hour'}{config.data?.trip?.lateGraceMinutes ? ` after a ${config.data.trip.lateGraceMinutes}-minute grace period` : ''}, taken from your deposit.</T>
+          </View>
         </View>
       </Sheet>
     </Screen>

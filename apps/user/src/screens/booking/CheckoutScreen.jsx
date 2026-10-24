@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { View, Image, Pressable, Switch } from 'react-native';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { MapPin, Truck, TicketPercent, Wallet, ShieldCheck, Lock, Users, Cog, Fuel, Zap, Clock, Check, ReceiptText, X } from 'lucide-react-native';
+import { MapPin, Truck, TicketPercent, Wallet, ShieldCheck, Lock, Users, Cog, Fuel, Zap, Clock, Check, ReceiptText, X, IndianRupee, CalendarCheck } from 'lucide-react-native';
 import { Screen, Header, T, Button, Field, Notice, ErrorState, useToast, cn, Card, SectionHeader, SpecChip, TripRoute, IconTile, AnimatedNumber, FadeInView, PressableScale, Skeleton, SkeletonCard } from '@shared/native';
 import { colors } from '@shared/theme/tokens';
 import { FUEL, TRANSMISSION } from '@shared/lib/labels';
-import { money, duration } from '@shared/lib/format';
+import { money, duration, dateTime, percent } from '@shared/lib/format';
 import { api } from '../../api';
 import { useAuth } from '../../auth/AuthContext';
 import { useTripPlan } from '../../hooks/useTripPlan';
@@ -51,6 +51,7 @@ export function CheckoutScreen({ route, navigation }) {
   const [coupon, setCoupon] = useState(null);
   const [couponError, setCouponError] = useState(null);
   const [useWallet, setUseWallet] = useState(false);
+  const [paymentPlan, setPaymentPlan] = useState('full');
   const [paying, setPaying] = useState(false);
   const [timesOpen, setTimesOpen] = useState(false);
   const config = usePublicConfig();
@@ -67,8 +68,8 @@ export function CheckoutScreen({ route, navigation }) {
   const body = useMemo(() => ({
     vehicleId, startAt: plan.startAt?.toISOString(), endAt: plan.endAt?.toISOString(),
     delivery: delivery ? { address: delivery.address, lat: delivery.lat, lng: delivery.lng, placeId: delivery.placeId } : undefined,
-    couponCode: coupon || undefined, useWallet,
-  }), [vehicleId, plan.startAt, plan.endAt, delivery, coupon, useWallet]);
+    couponCode: coupon || undefined, useWallet: useWallet && paymentPlan === 'full', paymentPlan,
+  }), [vehicleId, plan.startAt, plan.endAt, delivery, coupon, useWallet, paymentPlan]);
 
   const quote = useQuery({
     queryKey: ['quote', body],
@@ -146,6 +147,10 @@ export function CheckoutScreen({ route, navigation }) {
   }
   const q = quote.data;
   const unavailable = quote.error?.code === 'VEHICLE_UNAVAILABLE';
+  const adv = q?.advance;
+  // The advance option disappears if the trip moves too close; fall back to paying in full.
+  const advanceOn = paymentPlan === 'advance' && adv?.available;
+  const payNow = q ? (advanceOn ? q.advancePaise ?? adv.advancePaise : q.payablePaise) : null;
 
   return (
     <Screen
@@ -155,11 +160,11 @@ export function CheckoutScreen({ route, navigation }) {
           <View className="flex-row items-center">
             <View className="mr-3 flex-1">
               <T variant="caption" tone="subtle">To pay now</T>
-              {q ? <AnimatedNumber value={money(q.payablePaise, { exact: true })} className="text-brand-700" testID="pay-total" /> : quote.isFetching ? <Skeleton className="mt-1 h-6 w-28" /> : <T variant="price" tone="subtle">—</T>}
+              {q ? <AnimatedNumber value={money(payNow, { exact: true })} className="text-brand-700" testID="pay-total" /> : quote.isFetching ? <Skeleton className="mt-1 h-6 w-28" /> : <T variant="price" tone="subtle">—</T>}
             </View>
             <Button
               title="Pay now"
-              accessibilityLabel={q ? `Pay ${money(q.payablePaise, { exact: true })}` : 'Pay'}
+              accessibilityLabel={q ? `Pay ${money(payNow, { exact: true })}` : 'Pay'}
               icon={Lock}
               size="lg"
               disabled={!q || !kycOk || unavailable || quote.isFetching}
@@ -242,6 +247,21 @@ export function CheckoutScreen({ route, navigation }) {
         ) : null}
       </View>
 
+      {/* Pay in full or an advance to block the dates */}
+      {adv?.available ? (
+        <View className="mt-7">
+          <SectionHeader title="How do you want to pay?" />
+          <View className="flex-row px-4" accessibilityRole="radiogroup">
+            <Option selected={!advanceOn} icon={IndianRupee} title="Pay in full" subtitle={q ? `${money(q.payablePaise)} now, nothing later` : 'Everything now'} onPress={() => setPaymentPlan('full')} testID="plan-full" />
+            <View className="w-3" />
+            <Option selected={advanceOn} icon={CalendarCheck} title={`Pay ${percent(adv.percentBps)} now`} subtitle={`${money(adv.advancePaise)} blocks your dates · ${money(adv.balancePaise)} by ${dateTime(adv.balanceDueAt)}`} onPress={() => setPaymentPlan('advance')} testID="plan-advance" />
+          </View>
+          {advanceOn ? (
+            <T variant="caption" tone="subtle" className="mx-4 mt-3">Pay the balance from your trip page before {dateTime(adv.balanceDueAt)}. Pickup opens once it’s paid; an unpaid balance at pickup time cancels the booking under the cancellation policy.</T>
+          ) : null}
+        </View>
+      ) : null}
+
       {/* Offers & credits */}
       <View className="mt-7">
         <SectionHeader title="Offers & credits" actionLabel="View all coupons" onAction={() => navigation.navigate('Offers')} />
@@ -263,7 +283,7 @@ export function CheckoutScreen({ route, navigation }) {
               <Button title="Apply" variant="tonal" className="ml-2" disabled={couponInput.trim().length < 4} onPress={() => { setCouponError(null); setCoupon(couponInput.trim()); }} />
             </View>
           )}
-          {account?.walletBalancePaise > 0 ? (
+          {account?.walletBalancePaise > 0 && !advanceOn ? (
             <View className="mt-4 flex-row items-center border-t border-line pt-4">
               <IconTile icon={Wallet} tone="accent" size={38} />
               <View className="ml-3 flex-1"><T variant="label">Use wallet credit</T><T variant="caption" tone="muted">Balance {money(account.walletBalancePaise)}</T></View>
@@ -281,7 +301,7 @@ export function CheckoutScreen({ route, navigation }) {
             <ReceiptText size={16} color={colors.brand[600]} />
             <T variant="label" className="ml-2">Price breakdown</T>
           </View>
-          {q ? <PriceBreakdown p={q} /> : quote.isLoading ? (
+          {q ? <PriceBreakdown p={advanceOn ? { ...q, advancePaise: payNow } : q} /> : quote.isLoading ? (
             <View>{[1, 2, 3, 4].map((i) => <Skeleton key={i} className="mb-2.5 h-4 w-full" />)}</View>
           ) : quote.error && !unavailable ? <ErrorState error={quote.error} onRetry={quote.refetch} /> : null}
         </Card>

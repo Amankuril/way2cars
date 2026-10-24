@@ -178,7 +178,10 @@ vendorBookingRouter.get('/:id', validate({ params: idParams }), async (req, res)
   const [user, visibility] = await Promise.all([User.findById(b.userId).select('name phone kyc stats').lean(), visibilityFor(req.auth.id)]);
   const out = serializeBooking(b, { audience: 'vendor', user, visibility });
   out.inspections = await inspectionsFor(b._id);
-  if (b.status === 'return_pending') out.settlementPreview = await previewSettlement(b);
+  if (b.status === 'return_pending') {
+    const p = await previewSettlement(b);
+    out.settlementPreview = visibility.bookingAmounts ? p : { kmDriven: p.kmDriven, extraKm: p.extraKm, fuelShortEighths: p.fuelShortEighths, lateHours: p.lateHours };
+  }
   ok(res, out);
 });
 
