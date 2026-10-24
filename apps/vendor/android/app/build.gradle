@@ -97,8 +97,8 @@ android {
         applicationId "in.way2cars.host"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 2
-        versionName "1.1.0"
+        versionCode 3
+        versionName "1.1.1"
         manifestPlaceholders = [googleMapsApiKey: setting("GOOGLE_MAPS_ANDROID_KEY", "")]
     }
     signingConfigs {
