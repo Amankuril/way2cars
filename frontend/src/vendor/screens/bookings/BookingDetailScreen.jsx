@@ -62,7 +62,7 @@ export function BookingDetailScreen({ route, navigation }) {
   const b = q.data;
   const s = BOOKING_STATUS[b.status];
   const amounts = b.pricing?.rentalPaise != null; // hidden unless WAY2CARS allows this host to see booking amounts
-  const estEarning = amounts ? b.pricing.rentalPaise - pct(b.pricing.rentalPaise, b.pricing.commissionBps) : null;
+  const estEarning = b.ownerShare?.earningPaise ?? (amounts ? b.pricing.rentalPaise - pct(b.pricing.rentalPaise, b.pricing.commissionBps) : null);
   const claim = b.inspections?.damageClaim;
 
   let footer = null;
@@ -129,7 +129,13 @@ export function BookingDetailScreen({ route, navigation }) {
               {b.settlement.damagePaise ? <KeyValue label="Damage compensation" value={money(b.settlement.damagePaise)} /> : null}
               <KeyValue label="Your earning" value={money(b.settlement.vendorEarningPaise)} strong tone="success" />
             </>
-          ) : amounts ? <KeyValue label="Estimated earning" value={money(estEarning)} strong /> : <T variant="bodySm" tone="muted">Payments for this booking are handled by WAY2CARS. Your earning appears here once the trip is settled.</T>}
+          ) : estEarning != null ? (
+            <>
+              {!amounts && b.ownerShare ? <KeyValue label="WAY2CARS commission" value={`${b.ownerShare.commissionBps / 100}%`} /> : null}
+              <KeyValue label={b.ownerShare?.final ? 'Your earning' : 'Your share (estimated)'} value={money(estEarning)} strong tone="success" />
+              <T variant="caption" tone="subtle" className="mt-1">Credited after the trip, then withdrawable from Earnings → Withdraw.</T>
+            </>
+          ) : null}
           <T variant="caption" tone="subtle" className="mt-1">{amounts ? `Deposit ${money(b.pricing.depositPaise)} is held` : 'The renter’s deposit is held'} by WAY2CARS and covers extra km, fuel, late fees and approved damage.</T>
         </Panel>
       </Section>

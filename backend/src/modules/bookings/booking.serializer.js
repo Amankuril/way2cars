@@ -116,6 +116,11 @@ export function serializeBooking(b, { audience = 'user', user, vendor, vehicle, 
     };
     base.visibility = show;
   }
+  if (audience === 'vendor') {
+    // The host always sees their own split (expected until the trip settles), even when booking amounts are hidden.
+    const split = bookingSplit(b);
+    base.ownerShare = { commissionBps: b.pricing.commissionBps, earningPaise: split.ownerPaise, final: split.status !== 'pending_trip' };
+  }
   if (audience === 'admin') {
     base.ownership = b.ownership || 'host';
     base.createdBy = b.createdBy;

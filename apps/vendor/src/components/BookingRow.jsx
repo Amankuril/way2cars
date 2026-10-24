@@ -6,8 +6,8 @@ import { BOOKING_STATUS } from '@shared/lib/labels';
 /** Compact booking row for the host: car, renter, dates, status and expected earning. */
 export function BookingRow({ booking: b, onPress, right }) {
   const s = BOOKING_STATUS[b.status];
-  // Amounts are present only when WAY2CARS lets this host see them.
-  const earning = b.pricing?.rentalPaise != null ? b.pricing.rentalPaise - pct(b.pricing.rentalPaise, b.pricing.commissionBps) : null;
+  // The host's own share is always sent; booking totals only when WAY2CARS allows.
+  const earning = b.ownerShare?.earningPaise ?? (b.pricing?.rentalPaise != null ? b.pricing.rentalPaise - pct(b.pricing.rentalPaise, b.pricing.commissionBps) : null);
   return (
     <Pressable onPress={onPress} accessibilityRole="button" className="mx-4 mb-3 rounded-lg border border-line bg-surface p-3.5 active:bg-ink-50">
       <View className="flex-row">
@@ -20,7 +20,7 @@ export function BookingRow({ booking: b, onPress, right }) {
       </View>
       <View className="mt-3 flex-row items-center justify-between border-t border-line pt-3">
         <Pill label={s.label} tone={s.tone} />
-        {right || (earning != null ? <T variant="label">{money(earning)} <T variant="caption" tone="subtle">est. earning</T></T> : null)}
+        {right || (earning != null ? <T variant="label">{money(earning)} <T variant="caption" tone="subtle">{b.ownerShare?.final ? 'your earning' : 'your share'}</T></T> : null)}
       </View>
     </Pressable>
   );
