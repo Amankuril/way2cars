@@ -2,8 +2,11 @@
 
 | File | App | Package |
 |---|---|---|
-| `way2cars-user-v1.0.0.apk` | Renter app | `in.way2cars.user` |
-| `way2cars-host-v1.0.0.apk` | Host (vendor) app | `in.way2cars.host` |
+| `way2cars-user-v1.1.0.apk` | Renter app (latest) | `in.way2cars.user` |
+| `way2cars-host-v1.1.0.apk` | Host (vendor) app (latest) | `in.way2cars.host` |
+| `way2cars-user-v1.0.0.apk`, `way2cars-host-v1.0.0.apk` | Previous release | |
+
+v1.1.0 (versionCode 2) installs over v1.0.0. Renter: advance payment, pay balance, extension requests with approval, 12-hour rule and late-fee info. Host: own share per booking, works when admins hide renter details/amounts. Needs the matching backend deployed.
 
 Both are signed with the WAY2CARS release key (`~/.way2cars/keys/way2cars-release.jks`, kept outside the repo — back it up; Play Store updates must be signed with the same key) and contain `arm64-v8a` + `armeabi-v7a` code.
 
