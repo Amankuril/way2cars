@@ -4,6 +4,21 @@ import { tooMany, badRequest, unavailable } from '../../core/errors.js';
 import { normalizeIndianMobile, maskPhone } from '../../core/phone.js';
 import { logger } from '../../core/logger.js';
 import { sendOtpSms } from '../../integrations/sms.js';
+import { sendOtpWhatsapp } from '../../integrations/whatsapp.js';
+
+const SENDERS = { whatsapp: sendOtpWhatsapp, sms: sendOtpSms };
+
+/** Tries each configured channel in order (OTP_CHANNELS, e.g. whatsapp then sms); first success wins. */
+async function deliverOtp(phone, code) {
+  const tried = [];
+  for (const channel of env.OTP_CHANNELS.length ? env.OTP_CHANNELS : ['sms']) {
+    const r = await SENDERS[channel](phone, code);
+    if (r.status === 'sent') return { status: 'sent', channel, providerRef: r.providerRef, tried };
+    tried.push(`${channel}:${r.status}`);
+    if (r.status === 'failed') logger.warn({ phone: maskPhone(phone), channel, error: r.error }, 'otp channel failed, trying next');
+  }
+  return { status: 'failed', tried };
+}
 import { OtpChallenge } from './otp.model.js';
 
 export const STATIC_OTP = '123456';
@@ -19,7 +34,7 @@ export function bypassStatus() {
  * Decides how an OTP is produced for a number:
  *  - number in OTP_DUMMY_NUMBERS → static 123456, in every environment
  *  - OTP_BYPASS_ENABLED=true     → static 123456 for everyone
- *  - otherwise                    → random code delivered by SMS India Hub
+ *  - otherwise                    → random code delivered over OTP_CHANNELS (WhatsApp and/or SMS India Hub)
  */
 export function decideOtpMode(phone, { bypassEnabled, dummyNumbers: dummies }) {
   if (dummies.has(phone)) return 'static'; // deliberately independent of NODE_ENV
@@ -64,12 +79,12 @@ export async function requestOtp({ phone, realm, ip }) {
   });
 
   if (mode === 'sms') {
-    const result = await sendOtpSms(phone, code);
+    const result = await deliverOtp(phone, code);
     if (result.status !== 'sent') {
       await OtpChallenge.updateOne({ _id: challenge._id }, { $set: { deliveryStatus: 'failed', consumedAt: new Date() } });
       throw unavailable('We could not send the verification code right now. Please try again shortly.', 'OTP_DELIVERY_FAILED');
     }
-    await OtpChallenge.updateOne({ _id: challenge._id }, { $set: { providerRef: result.providerRef } });
+    await OtpChallenge.updateOne({ _id: challenge._id }, { $set: { providerRef: result.providerRef, channel: result.channel } });
   } else {
     logger.warn({ realm, phone: maskPhone(phone), event: 'otp.static_issued' }, 'static OTP issued (bypass/dummy number)');
   }

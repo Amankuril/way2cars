@@ -16,7 +16,7 @@ const inbox = new mongoose.Schema(
     data: mongoose.Schema.Types.Mixed,
     dedupeKey: String,
     readAt: Date,
-    channels: { push: String, sms: String, email: String }, // delivery outcome per channel
+    channels: { push: String, sms: String, email: String, whatsapp: String }, // delivery outcome per channel
   },
   { timestamps: { createdAt: true, updatedAt: false }, versionKey: false },
 );

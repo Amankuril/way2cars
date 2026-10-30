@@ -50,6 +50,12 @@ export default function Integrations() {
           <Card icon={MessageSquare} title="Booking confirmation SMS" description="Booking details and the terms link, sent when a booking is confirmed." status={on(d.sms.configured && d.sms.bookingTemplate)}>
             {d.sms.bookingTemplate ? 'Sent through the booking DLT template.' : 'Set SMS_INDIA_HUB_BOOKING_TEMPLATE and SMS_INDIA_HUB_BOOKING_DLT_TEMPLATE_ID on the server (the text must match the DLT template).'}
           </Card>
+          <Card icon={MessageSquare} title="WhatsApp login OTP" description={`Sign-in codes on WhatsApp. Channel order: ${(d.otpChannels || []).join(' → ') || 'sms'} (falls back to the next if one fails).`} status={on(d.whatsapp?.otp)}>
+            {d.whatsapp?.otp ? `Authentication template “${d.whatsapp.otpTemplate}”.` : 'Set WHATSAPP_OTP_TEMPLATE (an approved authentication template) and OTP_CHANNELS=whatsapp,sms on the server.'}
+          </Card>
+          <Card icon={MessageSquare} title="WhatsApp updates" description="Booking, payment, refund, trip, KYC and payout updates for renters and hosts." status={on(d.whatsapp?.updates)}>
+            {d.whatsapp?.updates ? `Utility template “${d.whatsapp.updateTemplate}”. Users can turn WhatsApp off in their notification settings.` : 'Set WHATSAPP_UPDATE_TEMPLATE (an approved utility template, e.g. “Hi {{1}}, {{2}}”) on the server.'}
+          </Card>
           <Card icon={MessageSquare} title="WhatsApp (booking confirmation)" description="Booking details, trip rules and the terms link on WhatsApp." status={on(d.whatsapp?.configured)}>
             {d.whatsapp?.configured ? `Sent through ${d.whatsapp.provider === 'meta' ? 'the WhatsApp Cloud API' : 'Textora (BUZWAP)'} with template “${d.whatsapp.template}” (${(d.whatsapp.params || []).join(', ')}).` : 'Set WHATSAPP_ENABLED=true, TEXTORA_FROM, TEXTORA_AUTHKEY, TEXTORA_BUSINESS_ACCOUNT_ID, WHATSAPP_BOOKING_TEMPLATE and WHATSAPP_BOOKING_PARAMS on the server. Until then, staff can send it from the booking page with “Open in WhatsApp”.'}
           </Card>

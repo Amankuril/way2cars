@@ -33,6 +33,7 @@ export const notificationPrefs = new mongoose.Schema(
   {
     push: { type: Boolean, default: true },
     sms: { type: Boolean, default: true },
+    whatsapp: { type: Boolean, default: true },
     email: { type: Boolean, default: true },
     promotional: { type: Boolean, default: true },
   },

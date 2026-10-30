@@ -29,7 +29,10 @@ const PROVIDERS = {
   },
 };
 
-export const whatsappConfigured = () => Boolean(env.WHATSAPP_ENABLED && env.WHATSAPP_BOOKING_TEMPLATE && PROVIDERS[env.WHATSAPP_PROVIDER]?.ready());
+const providerReady = () => Boolean(env.WHATSAPP_ENABLED && PROVIDERS[env.WHATSAPP_PROVIDER]?.ready());
+export const whatsappConfigured = () => providerReady() && Boolean(env.WHATSAPP_BOOKING_TEMPLATE);
+export const whatsappOtpConfigured = () => providerReady() && Boolean(env.WHATSAPP_OTP_TEMPLATE);
+export const whatsappUpdatesConfigured = () => providerReady() && Boolean(env.WHATSAPP_UPDATE_TEMPLATE);
 
 // WhatsApp rejects template parameters with newlines, tabs or 4+ spaces in a row.
 const clean = (v) => String(v ?? '').replace(/[\n\t]+/g, ' · ').replace(/ {4,}/g, '   ').slice(0, 900);
@@ -45,14 +48,22 @@ export function parseWhatsappResponse(httpStatus, json) {
 }
 
 /** Sends a template to an Indian mobile. Returns { status: 'sent'|'skipped'|'failed', providerRef?, error? }. Never throws. */
-export async function sendWhatsappTemplate(phone10, params, { template = env.WHATSAPP_BOOKING_TEMPLATE } = {}) {
-  if (!whatsappConfigured()) return { status: 'skipped' };
+export async function sendWhatsappTemplate(phone10, params, { template = env.WHATSAPP_BOOKING_TEMPLATE, buttonText } = {}) {
+  if (!providerReady() || !template) return { status: 'skipped' };
   const to = `91${String(phone10).replace(/\D/g, '').slice(-10)}`;
   const req = PROVIDERS[env.WHATSAPP_PROVIDER].request({
     messaging_product: 'whatsapp',
     to,
     type: 'template',
-    template: { name: template, language: { code: env.WHATSAPP_TEMPLATE_LANG }, components: [{ type: 'body', parameters: params.map((p) => ({ type: 'text', text: clean(p) || '-' })) }] },
+    template: {
+      name: template,
+      language: { code: env.WHATSAPP_TEMPLATE_LANG },
+      components: [
+        { type: 'body', parameters: params.map((p) => ({ type: 'text', text: clean(p) || '-' })) },
+        // Authentication templates: the "Copy code" button carries the code too.
+        ...(buttonText ? [{ type: 'button', sub_type: 'url', index: '0', parameters: [{ type: 'text', text: buttonText }] }] : []),
+      ],
+    },
   });
   try {
     const res = await fetch(req.url, { method: 'POST', headers: req.headers, body: JSON.stringify(req.body), signal: AbortSignal.timeout(15000) });
@@ -74,6 +85,9 @@ export async function sendWhatsappTemplate(phone10, params, { template = env.WHA
     return { status: 'failed', error: err.message };
   }
 }
+
+/** Login OTP over WhatsApp. Never logs the code. */
+export const sendOtpWhatsapp = (phone10, code) => sendWhatsappTemplate(phone10, [code], { template: env.WHATSAPP_OTP_TEMPLATE, buttonText: env.WHATSAPP_OTP_BUTTON ? code : undefined });
 
 /** wa.me link with the text pre-filled — the manual fallback staff can send from their own WhatsApp. */
 export const whatsappLink = (phone10, text) => `https://wa.me/91${String(phone10).replace(/\D/g, '').slice(-10)}?text=${encodeURIComponent(text)}`;

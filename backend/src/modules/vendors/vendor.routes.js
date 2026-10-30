@@ -128,7 +128,7 @@ vendorAccountRouter.post('/me/onboarding/submit', async (req, res) => {
   ok(res, serializeVendor(v.toObject()));
 });
 
-vendorAccountRouter.put('/me/notification-prefs', validate({ body: z.object({ push: z.boolean(), sms: z.boolean(), email: z.boolean(), promotional: z.boolean() }).strict() }), async (req, res) => {
+vendorAccountRouter.put('/me/notification-prefs', validate({ body: z.object({ push: z.boolean(), sms: z.boolean(), whatsapp: z.boolean().optional(), email: z.boolean(), promotional: z.boolean() }).strict() }), async (req, res) => {
   const v = await Vendor.findByIdAndUpdate(req.auth.id, { $set: { notificationPrefs: req.valid.body } }, { new: true }).lean();
   ok(res, v.notificationPrefs);
 });

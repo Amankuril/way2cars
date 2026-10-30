@@ -15,7 +15,7 @@ import { revokeAllSessions } from '../auth/token.service.js';
 import { getSettings, updateSettings } from '../settings/settings.service.js';
 import { bypassStatus } from '../auth/otp.service.js';
 import { smsConfigured, bookingSmsConfigured } from '../../integrations/sms.js';
-import { whatsappConfigured } from '../../integrations/whatsapp.js';
+import { whatsappConfigured, whatsappOtpConfigured, whatsappUpdatesConfigured } from '../../integrations/whatsapp.js';
 import { env } from '../../config/env.js';
 import { pushConfigured } from '../../integrations/firebase.js';
 import { emailConfigured } from '../../integrations/email.js';
@@ -138,7 +138,8 @@ adminCoreRouter.get('/system/integrations', requirePermission('settings.manage')
   const otp = bypassStatus();
   ok(res, {
     sms: { configured: smsConfigured(), bookingTemplate: bookingSmsConfigured() },
-    whatsapp: { configured: whatsappConfigured(), provider: env.WHATSAPP_PROVIDER, template: env.WHATSAPP_BOOKING_TEMPLATE || null, params: env.WHATSAPP_BOOKING_PARAMS },
+    whatsapp: { configured: whatsappConfigured(), provider: env.WHATSAPP_PROVIDER, template: env.WHATSAPP_BOOKING_TEMPLATE || null, params: env.WHATSAPP_BOOKING_PARAMS, otp: whatsappOtpConfigured(), otpTemplate: env.WHATSAPP_OTP_TEMPLATE || null, updates: whatsappUpdatesConfigured(), updateTemplate: env.WHATSAPP_UPDATE_TEMPLATE || null },
+    otpChannels: env.OTP_CHANNELS,
     otp: { globalBypass: otp.globalBypass, dummyNumbersConfigured: otp.dummyNumberCount > 0 },
     razorpay: { configured: Boolean(publicKeyId()), mode: publicKeyId()?.startsWith('rzp_live') ? 'live' : publicKeyId() ? 'test' : null },
     firebase: { configured: pushConfigured() },

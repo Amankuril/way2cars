@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { View, Switch } from 'react-native';
 import { useMutation } from '@tanstack/react-query';
-import { Smartphone, Mail, Megaphone, ShieldCheck } from 'lucide-react-native';
+import { Smartphone, Mail, Megaphone, ShieldCheck, MessageCircle } from 'lucide-react-native';
 import { Screen } from '../Layout';
 import { T } from '../Text';
 import { useToast } from '../Feedback';
@@ -14,22 +14,24 @@ import { useApp } from '../app/AppContext';
 const ROWS = {
   user: [
     ['push', 'Push notifications', 'Booking, payment and trip updates on this phone'],
+    ['whatsapp', 'WhatsApp', 'Booking confirmations, payments, refunds and trip updates'],
     ['email', 'Email', 'Invoices and receipts'],
     ['promotional', 'Offers & news', 'Deals, festival offers and new cities'],
   ],
   vendor: [
     ['push', 'Push notifications', 'Booking requests, returns and payouts'],
+    ['whatsapp', 'WhatsApp', 'Booking requests, approvals and payout updates'],
     ['email', 'Email', 'Payout receipts and account updates'],
     ['promotional', 'Host tips & news', 'Product updates and earning tips'],
   ],
 };
-const ICON = { push: [Smartphone, 'brand'], email: [Mail, 'success'], promotional: [Megaphone, 'warning'] };
-const GROUPS = [['Channels', 'How we reach you about your account', ['push', 'email']], ['Marketing', null, ['promotional']]];
+const ICON = { push: [Smartphone, 'brand'], whatsapp: [MessageCircle, 'success'], email: [Mail, 'success'], promotional: [Megaphone, 'warning'] };
+const GROUPS = [['Channels', 'How we reach you about your account', ['push', 'whatsapp', 'email']], ['Marketing', null, ['promotional']]];
 
 export function NotificationPrefsScreen() {
   const { api, realm, auth } = useApp();
   const toast = useToast();
-  const [prefs, setPrefs] = useState({ push: true, sms: true, email: true, promotional: true, ...auth.account?.notificationPrefs });
+  const [prefs, setPrefs] = useState({ push: true, sms: true, whatsapp: true, email: true, promotional: true, ...auth.account?.notificationPrefs });
   const save = useMutation({
     mutationFn: (next) => api.put(`/api/v1/${realm}/me/notification-prefs`, next),
     onSuccess: (p) => auth.setAccount({ ...auth.account, notificationPrefs: p }),

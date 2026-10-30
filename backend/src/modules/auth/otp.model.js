@@ -11,6 +11,7 @@ const schema = new mongoose.Schema(
     consumedAt: Date,
     ip: String,
     providerRef: String,
+    channel: { type: String, enum: ['whatsapp', 'sms'] }, // how a live code was delivered
     deliveryStatus: { type: String, enum: ['sent', 'failed', 'skipped'], default: 'sent' },
     purgeAt: { type: Date, required: true },
   },

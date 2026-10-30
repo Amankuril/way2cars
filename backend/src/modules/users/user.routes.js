@@ -73,7 +73,7 @@ userAccountRouter.patch('/me', validate({ body: z.object({ name: name.optional()
   ok(res, serializeUser(user));
 });
 
-userAccountRouter.put('/me/notification-prefs', validate({ body: z.object({ push: z.boolean(), sms: z.boolean(), email: z.boolean(), promotional: z.boolean() }).strict() }), async (req, res) => {
+userAccountRouter.put('/me/notification-prefs', validate({ body: z.object({ push: z.boolean(), sms: z.boolean(), whatsapp: z.boolean().optional(), email: z.boolean(), promotional: z.boolean() }).strict() }), async (req, res) => {
   const user = await User.findByIdAndUpdate(req.auth.id, { $set: { notificationPrefs: req.valid.body } }, { new: true }).lean();
   ok(res, user.notificationPrefs);
 });

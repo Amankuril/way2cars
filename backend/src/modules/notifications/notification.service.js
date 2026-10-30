@@ -2,6 +2,7 @@ import { env } from '../../config/env.js';
 import { logger } from '../../core/logger.js';
 import { sendPush } from '../../integrations/firebase.js';
 import { sendEmail } from '../../integrations/email.js';
+import { sendWhatsappTemplate, whatsappConfigured, whatsappUpdatesConfigured } from '../../integrations/whatsapp.js';
 import { Notification, DeviceToken } from './notification.model.js';
 import { User } from '../users/user.model.js';
 import { Vendor } from '../vendors/vendor.model.js';
@@ -14,6 +15,16 @@ import { AdminUser } from '../admin/admin.model.js';
  */
 
 const MODELS = { user: User, vendor: Vendor, admin: AdminUser };
+
+/** Events also sent on WhatsApp (transactional only — never promotions). */
+const WHATSAPP_EVENTS = new Set([
+  'booking.created_pending_vendor', 'booking.confirmed', 'booking.rejected', 'booking.cancelled', 'booking.extended', 'booking.balance_due',
+  'booking.extension_approved', 'booking.extension_rejected', 'booking.price_adjusted', 'payment.succeeded', 'payment.failed', 'refund.processed',
+  'trip.pickup_reminder', 'trip.return_reminder', 'trip.started', 'trip.completed', 'deposit.reviewed', 'deposit.collateral_received',
+  'deposit.collateral_returned', 'wallet.credited', 'kyc.approved', 'kyc.rejected',
+  'vendor.booking_request', 'vendor.booking_confirmed', 'vendor.booking_cancelled', 'vendor.return_submitted', 'vendor.trip_started',
+  'vendor.approved', 'vendor.rejected', 'vendor.vehicle_approved', 'vendor.vehicle_rejected', 'vendor.payout_paid', 'vendor.payout_rejected',
+]);
 const APP_PATH = { user: '/user', vendor: '/vendor', admin: '/admin' };
 
 const T = {
@@ -65,7 +76,7 @@ const T = {
 export const NOTIFICATION_EVENTS = Object.keys(T);
 
 async function loadRecipient(realm, id) {
-  const fields = realm === 'admin' ? 'email name status' : 'phone email name status notificationPrefs';
+  const fields = realm === 'admin' ? 'email name status' : 'phone email name businessName status notificationPrefs';
   return MODELS[realm].findById(id).select(fields).lean();
 }
 
@@ -114,6 +125,12 @@ export async function notify(event, to, data = {}, { dedupeKey } = {}) {
         lines: [tpl.body],
         cta: tpl.link ? { label: 'Open WAY2CARS', url: `${env.APP_PUBLIC_URL.replace(/\/$/, '')}${APP_PATH[to.realm]}${tpl.link}` } : undefined,
       })).status;
+    }
+    // WhatsApp updates for renters and hosts (one utility template; the booking confirmation has its own).
+    const detailedConfirmation = event === 'booking.confirmed' && whatsappConfigured();
+    if (to.realm !== 'admin' && !tpl.promotional && prefs.whatsapp !== false && account.phone && whatsappUpdatesConfigured() && WHATSAPP_EVENTS.has(event) && !detailedConfirmation) {
+      const values = { name: account.businessName || account.name || 'Customer', title: tpl.title, message: tpl.body, ref: data.ref || '', link: `${env.APP_PUBLIC_URL.replace(/\/$/, '')}${APP_PATH[to.realm]}${tpl.link || '/'}` };
+      channels.whatsapp = (await sendWhatsappTemplate(account.phone, env.WHATSAPP_UPDATE_PARAMS.map((k) => values[k] ?? ''), { template: env.WHATSAPP_UPDATE_TEMPLATE })).status;
     }
     if (Object.keys(channels).length) await Notification.updateOne({ _id: doc._id }, { $set: { channels } });
     // Confirmed bookings also get the details + trip rules on WhatsApp / SMS.

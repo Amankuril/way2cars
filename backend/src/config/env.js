@@ -79,6 +79,15 @@ const schema = z.object({
   // Body variables in template order. Keys: name ref car start end place paid terms link hours days
   WHATSAPP_BOOKING_PARAMS: z.string().optional().transform((v) => (v && v.trim() ? v : 'name,ref,car,start,end,place,paid,terms,link').split(',').map((x) => x.trim()).filter(Boolean)),
   WHATSAPP_TEMPLATE_LANG: z.string().optional().transform((v) => (v && v.trim() ? v.trim() : 'en')),
+  // Login OTPs over WhatsApp: an AUTHENTICATION template whose only body variable is the code.
+  WHATSAPP_OTP_TEMPLATE: optStr, // e.g. login_otp
+  WHATSAPP_OTP_BUTTON: bool(true), // authentication templates have a "Copy code" button that also takes the code
+  // Order of OTP channels; the next one is tried if one fails. e.g. "whatsapp,sms" or "sms"
+  OTP_CHANNELS: z.string().optional().transform((v) => (v && v.trim() ? v : 'sms').split(',').map((x) => x.trim()).filter((x) => ['whatsapp', 'sms'].includes(x))),
+  // Booking / trip / payment / account updates over WhatsApp: one UTILITY template, variables filled from the
+  // notification. Keys: name title message ref link
+  WHATSAPP_UPDATE_TEMPLATE: optStr, // e.g. booking_update
+  WHATSAPP_UPDATE_PARAMS: z.string().optional().transform((v) => (v && v.trim() ? v : 'name,message').split(',').map((x) => x.trim()).filter(Boolean)),
   TEXTORA_API_URL: z.string().optional().transform((v) => (v && v.trim() ? v.trim() : 'https://api.textorasms.com/whatsapp/send')),
   TEXTORA_FROM: optStr, // sender name, e.g. BUZWAP
   TEXTORA_AUTHKEY: optStr,
@@ -168,8 +177,11 @@ function load() {
     if (!e.COOKIE_SECURE) problems.push('COOKIE_SECURE must be true in production');
     if (!e.RAZORPAY_KEY_ID || !e.RAZORPAY_KEY_SECRET || !e.RAZORPAY_WEBHOOK_SECRET)
       problems.push('RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET and RAZORPAY_WEBHOOK_SECRET are required in production');
-    if (!e.OTP_BYPASS_ENABLED && (!e.SMS_ENABLED || !e.SMS_INDIA_HUB_API_KEY || !e.SMS_INDIA_HUB_SENDER_ID))
-      problems.push('SMS_ENABLED, SMS_INDIA_HUB_API_KEY and SMS_INDIA_HUB_SENDER_ID are required for live OTP delivery');
+    const smsReady = e.SMS_ENABLED && e.SMS_INDIA_HUB_API_KEY && e.SMS_INDIA_HUB_SENDER_ID;
+    const waOtpReady = e.OTP_CHANNELS.includes('whatsapp') && e.WHATSAPP_ENABLED && e.WHATSAPP_OTP_TEMPLATE
+      && (e.WHATSAPP_PROVIDER === 'meta' ? e.WHATSAPP_ACCESS_TOKEN && e.WHATSAPP_PHONE_NUMBER_ID : e.TEXTORA_AUTHKEY && e.TEXTORA_BUSINESS_ACCOUNT_ID && e.TEXTORA_FROM);
+    if (!e.OTP_BYPASS_ENABLED && !((e.OTP_CHANNELS.includes('sms') && smsReady) || waOtpReady))
+      problems.push('Live OTP delivery needs SMS (SMS_ENABLED, SMS_INDIA_HUB_API_KEY, SMS_INDIA_HUB_SENDER_ID) or WhatsApp (OTP_CHANNELS with whatsapp, WHATSAPP_ENABLED, WHATSAPP_OTP_TEMPLATE and provider keys)');
     const pub = path.resolve(e.PUBLIC_UPLOAD_DIR);
     const priv = path.resolve(e.PRIVATE_UPLOAD_DIR);
     if (priv.startsWith(pub + path.sep) || priv === pub)
