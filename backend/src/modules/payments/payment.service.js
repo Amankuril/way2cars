@@ -33,6 +33,7 @@ export async function openPaymentOrder({ booking, purpose, amountPaise, extensio
   }
   return {
     paymentId: payment._id,
+    bookingId: booking._id,
     keyId: rzp.publicKeyId(),
     orderId: payment.razorpayOrderId,
     amountPaise: payment.amountPaise,

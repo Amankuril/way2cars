@@ -1,12 +1,12 @@
 import { useState } from 'react';
 import { View, Image, Linking } from 'react-native';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Phone, Navigation, CarFront, KeyRound, CalendarPlus, LifeBuoy, FileText, Star, XCircle, Clock, MessageSquare, Receipt, MapPin, Truck, UserRound, Timer, Flag, Gauge, CalendarClock, RotateCcw, Wallet, Hourglass } from 'lucide-react-native';
+import { Phone, Navigation, CarFront, KeyRound, CalendarPlus, LifeBuoy, FileText, Star, XCircle, Clock, MessageSquare, Receipt, MapPin, Truck, UserRound, Timer, Flag, Gauge, CalendarClock, RotateCcw, Wallet, Hourglass, ShieldCheck, Building2, ScrollText } from 'lucide-react-native';
 import { DateTimePickerAndroid } from '@react-native-community/datetimepicker';
 import { Screen, Header, HeroHeader, T, Button, KeyValue, Pill, Notice, ErrorState, Sheet, ListItem, useToast, Field, Card, SectionHeader, FadeInView, TripRoute, Timeline, ActionTile, SpecChip, IconTile, DashedDivider, PressableScale, Skeleton, SkeletonCard, cn } from '@shared/native';
 import { colors } from '@shared/theme/tokens';
-import { money, dateTime, dayLabel, timeLabel, duration } from '@shared/lib/format';
-import { BOOKING_STATUS, REFUND_STATUS } from '@shared/lib/labels';
+import { money, dateTime, dateLong, dayLabel, timeLabel, duration } from '@shared/lib/format';
+import { BOOKING_STATUS, REFUND_STATUS, DEPOSIT_TYPE, COLLATERAL_STATUS, DEPOSIT_REFUND_STATUS } from '@shared/lib/labels';
 import { api } from '../../api';
 import { usePublicConfig } from '../../hooks/queries';
 import { useCountdown, mmss } from '../../hooks/useCountdown';
@@ -272,7 +272,8 @@ export function TripDetailScreen({ route, navigation }) {
         <FadeInView index={next()} className="mt-7">
           <SectionHeader title="Pickup & host" />
           <Card className="mx-4"><View className="overflow-hidden rounded-2xl">
-            <ListItem icon={b.pickup?.type === 'doorstep' ? Truck : MapPin} title={b.pickup?.type === 'doorstep' ? 'Doorstep delivery' : 'Pickup location'} subtitle={b.pickup?.address || 'Shared after confirmation'} last={!b.host} />
+            <ListItem icon={b.pickup?.type === 'doorstep' ? Truck : b.pickup?.type === 'hub' ? Building2 : MapPin} title={b.pickup?.type === 'doorstep' ? 'Doorstep delivery' : b.pickup?.type === 'hub' ? `Pickup at ${b.pickup.name}` : 'Pickup location'} subtitle={b.pickup?.address || 'Shared after confirmation'} last={!b.host && !b.dropoff} />
+            {b.dropoff ? <ListItem icon={Building2} title={`Return at ${b.dropoff.name}`} subtitle={b.dropoff.address} last={!b.host} /> : null}
             {b.host ? <ListItem icon={UserRound} iconTone="neutral" title={b.host.name} subtitle="Your host" last /> : null}
           </View></Card>
         </FadeInView>
@@ -286,11 +287,21 @@ export function TripDetailScreen({ route, navigation }) {
               <Stat label="Distance driven" value={`${st.kmDriven} km`} className="mr-2" />
               <Stat label="Deposit refund" value={money(st.depositRefundPaise)} tone="success" />
             </View>
-            {st.extraKmPaise || st.fuelPaise || st.lateFeePaise || st.damagePaise ? <DashedDivider className="my-3" /> : null}
+            {st.depositRefundStatus && st.depositRefundStatus !== 'none' ? (
+              <View className="mt-3 flex-row flex-wrap items-center">
+                <Pill label={DEPOSIT_REFUND_STATUS[st.depositRefundStatus].label} tone={DEPOSIT_REFUND_STATUS[st.depositRefundStatus].tone} />
+                <T variant="caption" tone="muted" className="ml-2 flex-1">
+                  {st.depositRefundStatus === 'pending_review' ? 'Our team is inspecting the car. You’ll be told the refund amount and date.' : st.depositRefundStatus === 'scheduled' ? `Refund on ${dateLong(st.depositRefundAt)}` : st.depositRefundAt ? `Sent ${dateLong(st.depositRefundAt)}` : ''}
+                </T>
+              </View>
+            ) : null}
+            {st.extraKmPaise || st.fuelPaise || st.lateFeePaise || st.damagePaise || st.extraCharges?.length ? <DashedDivider className="my-3" /> : null}
             {st.extraKmPaise ? <KeyValue label={`Extra ${st.extraKm} km`} value={money(st.extraKmPaise)} /> : null}
             {st.fuelPaise ? <KeyValue label={`Fuel shortfall (${st.fuelShortEighths}/8 tank)`} value={money(st.fuelPaise)} /> : null}
             {st.lateFeePaise ? <KeyValue label={`Late return (${st.lateHours} h)`} value={money(st.lateFeePaise)} /> : null}
             {st.damagePaise ? <KeyValue label="Damage charges" hint={st.damageNote} value={money(st.damagePaise)} /> : null}
+            {(st.extraCharges || []).map((c, i) => <KeyValue key={i} label={c.label} hint={c.note} value={money(c.amountPaise)} />)}
+            {st.depositReview?.note ? <T variant="caption" tone="subtle" className="mt-1">Inspection note: {st.depositReview.note}</T> : null}
             {st.outstandingPaise ? (
               <>
                 <DashedDivider className="my-3" />
@@ -312,9 +323,50 @@ export function TripDetailScreen({ route, navigation }) {
         </FadeInView>
       ) : null}
 
+      {b.deposit?.type && b.deposit.type !== 'cash' ? (
+        <FadeInView index={next()} className="mt-7">
+          <SectionHeader title="Security deposit" />
+          <Card className="mx-4 p-4">
+            <View className="flex-row items-center">
+              <IconTile icon={ShieldCheck} tone="brand" size={38} />
+              <View className="ml-3 flex-1">
+                <T variant="label">{DEPOSIT_TYPE[b.deposit.type]}: {[b.deposit.collateral?.make, b.deposit.collateral?.model, b.deposit.collateral?.year].filter(Boolean).join(' ')}</T>
+                <T variant="caption" tone="subtle">{b.deposit.collateral?.registrationNumber || (b.deposit.collateral?.serialNumber ? `S/N ${b.deposit.collateral.serialNumber}` : '')}</T>
+              </View>
+              {COLLATERAL_STATUS[b.deposit.status] ? <Pill label={COLLATERAL_STATUS[b.deposit.status].label} tone={COLLATERAL_STATUS[b.deposit.status].tone} /> : null}
+            </View>
+            <T variant="caption" tone="muted" className="mt-3">
+              {b.deposit.status === 'awaiting' ? `Bring your ${b.deposit.type} to pickup. You can start the trip once our team marks it received.` : b.deposit.status === 'received' ? `Received ${b.deposit.receivedAt ? dateTime(b.deposit.receivedAt) : ''}. It’s returned when you hand back the car.` : b.deposit.status === 'returned' ? `Returned to you ${b.deposit.returnedAt ? dateTime(b.deposit.returnedAt) : ''}.` : ''}
+            </T>
+          </Card>
+        </FadeInView>
+      ) : null}
+
+      {b.terms && ['confirmed', 'ongoing', 'return_pending', 'pending_vendor_approval'].includes(b.status) ? (
+        <FadeInView index={next()} className="mt-7">
+          <SectionHeader title="Trip rules & charges" subtitle="Also sent to you on WhatsApp / SMS" />
+          <Card className="mx-4 p-4">
+            <KeyValue label="Speed limit" value={`${b.terms.speedLimitKmph} km/h`} />
+            <KeyValue label="Kilometres" value={b.terms.kmAllowance} hint={b.terms.extraKmCharge || undefined} />
+            <KeyValue label="Late return" value={b.terms.lateReturn} />
+            <KeyValue label="Fuel" value={b.terms.fuel} />
+            <KeyValue label="Security deposit" value={b.terms.deposit} />
+            {b.terms.rules?.length ? <DashedDivider className="my-2.5" /> : null}
+            {b.terms.rules?.map((r, i) => <T key={i} variant="bodySm" tone="muted" className="py-0.5">• {r}</T>)}
+            <Button title="Full terms & conditions" variant="ghost" size="sm" icon={ScrollText} className="mt-2 self-start" onPress={() => navigation.navigate('CmsPage', { slug: 'terms-and-conditions' })} />
+          </Card>
+        </FadeInView>
+      ) : null}
+
       <FadeInView index={next()} className="mt-7">
         <SectionHeader title="Payment" />
-        <Card className="mx-4 p-4"><PriceBreakdown p={b.pricing} showPayable={b.status === 'pending_payment'} /></Card>
+        {b.pricing.advancePaise && b.payment?.paidPaise ? (
+          <Card className="mx-4 mb-3 p-4">
+            <KeyValue label="Advance paid" value={money(b.pricing.advancePaise)} tone="success" strong />
+            {b.balance ? <KeyValue label={b.balance.status === 'paid' ? 'Balance paid' : 'Balance'} hint={b.balance.status === 'due' ? `Due by ${dateTime(b.balance.dueAt)}` : b.balance.paidAt ? dateTime(b.balance.paidAt) : undefined} value={money(b.balance.duePaise)} tone={b.balance.status === 'due' ? 'danger' : undefined} /> : null}
+          </Card>
+        ) : null}
+        <Card className="mx-4 p-4"><PriceBreakdown p={{ ...b.pricing, depositOptions: { selected: b.deposit?.type || 'cash' } }} showPayable={b.status === 'pending_payment'} /></Card>
         {b.refunds?.length ? (
           <Card className="mx-4 mt-3 p-4">
             <View className="mb-1 flex-row items-center">

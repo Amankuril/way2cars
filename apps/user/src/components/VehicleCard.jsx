@@ -2,7 +2,7 @@ import { View, Image } from 'react-native';
 import { Users, Fuel, Cog, Zap, Truck, Star, ArrowRight, MapPin } from 'lucide-react-native';
 import { T, cn, PressableScale, SpecChip, GradientFill } from '@shared/native';
 import { colors, shadows, gradients } from '@shared/theme/tokens';
-import { money, km } from '@shared/lib/format';
+import { money, km, dateTime } from '@shared/lib/format';
 import { FUEL, TRANSMISSION } from '@shared/lib/labels';
 
 /** Glassy badge over the photo. */
@@ -17,17 +17,26 @@ const Badge = ({ icon: Icon, label, strong }) => (
 export function VehicleCard({ vehicle: v, onPress, compact }) {
   const price = v.estimate?.rentalPaise;
   const rated = v.rating?.count > 0;
+  const booked = v.availability?.available === false;
+  const nextFree = v.availability?.nextAvailableAt;
   return (
     <PressableScale
       onPress={onPress}
       accessibilityRole="button"
-      accessibilityLabel={`${v.title}, ${price ? money(price) : `${money(v.pricing.dailyPaise)} per day`}`}
+      accessibilityLabel={`${v.title}, ${booked ? `booked${nextFree ? `, available from ${dateTime(nextFree)}` : ''}` : price ? money(price) : `${money(v.pricing.dailyPaise)} per day`}`}
       className={cn('rounded-2xl bg-surface', compact ? 'w-64' : 'mx-4 mb-4')}
       style={{ boxShadow: shadows.card }}
     >
       <View className="p-2 pb-0">
         <View style={{ aspectRatio: compact ? 16 / 10 : 16 / 9 }} className="overflow-hidden rounded-xl bg-ink-100">
-          {v.photos?.[0] ? <Image source={{ uri: v.photos[0] }} className="h-full w-full" resizeMode="cover" /> : null}
+          {v.photos?.[0] ? <Image source={{ uri: v.photos[0] }} className="h-full w-full" resizeMode="cover" style={booked ? { opacity: 0.55 } : undefined} /> : null}
+          {booked ? (
+            <View className="absolute inset-0 items-center justify-center" pointerEvents="none">
+              <View className="rounded-lg bg-danger-600 px-4 py-1.5" style={{ transform: [{ rotate: '-8deg' }] }}>
+                <T variant="label" tone="inverse" className="font-extrabold tracking-[2px]">BOOKED</T>
+              </View>
+            </View>
+          ) : null}
           <View className="absolute left-2 top-2 flex-row">
             {v.instantBooking ? <Badge icon={Zap} label="Instant" strong /> : null}
             {v.delivery?.enabled ? <Badge icon={Truck} label="Delivery" /> : null}
@@ -50,6 +59,11 @@ export function VehicleCard({ vehicle: v, onPress, compact }) {
           <SpecChip icon={Cog} label={TRANSMISSION[v.transmission]} />
           {compact ? null : <SpecChip icon={v.fuelType === 'electric' ? Zap : Fuel} label={FUEL[v.fuelType]} />}
         </View>
+        {booked ? (
+          <View className="mt-2 rounded-lg bg-warning-50 px-2.5 py-1.5">
+            <T variant="caption" className="font-bold text-warning-700" numberOfLines={2}>{nextFree ? `Next available from ${dateTime(nextFree)}` : 'Booked for your dates'}</T>
+          </View>
+        ) : null}
         <View className="mt-2 flex-row items-end justify-between">
           {price ? (
             <View className="mr-2 flex-1">

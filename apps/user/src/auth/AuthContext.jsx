@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
+import { track } from '../services/analytics';
 import { api, setSessionExpiredHandler } from '../api';
 import { registerForPush, unregisterPush } from '@shared/native/app/push';
 
@@ -40,6 +41,7 @@ export function AuthProvider({ children }) {
       setAccount(data.account);
       setStatus('signedIn');
       registerForPush(api, 'user');
+      track('login');
     },
     async refreshAccount() {
       const me = await api.get('/api/v1/user/me');

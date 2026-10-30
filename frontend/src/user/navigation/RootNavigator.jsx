@@ -1,4 +1,6 @@
 import { RouterProvider } from 'react-router/dom';
+import { matchPath } from 'react-router';
+import { track } from '../services/analytics';
 import { Compass, CalendarClock, LifeBuoy, UserRound } from 'lucide-react';
 import { createMobileRouter } from '@/mobile/nav';
 import { AnimatedTabBar } from '@/mobile/ui';
@@ -87,6 +89,16 @@ const screens = Object.fromEntries(Object.entries(SCREENS).map(([name, s]) => {
 Object.assign(screens, DEV_SCREENS);
 
 export const router = createMobileRouter({ basename: '/user', routes: { ...ROUTES, ...DEV_ROUTES }, screens, tabs: TABS, initial: 'Main', Guard });
+
+// Screen views for Admin → App analytics (screen name from the route table, like the native navigator).
+let lastScreen = null;
+const trackScreen = ({ location }) => {
+  const name = Object.entries(ROUTES).find(([, path]) => matchPath({ path, end: true }, location.pathname))?.[0] || location.pathname;
+  if (name !== lastScreen) track('screen_view', { screen: name });
+  lastScreen = name;
+};
+trackScreen(router.state);
+router.subscribe(trackScreen);
 
 export function RootNavigator() {
   return <RouterProvider router={router} />;

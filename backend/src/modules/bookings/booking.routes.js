@@ -166,9 +166,9 @@ export const userPaymentsRouter = Router();
 userPaymentsRouter.get('/', validate({ query: z.object(paginationQuery) }), async (req, res) => {
   const { items, meta } = await paginate(Payment, { userId: req.auth.id, status: { $in: ['paid', 'amount_mismatch'] } }, { ...req.valid.query, sort: { paidAt: -1 } });
   const refunds = await Refund.find({ paymentId: { $in: items.map((p) => p._id) } }).lean();
-  const bookings = await Booking.find({ _id: { $in: items.map((p) => p.bookingId) } }).select('ref vehicleSnapshot.title').lean();
+  const bookings = await Booking.find({ _id: { $in: items.map((p) => p.bookingId) } }).select('ref vehicleSnapshot.title pricing.advancePaise').lean();
   const bMap = new Map(bookings.map((b) => [String(b._id), b]));
-  ok(res, items.map((p) => ({ ...serializePayment(p), booking: { ref: bMap.get(String(p.bookingId))?.ref, vehicle: bMap.get(String(p.bookingId))?.vehicleSnapshot?.title }, refunds: refunds.filter((r) => String(r.paymentId) === String(p._id)).map(serializeRefund) })), meta);
+  ok(res, items.map((p) => ({ ...serializePayment(p), isAdvance: p.purpose === 'booking' && Boolean(bMap.get(String(p.bookingId))?.pricing?.advancePaise), booking: { ref: bMap.get(String(p.bookingId))?.ref, vehicle: bMap.get(String(p.bookingId))?.vehicleSnapshot?.title }, refunds: refunds.filter((r) => String(r.paymentId) === String(p._id)).map(serializeRefund) })), meta);
 });
 
 // ================================================================= vendor

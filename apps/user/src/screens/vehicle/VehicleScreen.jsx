@@ -1,12 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
-import { View, Pressable } from 'react-native';
+import { View, Pressable, Linking } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useQuery } from '@tanstack/react-query';
 import MapView, { Circle, PROVIDER_GOOGLE } from 'react-native-maps';
 import { Users, Cog, Fuel, Briefcase, CalendarDays, ShieldCheck, Gauge, Zap, Truck, Check, Star, BadgeCheck, MapPin, ArrowLeft, Route, MessageSquareQuote } from 'lucide-react-native';
 import { Screen, Header, T, Button, KeyValue, ErrorState, Notice, Avatar, IconButton, StickyScrollView, Parallax, Card, SectionHeader, IconTile, DashedDivider, TripRoute, FadeInView, AnimatedNumber, Skeleton, PressableScale, cn } from '@shared/native';
 import { colors, shadows } from '@shared/theme/tokens';
-import { money, dayLabel, duration, dateLong, percent } from '@shared/lib/format';
+import { money, dayLabel, duration, dateLong, dateTime, percent } from '@shared/lib/format';
+import { track } from '../../services/analytics';
 import { FUEL, TRANSMISSION, FEATURES, INSURANCE } from '@shared/lib/labels';
 import { api } from '../../api';
 import { ENV } from '../../env';
@@ -64,6 +65,7 @@ export function VehicleScreen({ route, navigation }) {
   // Without trip times the car is shown without availability/estimate; those come once times are picked.
   const startAt = plan.startAt?.toISOString();
   const endAt = plan.endAt?.toISOString();
+  useEffect(() => { track('vehicle_view', { vehicleId: id }); }, [id]);
   const q = useQuery({
     queryKey: ['vehicle', id, startAt || null, endAt || null],
     queryFn: () => api.get(`/api/v1/public/vehicles/${id}`, { startAt, endAt }),
@@ -153,7 +155,21 @@ export function VehicleScreen({ route, navigation }) {
             </Card>
           </FadeInView>
           {fresh && v.availability && !available ? (
-            <Notice tone="warning" title="Booked for these times" className="mx-4 mt-3">Try different times — or go back for similar cars.</Notice>
+            <Notice tone="warning" title="BOOKED for these times" className="mx-4 mt-3">
+              {v.availability.nextAvailableAt ? `Next available from ${dateTime(v.availability.nextAvailableAt)}.` : 'Try different times — or go back for similar cars.'}
+              {config.data?.support?.phone ? ` Need help? Call ${config.data.support.phone}.` : ''}
+            </Notice>
+          ) : null}
+          {fresh && v.availability && !available && (v.availability.nextAvailableAt || config.data?.support?.phone) ? (
+            <View className="mx-4 mt-2 flex-row flex-wrap">
+              {v.availability.nextAvailableAt ? (
+                <Button size="sm" className="mb-2 mr-2" title={`Book from ${dateTime(v.availability.nextAvailableAt)}`} onPress={() => {
+                  const from = new Date(v.availability.nextAvailableAt);
+                  plan.setTimes(from, new Date(from.getTime() + (plan.endAt - plan.startAt)));
+                }} />
+              ) : null}
+              {config.data?.support?.phone ? <Button size="sm" variant="secondary" className="mb-2" title="Call support" onPress={() => Linking.openURL(`tel:${config.data.support.phone}`)} /> : null}
+            </View>
           ) : null}
 
           <Block title="Specifications">
@@ -192,7 +208,8 @@ export function VehicleScreen({ route, navigation }) {
               {est ? <DashedDivider className="my-2.5" /> : null}
               <KeyValue label="Free kilometres" value={est ? `${est.includedKm} km` : `${v.pricing.includedKmPerDay} km / day`} />
               <KeyValue label="Extra kilometres" value={`${money(v.pricing.extraKmChargePaise)} / km`} />
-              <KeyValue label="Refundable security deposit" value={money(v.pricing.securityDepositPaise)} />
+              {v.unlimitedKm ? <KeyValue label="Unlimited km option" value={`+${money(v.unlimitedKm.dailyPaise)} / day`} /> : null}
+              <KeyValue label="Refundable security deposit" value={money(Math.max(v.pricing.securityDepositPaise, config.data?.deposit?.minCashPaise || 0))} hint={[config.data?.deposit?.allowBike && `or a ${config.data.deposit.bikeMinYear}+ bike`, config.data?.deposit?.allowLaptop && 'or a latest-model laptop'].filter(Boolean).join(' ') || undefined} />
               <KeyValue label="Hourly / daily rate" value={`${money(v.pricing.hourlyPaise)} · ${money(v.pricing.dailyPaise)}`} />
               {v.pricing.weekendDailyPaise ? <KeyValue label="Weekend daily rate" value={money(v.pricing.weekendDailyPaise)} /> : null}
               <View className="mt-3 rounded-xl bg-ink-50 p-3">

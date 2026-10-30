@@ -80,6 +80,13 @@ export function TripCard({ trip: t, onPress }) {
           <T variant="body" className="font-extrabold" style={{ fontVariant: ['tabular-nums'] }}>{money(t.pricing.totalPaise)}</T>
         </View>
       </View>
+      {t.pricing.advancePaise && t.payment?.paidPaise ? (
+        <View className="mt-2.5 flex-row flex-wrap items-center rounded-xl bg-brand-50 px-3 py-2">
+          <T variant="caption" className="font-bold text-brand-700">Advance paid {money(t.pricing.advancePaise)}</T>
+          {t.balance?.status === 'due' && ['pending_vendor_approval', 'confirmed'].includes(t.status) ? <T variant="caption" className="ml-2 font-semibold text-warning-700">· Balance {money(t.balance.duePaise)} by {dayLabel(t.balance.dueAt)}</T> : null}
+          {t.balance?.status === 'paid' ? <T variant="caption" className="ml-2 font-semibold text-success-700">· Balance paid</T> : null}
+        </View>
+      ) : null}
     </PressableScale>
   );
 }

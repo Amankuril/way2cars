@@ -9,6 +9,7 @@ import { api } from '../../api';
 import { useTripPlan } from '../../hooks/useTripPlan';
 import { useBrands, usePublicConfig } from '../../hooks/queries';
 import { VehicleCard } from '../../components/VehicleCard';
+import { track } from '../../services/analytics';
 import { TripTimesSheet, TripTimesPrompt, tripRoute, tripSummary } from '../../components/TripTimesSheet';
 
 const SORTS = [
@@ -64,9 +65,13 @@ export function SearchResultsScreen({ navigation, route }) {
     delivery: filters.delivery ? 'true' : undefined,
     minHostRating: filters.minHostRating,
     seatsMin: filters.seatsMin,
+    includeBooked: plan.startAt ? 'true' : undefined, // booked cars come last with a BOOKED badge and their next free time
     limit: 12,
   }), [plan.city, plan.startAt, plan.endAt, sort, near, filters]);
 
+  useEffect(() => {
+    if (query.cityId && query.startAt) track('search', { cityId: query.cityId });
+  }, [query.cityId, query.startAt, query.endAt]);
   const results = useInfiniteQuery({
     queryKey: ['search', query],
     queryFn: ({ pageParam }) => api.list('/api/v1/public/vehicles', { ...query, page: pageParam }),

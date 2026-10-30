@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { View, Image, Pressable, Switch } from '@/mobile/rn';
+import { View, Image, Pressable, Switch, Linking } from '@/mobile/rn';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { MapPin, Truck, TicketPercent, Wallet, ShieldCheck, Lock, Users, Cog, Fuel, Zap, Clock, Check, ReceiptText, X, IndianRupee, CalendarCheck } from 'lucide-react';
-import { Screen, Header, T, Button, Field, Notice, ErrorState, useToast, cn, Card, SectionHeader, SpecChip, TripRoute, IconTile, AnimatedNumber, FadeInView, PressableScale, Skeleton, SkeletonCard } from '@/mobile/ui';
+import { MapPin, Truck, TicketPercent, Wallet, ShieldCheck, Lock, Users, Cog, Fuel, Zap, Clock, Check, ReceiptText, X, IndianRupee, CalendarCheck, Gauge, Infinity as InfinityIcon, Bike, Laptop, Banknote, Phone, Building2 } from 'lucide-react';
+import { Screen, Header, T, Button, Field, Notice, ErrorState, useToast, cn, Card, SectionHeader, SpecChip, TripRoute, IconTile, AnimatedNumber, FadeInView, PressableScale, Skeleton, SkeletonCard, Chip } from '@/mobile/ui';
 import { colors } from '@shared/theme/tokens';
 import { FUEL, TRANSMISSION } from '@shared/lib/labels';
 import { money, duration, dateTime, percent } from '@shared/lib/format';
@@ -14,6 +14,7 @@ import { TripTimesSheet, TripTimesPrompt, tripRoute } from '../../components/Tri
 import { AddressPicker } from '../../components/AddressPicker';
 import { PriceBreakdown } from '../../components/PriceBreakdown';
 import { payOrder } from '../../services/payments';
+import { track } from '../../services/analytics';
 
 const newKey = () => `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 
@@ -52,6 +53,13 @@ export function CheckoutScreen({ route, navigation }) {
   const [couponError, setCouponError] = useState(null);
   const [useWallet, setUseWallet] = useState(false);
   const [paymentPlan, setPaymentPlan] = useState('full');
+  const [unlimitedKm, setUnlimitedKm] = useState(false);
+  const [depositOption, setDepositOption] = useState('cash');
+  const [collateral, setCollateral] = useState({ make: '', model: '', year: '', registrationNumber: '', serialNumber: '' });
+  const [collateralError, setCollateralError] = useState(null);
+  const [pickupHub, setPickupHub] = useState(null);
+  const [dropoffHub, setDropoffHub] = useState(null);
+  useEffect(() => { track('checkout_start', { vehicleId }); }, [vehicleId]);
   const [paying, setPaying] = useState(false);
   const [timesOpen, setTimesOpen] = useState(false);
   const config = usePublicConfig();
@@ -65,11 +73,13 @@ export function CheckoutScreen({ route, navigation }) {
   }, [plan.hasTimes]);
 
   const vehicle = useQuery({ queryKey: ['vehicle-lite', vehicleId], queryFn: () => api.get(`/api/v1/public/vehicles/${vehicleId}`) });
+  const hubs = useQuery({ queryKey: ['locations', vehicle.data?.city?.id], queryFn: () => api.get('/api/v1/public/locations', { cityId: vehicle.data.city.id }), enabled: Boolean(vehicle.data?.city?.id), staleTime: 10 * 60_000 });
   const body = useMemo(() => ({
     vehicleId, startAt: plan.startAt?.toISOString(), endAt: plan.endAt?.toISOString(),
     delivery: delivery ? { address: delivery.address, lat: delivery.lat, lng: delivery.lng, placeId: delivery.placeId } : undefined,
     couponCode: coupon || undefined, useWallet: useWallet && paymentPlan === 'full', paymentPlan,
-  }), [vehicleId, plan.startAt, plan.endAt, delivery, coupon, useWallet, paymentPlan]);
+    unlimitedKm, depositOption, pickupLocationId: delivery ? undefined : pickupHub || undefined, dropoffLocationId: dropoffHub || undefined,
+  }), [vehicleId, plan.startAt, plan.endAt, delivery, coupon, useWallet, paymentPlan, unlimitedKm, depositOption, pickupHub, dropoffHub]);
 
   const quote = useQuery({
     queryKey: ['quote', body],
@@ -89,18 +99,43 @@ export function CheckoutScreen({ route, navigation }) {
     } else if (e.code?.startsWith('DELIVERY') && delivery) {
       toast(e.message, 'danger');
       setDelivery(null);
+    } else if (e.code === 'UNLIMITED_KM_UNAVAILABLE') {
+      setUnlimitedKm(false);
+    } else if (e.code?.startsWith('HUB_')) {
+      toast(e.message, 'danger');
+      setPickupHub(null);
+      setDropoffHub(null);
     }
   }, [quote.error]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const kycOk = account?.kyc?.status === 'approved';
   const book = useMutation({
-    mutationFn: () => api.post('/api/v1/user/bookings', body, { headers: { 'Idempotency-Key': idempotencyKey.current } }),
+    mutationFn: () => api.post('/api/v1/user/bookings', { ...body, ...(depositOption !== 'cash' ? { collateral: collateralBody() } : {}) }, { headers: { 'Idempotency-Key': idempotencyKey.current } }),
   });
 
+  const collateralBody = () => ({
+    make: collateral.make.trim(), model: collateral.model.trim(), year: Number(collateral.year),
+    ...(depositOption === 'bike' ? { registrationNumber: collateral.registrationNumber.trim() } : { serialNumber: collateral.serialNumber.trim() }),
+  });
+  const checkCollateral = () => {
+    if (depositOption === 'cash') return true;
+    const c = collateralBody();
+    const minYear = depositOption === 'bike' ? config.data?.deposit?.bikeMinYear : config.data?.deposit?.laptopMinYear;
+    let err = null;
+    if (!c.make || !c.model || !c.year) err = `Enter your ${depositOption}'s make, model and year.`;
+    else if (minYear && c.year < minYear) err = `The ${depositOption} must be a ${minYear} or newer model.`;
+    else if (depositOption === 'bike' && !c.registrationNumber) err = "Enter the bike's registration number.";
+    else if (depositOption === 'laptop' && !c.serialNumber) err = "Enter the laptop's serial number.";
+    setCollateralError(err);
+    return !err;
+  };
+
   const pay = async () => {
+    if (!checkCollateral()) return toast('Add your deposit details first.', 'danger');
     setPaying(true);
     try {
       const { booking, payment } = await book.mutateAsync();
+      track('booking_created', { bookingId: booking.id, vehicleId, amountPaise: booking.pricing?.payablePaise });
       qc.invalidateQueries({ queryKey: ['trips'] });
       const order = payment || (await api.post(`/api/v1/user/bookings/${booking.id}/payment-order`));
       const r = await payOrder(order);
@@ -218,7 +253,18 @@ export function CheckoutScreen({ route, navigation }) {
           {account?.kyc?.status === 'pending' ? 'Your documents are under review. You can pay as soon as they’re approved.' : 'Upload your driving licence, ID and a selfie. It takes about 2 minutes.'}
         </Notice>
       ) : null}
-      {unavailable ? <Notice tone="danger" title="No longer available" className="mx-4 mt-4">{quote.error.message}</Notice> : null}
+      {unavailable ? <Notice tone="danger" title="BOOKED for these times" className="mx-4 mt-4">{quote.error.message}</Notice> : null}
+      {quote.error?.supportPhone ? (
+        <View className="mx-4 mt-2 flex-row flex-wrap">
+          {quote.error.details?.nextAvailableAt ? (
+            <Button size="sm" className="mb-2 mr-2" title={`Book from ${dateTime(quote.error.details.nextAvailableAt)}`} onPress={() => {
+              const from = new Date(quote.error.details.nextAvailableAt);
+              plan.setTimes(from, new Date(from.getTime() + (plan.endAt - plan.startAt)));
+            }} />
+          ) : null}
+          <Button size="sm" variant="secondary" icon={Phone} className="mb-2" title={`Call ${quote.error.supportPhone}`} onPress={() => Linking.openURL(`tel:${quote.error.supportPhone}`)} />
+        </View>
+      ) : null}
 
       {/* Pickup method */}
       <View className="mt-7">
@@ -246,6 +292,65 @@ export function CheckoutScreen({ route, navigation }) {
           </Pressable>
         ) : null}
       </View>
+
+      {/* WAY2CARS pickup / drop-off points (fleet cars) */}
+      {q?.ownership === 'company' && hubs.data?.length ? (
+        <View className="mt-7">
+          <SectionHeader title="Pickup & drop-off point" />
+          {!delivery ? (
+            <>
+              <T variant="caption" tone="muted" className="mx-4 mb-2">Collect the car from</T>
+              <View className="flex-row flex-wrap px-4">
+                <Chip label="Car’s location" selected={!pickupHub} onPress={() => setPickupHub(null)} icon={MapPin} className="mb-2" />
+                {hubs.data.filter((h) => h.kinds.includes('pickup')).map((h) => <Chip key={h.id} label={h.name} selected={pickupHub === h.id} onPress={() => setPickupHub(h.id)} icon={Building2} className="mb-2" />)}
+              </View>
+            </>
+          ) : null}
+          <T variant="caption" tone="muted" className="mx-4 mb-2 mt-2">Return the car at</T>
+          <View className="flex-row flex-wrap px-4">
+            <Chip label="Same place" selected={!dropoffHub} onPress={() => setDropoffHub(null)} icon={MapPin} className="mb-2" />
+            {hubs.data.filter((h) => h.kinds.includes('dropoff')).map((h) => <Chip key={h.id} label={h.name} selected={dropoffHub === h.id} onPress={() => setDropoffHub(h.id)} icon={Building2} className="mb-2" />)}
+          </View>
+          {[pickupHub, dropoffHub].filter(Boolean).map((id) => hubs.data.find((h) => h.id === id)).filter(Boolean).map((h) => (
+            <T key={h.id} variant="caption" tone="subtle" className="mx-4 mt-1">{h.name}: {h.address}{h.instructions ? ` · ${h.instructions}` : ''}</T>
+          ))}
+        </View>
+      ) : null}
+
+      {/* Kilometres */}
+      {q?.unlimitedKmOption ? (
+        <View className="mt-7">
+          <SectionHeader title="Kilometres" />
+          <View className="flex-row px-4" accessibilityRole="radiogroup">
+            <Option selected={!unlimitedKm} icon={Gauge} title={`${unlimitedKm ? Math.round((v.pricing.includedKmPerDay * q.hours) / 24) : q.includedKm} km included`} subtitle={`Then ${money(v.pricing.extraKmChargePaise)}/km`} onPress={() => setUnlimitedKm(false)} testID="km-limited" />
+            <View className="w-3" />
+            <Option selected={unlimitedKm} icon={InfinityIcon} title="Unlimited km" subtitle={`+${money(q.unlimitedKmOption.amountPaise)} for this trip (${money(q.unlimitedKmOption.dailyPaise)}/day)`} onPress={() => setUnlimitedKm(true)} testID="km-unlimited" />
+          </View>
+        </View>
+      ) : null}
+
+      {/* Security deposit */}
+      {q?.depositOptions ? (
+        <View className="mt-7">
+          <SectionHeader title="Security deposit" />
+          <View className="flex-row px-4" accessibilityRole="radiogroup">
+            <Option selected={depositOption === 'cash'} icon={Banknote} title={money(q.depositOptions.cashPaise)} subtitle="Paid with your booking, refunded after the car is inspected" onPress={() => setDepositOption('cash')} testID="deposit-cash" />
+            {q.depositOptions.bike ? <><View className="w-3" /><Option selected={depositOption === 'bike'} icon={Bike} title="My bike" subtitle={`${q.depositOptions.bike.minYear} or newer, good condition`} onPress={() => setDepositOption('bike')} testID="deposit-bike" /></> : null}
+            {q.depositOptions.laptop ? <><View className="w-3" /><Option selected={depositOption === 'laptop'} icon={Laptop} title="My laptop" subtitle={`${q.depositOptions.laptop.minYear} or newer model`} onPress={() => setDepositOption('laptop')} testID="deposit-laptop" /></> : null}
+          </View>
+          {depositOption !== 'cash' ? (
+            <Card className="mx-4 mt-3 p-4">
+              <T variant="caption" tone="muted" className="mb-3">Bring your {depositOption} to pickup — our team checks it and you can start the trip once it’s received. It’s returned as soon as you hand back the car.</T>
+              <Field label={depositOption === 'bike' ? 'Bike make' : 'Laptop brand'} placeholder={depositOption === 'bike' ? 'e.g. Honda' : 'e.g. Apple'} value={collateral.make} onChangeText={(t) => setCollateral((c) => ({ ...c, make: t }))} />
+              <Field label="Model" placeholder={depositOption === 'bike' ? 'e.g. Activa 6G' : 'e.g. MacBook Air M3'} value={collateral.model} onChangeText={(t) => setCollateral((c) => ({ ...c, model: t }))} />
+              <Field label="Model year" placeholder="e.g. 2023" keyboardType="number-pad" maxLength={4} value={collateral.year} onChangeText={(t) => setCollateral((c) => ({ ...c, year: t.replace(/\D/g, '') }))} />
+              {depositOption === 'bike'
+                ? <Field label="Registration number" placeholder="e.g. MP09AB1234" autoCapitalize="characters" value={collateral.registrationNumber} onChangeText={(t) => setCollateral((c) => ({ ...c, registrationNumber: t.toUpperCase() }))} error={collateralError} />
+                : <Field label="Serial number" placeholder="On the bottom of the laptop" autoCapitalize="characters" value={collateral.serialNumber} onChangeText={(t) => setCollateral((c) => ({ ...c, serialNumber: t }))} error={collateralError} />}
+            </Card>
+          ) : null}
+        </View>
+      ) : null}
 
       {/* Pay in full or an advance to block the dates */}
       {adv?.available ? (

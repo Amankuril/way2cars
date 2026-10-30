@@ -14,11 +14,11 @@ function PaymentCard({ p, index, onPress }) {
   const [Icon, tone] = PURPOSE_ICON[p.purpose] || [Receipt, 'brand'];
   return (
     <FadeInView index={index} className="mx-4 mb-3">
-      <PressableScale onPress={onPress} accessibilityRole="button" accessibilityLabel={`${PURPOSE[p.purpose]} ${p.booking?.ref || ''}, ${money(p.amountPaise, { exact: true })}`} className="rounded-2xl bg-surface p-4" style={{ boxShadow: shadows.card }}>
+      <PressableScale onPress={onPress} accessibilityRole="button" accessibilityLabel={`${p.isAdvance ? 'Advance' : PURPOSE[p.purpose]} ${p.booking?.ref || ''}, ${money(p.amountPaise, { exact: true })}`} className="rounded-2xl bg-surface p-4" style={{ boxShadow: shadows.card }}>
         <View className="flex-row items-start">
           <IconTile icon={Icon} tone={tone} size={42} />
           <View className="ml-3 mr-2 flex-1">
-            <T variant="label" numberOfLines={1}>{PURPOSE[p.purpose]} · {p.booking?.ref}</T>
+            <T variant="label" numberOfLines={1}>{p.isAdvance ? 'Advance payment' : PURPOSE[p.purpose]} · {p.booking?.ref}</T>
             <T variant="caption" tone="subtle" className="mt-0.5" numberOfLines={1}>{p.booking?.vehicle}</T>
             <T variant="caption" tone="subtle" numberOfLines={1}>{dateTime(p.paidAt || p.createdAt)}{p.method ? ` · ${p.method.toUpperCase()}` : ''}</T>
           </View>

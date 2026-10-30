@@ -1,5 +1,6 @@
 import RazorpayCheckout from '@/mobile/app/razorpay';
 import { api } from '../api';
+import { track } from './analytics';
 
 /**
  * Opens Razorpay Checkout for an order the SERVER created, then asks the server to verify.
@@ -8,6 +9,7 @@ import { api } from '../api';
  */
 export async function payOrder(order) {
   let result;
+  track('payment_started', { bookingId: order.bookingId, amountPaise: order.amountPaise });
   try {
     result = await RazorpayCheckout.open({
       key: order.keyId,
@@ -24,6 +26,7 @@ export async function payOrder(order) {
     });
   } catch (err) {
     const cancelled = err?.code === 0 || err?.code === 2 || /cancel/i.test(err?.description || '');
+    track('payment_failed', { bookingId: order.bookingId, amountPaise: order.amountPaise, reason: cancelled ? 'cancelled' : String(err?.description || 'failed').slice(0, 180) });
     await api.post('/api/v1/user/bookings/payments/failed', { razorpayOrderId: order.orderId, reason: cancelled ? 'cancelled' : String(err?.description || 'failed').slice(0, 280) }).catch(() => {});
     return { status: cancelled ? 'cancelled' : 'failed', message: cancelled ? 'Payment cancelled.' : 'Payment failed. If money was deducted it will be refunded automatically.' };
   }
@@ -32,5 +35,6 @@ export async function payOrder(order) {
     razorpayPaymentId: result.razorpay_payment_id,
     razorpaySignature: result.razorpay_signature,
   });
+  track('payment_success', { bookingId: order.bookingId, amountPaise: order.amountPaise });
   return { status: v.status === 'paid' ? 'paid' : 'processing' };
 }

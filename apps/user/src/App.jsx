@@ -12,6 +12,16 @@ import { api } from './api';
 import { openLink } from './navigation/links';
 import { TripPlanProvider } from './hooks/useTripPlan';
 import { RootNavigator } from './navigation/RootNavigator';
+import { track } from './services/analytics';
+import { createNavigationContainerRef } from '@react-navigation/native';
+
+const navRef = createNavigationContainerRef();
+let lastScreen = null;
+const trackScreen = () => {
+  const name = navRef.getCurrentRoute()?.name;
+  if (name && name !== lastScreen) track('screen_view', { screen: name });
+  lastScreen = name;
+};
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -59,7 +69,7 @@ export function App() {
           <AuthProvider>
             <AppBridge>
               <TripPlanProvider>
-                <NavigationContainer theme={navTheme}>
+                <NavigationContainer theme={navTheme} ref={navRef} onReady={trackScreen} onStateChange={trackScreen}>
                   <RootNavigator />
                 </NavigationContainer>
                 <OfflineBanner />
