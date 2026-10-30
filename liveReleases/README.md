@@ -2,19 +2,20 @@
 
 | File | App | Package |
 |---|---|---|
-| `way2cars-user-v1.2.1.apk` | Renter app (latest) | `in.way2cars.user` |
-| `way2cars-host-v1.2.0.apk` | Host (vendor) app (latest) | `in.way2cars.host` |
+| `way2cars-user-v1.2.2.apk` | Renter app (latest) | `in.way2cars.user` |
+| `way2cars-host-v1.2.1.apk` | Host (vendor) app (latest) | `in.way2cars.host` |
 | `*-v1.1.1.apk` | Previous release | |
 | `*-v1.1.0.apk`, `*-v1.0.0.apk` | Older releases (talk to the old IP address) | |
 
-v1.2.1 renter (versionCode 5): also shows payment adjustments and refunds credited to the WAY2CARS wallet.
-The host app stays v1.2.0 (no changes).
+v1.2.2 renter (versionCode 6) / v1.2.1 host (versionCode 5): WhatsApp on/off switch in notification settings
+(the backend now sends login OTPs and updates on WhatsApp when configured).
+v1.2.1 renter: shows payment adjustments and refunds credited to the WAY2CARS wallet.
 
 v1.2.0 (versionCode 4) — needs the v1.2.0 backend deployed. Renter: BOOKED badge with next available time, support
 number on booking errors, unlimited-km option, deposit as money (min ₹15,000) / bike / laptop, pickup & drop-off points
 for fleet cars, advance shown in trip list and payments, deposit inspection/refund status, trip rules, app analytics.
 Host: catalogue model/variant pickers, unlimited-km price, mark bike/laptop deposit received/returned.
-Manual test guide: `docs/WAY2CARS-Manual-Test-Guide-v1.2.1.pdf`.
+Manual test guide: `docs/WAY2CARS-Manual-Test-Guide-v1.2.2.pdf`.
 
 
 v1.1.1 (versionCode 3) is v1.1.0 pointed at `https://way2cars.io` (HTTPS only) and installs over earlier versions. v1.1.0 (versionCode 2) changes: Renter: advance payment, pay balance, extension requests with approval, 12-hour rule and late-fee info. Host: own share per booking, works when admins hide renter details/amounts. Needs the matching backend deployed.

@@ -3,7 +3,7 @@ import { AsyncStorage } from '@/mobile/app/storage';
 import { api } from '../api';
 import { ENV } from '../env';
 
-export const APP_VERSION = '1.2.1';
+export const APP_VERSION = '1.2.2';
 
 const analytics = createAnalytics({
   baseUrl: ENV.apiBaseUrl,
