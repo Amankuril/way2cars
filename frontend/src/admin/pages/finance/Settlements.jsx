@@ -72,7 +72,7 @@ export default function Settlements() {
     { key: 'collected', header: 'Collected', align: 'right', cell: (r) => <div><div className="font-semibold text-ink-900">{money(r.collectedPaise)}</div>{r.balanceDuePaise ? <div className="text-caption text-warning-700">{money(r.balanceDuePaise)} due</div> : null}</div> },
     { key: 'gst', header: 'GST', align: 'right', cell: (r) => money(r.gstPaise) },
     { key: 'commission', header: 'Comm.', align: 'right', cell: (r) => `${(r.commissionBps || 0) / 100}%` },
-    { key: 'owner', header: 'Owner share', align: 'right', cell: (r) => (r.ownership === 'company' ? '—' : money(r.ownerSharePaise)) },
+    { key: 'owner', header: 'Owner / investor', align: 'right', cell: (r) => (r.ownership === 'company' ? (r.investorSharePaise ? <div><div>{money(r.investorSharePaise)}</div><div className="text-caption text-ink-500">Investor {(r.investorShareBps || 0) / 100}%</div></div> : '—') : money(r.ownerSharePaise)) },
     { key: 'platform', header: 'WAY2CARS', align: 'right', cell: (r) => <span className="font-semibold text-ink-900">{money(r.platformSharePaise)}</span> },
     { key: 'payout', header: 'Owner payout', cell: (r) => <StatusPill map={OWNER_PAYOUT} value={r.ownerPayout} dot={false} /> },
   ];
@@ -91,7 +91,7 @@ export default function Settlements() {
     <>
       <PageHeader
         title="Settlements"
-        description="Each booking's money split between WAY2CARS and the car owner, and what every host is owed. Owner shares are credited after the trip, held for the payout hold period, then settled to the host's bank account."
+        description="Each booking's money split between WAY2CARS, the car owner (attached hosts) or the investor (fleet cars), and what every host is owed. Owner shares are credited after the trip, held for the payout hold period, then settled to the host's bank account."
         actions={<Button icon={Download} loading={exporting} onClick={exportCsv}>Export CSV</Button>}
       />
       <Tabs className="mb-4" value={s.tab} onChange={(tab) => set({ tab })} items={[{ value: 'bookings', label: 'Booking-wise split' }, { value: 'hosts', label: 'Host balances' }]} />
@@ -103,10 +103,11 @@ export default function Settlements() {
             <FilterSelect label="Car owner" value={s.ownership} onChange={(v) => set({ ownership: v })} options={OWNERSHIP} allLabel="All cars" />
           </FilterBar>
           {s.vendorId ? <div className="-mt-1 mb-4"><FilterChip label={`Host …${shortId(s.vendorId)}`} onClear={() => set({ vendorId: '' })} /></div> : null}
-          <div className="mb-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+          <div className="mb-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
             <StatTile label="Collected" value={t ? money(t.collectedPaise) : '…'} sub={t ? `${t.bookings} bookings` : undefined} />
             <StatTile label="WAY2CARS share" value={t ? money(t.platformSharePaise) : '…'} sub="Excl. GST · expected for trips not yet settled" />
-            <StatTile label="Owner share" value={t ? money(t.ownerSharePaise) : '…'} />
+            <StatTile label="Host share" value={t ? money(t.ownerSharePaise) : '…'} />
+            <StatTile label="Investor share" value={t ? money(t.investorSharePaise || 0) : '…'} sub="Fleet cars with an investor" />
             <StatTile label="GST to remit" value={t ? money(t.gstPaise) : '…'} />
             <StatTile label="Deposits held" value={t ? money(t.depositHeldPaise) : '…'} sub={t?.balanceDuePaise ? `${money(t.balanceDuePaise)} balances due` : undefined} />
           </div>

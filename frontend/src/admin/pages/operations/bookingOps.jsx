@@ -104,13 +104,14 @@ export function SplitPanel({ b }) {
   if (!s) return null;
   const company = s.ownership === 'company';
   return (
-    <Panel title="Money split" description={company ? 'WAY2CARS fleet car: all revenue stays with WAY2CARS.' : `WAY2CARS keeps ${(s.commissionBps || 0) / 100}% of the rental; the owner's share settles to their bank account after the trip.`} actions={<StatusPill map={OWNER_PAYOUT} value={s.status} />}>
+    <Panel title="Money split" description={company ? (s.investorShareBps ? `WAY2CARS fleet car funded by an investor: they get ${s.investorShareBps / 100}% of the car’s earnings.` : 'WAY2CARS fleet car without an investor: all revenue stays with WAY2CARS.') : `WAY2CARS keeps ${(s.commissionBps || 0) / 100}% of the rental; the owner's share settles to their bank account after the trip.`} actions={<StatusPill map={OWNER_PAYOUT} value={s.status} />}>
       <AmountRows
         rows={[
           { label: 'Collected from renter (net of refunds)', value: money(s.collectedPaise), strong: true },
           { label: 'GST (to be remitted)', value: money(s.gstPaise) },
           s.depositHeldPaise ? { label: 'Security deposit held', value: money(s.depositHeldPaise) } : null,
           company ? null : { label: { settled: 'Owner earning', closed: 'Owner kept (late cancellation)', pending_trip: 'Owner share (expected)' }[s.status], value: money(s.ownerPaise), tone: 'success' },
+          company && s.investorShareBps ? { label: { settled: 'Investor earning', closed: 'Investor kept (late cancellation)', pending_trip: 'Investor share (expected)' }[s.status], value: money(s.investorPaise || 0), tone: 'success' } : null,
           { label: s.status === 'pending_trip' ? 'WAY2CARS share (expected)' : 'WAY2CARS share', value: money(s.platformPaise), strong: true },
         ]}
       />

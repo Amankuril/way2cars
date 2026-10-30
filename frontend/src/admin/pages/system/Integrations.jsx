@@ -47,6 +47,12 @@ export default function Integrations() {
           <Card icon={MessageSquare} title="SMS (OTP delivery)" description="Sends sign-in codes to renters and hosts." status={on(d.sms.configured)}>
             {d.sms.configured ? 'OTP messages are delivered by the SMS provider.' : 'OTP messages cannot be delivered to real phones until a provider is configured.'}
           </Card>
+          <Card icon={MessageSquare} title="Booking confirmation SMS" description="Booking details and the terms link, sent when a booking is confirmed." status={on(d.sms.configured && d.sms.bookingTemplate)}>
+            {d.sms.bookingTemplate ? 'Sent through the booking DLT template.' : 'Set SMS_INDIA_HUB_BOOKING_TEMPLATE and SMS_INDIA_HUB_BOOKING_DLT_TEMPLATE_ID on the server (the text must match the DLT template).'}
+          </Card>
+          <Card icon={MessageSquare} title="WhatsApp (booking confirmation)" description="Booking details, trip rules and the terms link on WhatsApp." status={on(d.whatsapp?.configured)}>
+            {d.whatsapp?.configured ? 'Sent through the WhatsApp Cloud API template.' : 'Set WHATSAPP_ENABLED, WHATSAPP_ACCESS_TOKEN, WHATSAPP_PHONE_NUMBER_ID and WHATSAPP_BOOKING_TEMPLATE on the server. Until then, staff can send it from the booking page with “Open in WhatsApp”.'}
+          </Card>
           <Card icon={KeyRound} title="OTP safeguards" description="Development and review bypasses." status={d.otp.globalBypass ? <StatusPill tone="danger">Bypass ON</StatusPill> : <StatusPill tone="success">Normal</StatusPill>}>
             <ul className="space-y-1">
               <li>Global OTP bypass: <strong className={d.otp.globalBypass ? 'text-danger-700' : 'text-ink-900'}>{d.otp.globalBypass ? 'On — any code is accepted' : 'Off'}</strong></li>

@@ -19,6 +19,7 @@ import { SecureFileLink } from '@/admin/components/SecureImage.jsx';
 import { MiniTable } from '@/admin/components/MiniTable.jsx';
 import { HistoryList } from '@/admin/components/HistoryList.jsx';
 import { CommissionPanel, VisibilityPanel, BankFormDialog, RevealBankButton, SettleHostDialog } from './hostCommercials.jsx';
+import { HostKycUploadDialog } from './hostDocuments.jsx';
 
 const STEPS = [
   ['profile', 'Profile'],
@@ -41,6 +42,7 @@ export default function HostDetail() {
   const [bankDecision, setBankDecision] = useState(null);
   const [bankForm, setBankForm] = useState(false);
   const [settling, setSettling] = useState(false);
+  const [uploadingKyc, setUploadingKyc] = useState(false);
   const { data: v, isLoading, error, refetch } = useQuery({ queryKey: ['host', id], queryFn: () => api.get(`${ADMIN}/vendors/${id}`) });
   const invalidate = [['host', id], ['hosts'], ['dashboard'], ['kyc'], ['host-balances'], ['payouts']];
 
@@ -60,6 +62,7 @@ export default function HostDetail() {
 
   if (isLoading) return <DetailSkeleton />;
   if (error) return <div className="panel"><ErrorState error={error} onRetry={refetch} title="Could not load this host" /></div>;
+  const kycDialog = uploadingKyc ? <HostKycUploadDialog host={v} open onClose={() => setUploadingKyc(false)} /> : null;
 
   const manage = can('vendors.manage');
   const bank = v.bank;
@@ -124,7 +127,10 @@ export default function HostDetail() {
             </div>
           </Panel>
 
-          <Panel title="Cars" description={`${v.vehicles?.length || 0} cars`} flush actions={v.vehicles?.length && can('vehicles.read') ? <ButtonLink size="sm" to={`/vehicles?vendorId=${v.id}`}>Open in vehicles</ButtonLink> : null}>
+          <Panel title="Cars" description={`${v.vehicles?.length || 0} cars`} flush actions={<>
+            {can('vehicles.manage') && !['suspended', 'deleted'].includes(v.status) ? <ButtonLink size="sm" variant="primary" to={`/vehicles/new?vendorId=${v.id}`}>Add car for host</ButtonLink> : null}
+            {v.vehicles?.length && can('vehicles.read') ? <ButtonLink size="sm" to={`/vehicles?vendorId=${v.id}`}>Open in vehicles</ButtonLink> : null}
+          </>}>
             <MiniTable
               columns={[
                 { key: 'car', header: 'Car', cell: (c) => (can('vehicles.read') ? <Link to={`/vehicles/${c.id}`} className="link">{c.title}</Link> : c.title) },
@@ -139,7 +145,10 @@ export default function HostDetail() {
             />
           </Panel>
 
-          <Panel title="KYC" actions={kyc && can('kyc.review') ? <Link to={`/kyc/${kyc.id}`} className="link text-label">Open review</Link> : null}>
+          <Panel title="KYC" actions={<>
+            {manage && can('kyc.review') && v.kyc?.status !== 'approved' && !['deleted'].includes(v.status) ? <Button size="sm" onClick={() => setUploadingKyc(true)}>Upload documents…</Button> : null}
+            {kyc && can('kyc.review') ? <Link to={`/kyc/${kyc.id}`} className="link text-label">Open review</Link> : null}
+          </>}>
             {kyc ? (
               <KeyValue
                 items={[
@@ -255,6 +264,7 @@ export default function HostDetail() {
 
       <BankFormDialog v={v} open={bankForm} onClose={() => setBankForm(false)} invalidate={invalidate} />
       <SettleHostDialog v={v} open={settling} onClose={() => setSettling(false)} invalidate={invalidate} />
+      {kycDialog}
       <ConfirmDialog
         open={Boolean(d)}
         onClose={() => setDecision(null)}

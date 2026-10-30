@@ -4,7 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Ban, CircleCheck, RotateCcw, WalletCards } from 'lucide-react';
 import { api, ADMIN } from '@/admin/lib/api.js';
 import { money, dateTime, dateLong, maskPhone } from '@shared/lib/format.js';
-import { USER_STATUS, KYC_STATUS, KYC_SUBMISSION_STATUS, BOOKING_STATUS, LEDGER_TYPE, ID_PROOF } from '@/admin/lib/labels.js';
+import { USER_STATUS, KYC_STATUS, KYC_SUBMISSION_STATUS, BOOKING_STATUS, LEDGER_TYPE, ID_PROOF, WALLET_CATEGORY } from '@/admin/lib/labels.js';
 import { useAction } from '@/admin/lib/hooks.js';
 import { ageFrom, errorMessage, fmtNumber, humanize, toPaise } from '@/admin/lib/utils.js';
 import { useAuth } from '@/admin/auth/AuthContext.jsx';
@@ -13,7 +13,8 @@ import { Panel, KeyValue } from '@/admin/components/Panel.jsx';
 import { StatusPill } from '@/admin/components/StatusPill.jsx';
 import { Button, ButtonLink } from '@/admin/components/Button.jsx';
 import { ConfirmDialog, Modal } from '@/admin/components/Modal.jsx';
-import { Field, MoneyInput, Textarea } from '@/admin/components/Form.jsx';
+import { Field, Input, MoneyInput, Select, Textarea } from '@/admin/components/Form.jsx';
+import { Pagination } from '@/admin/components/Pagination.jsx';
 import { DetailSkeleton } from '@/admin/components/Skeleton.jsx';
 import { ErrorState } from '@/admin/components/EmptyState.jsx';
 import { MiniTable } from '@/admin/components/MiniTable.jsx';
@@ -25,17 +26,21 @@ const ACTIONS = {
   reactivate: { title: 'Reactivate this renter?', description: 'They can sign in and book again.', label: 'Reactivate', tone: 'primary' },
 };
 
-function WalletCredit({ userId, open, onClose }) {
+function WalletCredit({ userId, balancePaise, open, onClose }) {
+  const [direction, setDirection] = useState('credit');
+  const [category, setCategory] = useState('refund');
   const [amount, setAmount] = useState('');
   const [reason, setReason] = useState('');
+  const [bookingRef, setBookingRef] = useState('');
   const [err, setErr] = useState({});
   const credit = useAction((body) => api.post(`${ADMIN}/users/${userId}/wallet-adjustment`, body), {
-    success: (_d, b) => `${money(b.amountPaise)} credited to the wallet`,
-    invalidate: [['user', userId], ['users']],
+    success: (_d, b) => `${money(b.amountPaise)} ${b.direction === 'credit' ? 'credited to' : 'debited from'} the wallet`,
+    invalidate: [['user', userId], ['users'], ['user-wallet', userId], ['wallet-transactions']],
     toastError: false,
     onSuccess: () => {
       setAmount('');
       setReason('');
+      setBookingRef('');
       onClose();
     },
   });
@@ -44,34 +49,73 @@ function WalletCredit({ userId, open, onClose }) {
     const p = toPaise(amount);
     const next = {};
     if (!p || p < 100 || p > 10_000_000) next.amount = 'Enter an amount between ₹1 and ₹1,00,000.';
-    if (reason.trim().length < 5) next.reason = 'Explain the credit in at least 5 characters.';
+    else if (direction === 'debit' && p > balancePaise) next.amount = `The wallet only has ${money(balancePaise)}.`;
+    if (reason.trim().length < 5) next.reason = 'A reason is required (at least 5 characters). The renter sees it in their wallet.';
     setErr(next);
     if (Object.keys(next).length) return;
-    credit.mutate({ amountPaise: p, reason: reason.trim() }, { onError: (e2) => setErr({ form: errorMessage(e2) }) });
+    credit.mutate({ direction, category, amountPaise: p, reason: reason.trim(), ...(bookingRef.trim() ? { bookingRef: bookingRef.trim().toUpperCase() } : {}) }, { onError: (e2) => setErr({ form: errorMessage(e2) }) });
   };
   return (
     <Modal
       open={open}
       onClose={() => !credit.isPending && onClose()}
-      title="Credit the wallet"
-      description="Goodwill or correction credit. It is added to the renter’s wallet balance immediately and recorded in the audit log."
+      title="Adjust the wallet"
+      description={`Balance ${money(balancePaise)}. Credits are for refunds, goodwill or corrections; debits reverse a wrong credit. Applied immediately, shown to the renter and recorded with your name.`}
       footer={
         <>
           <Button onClick={onClose} disabled={credit.isPending}>Cancel</Button>
-          <Button variant="primary" loading={credit.isPending} onClick={submit}>Credit wallet</Button>
+          <Button variant={direction === 'credit' ? 'primary' : 'danger'} loading={credit.isPending} onClick={submit}>{direction === 'credit' ? 'Credit wallet' : 'Debit wallet'}</Button>
         </>
       }
     >
       <form onSubmit={submit} className="space-y-4">
-        <Field label="Amount" htmlFor="wc-amount" required error={err.amount} hint="In rupees.">
-          <MoneyInput id="wc-amount" value={amount} onChange={(e) => setAmount(e.target.value)} invalid={Boolean(err.amount)} data-autofocus />
-        </Field>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field label="Type" htmlFor="wc-dir">
+            <Select id="wc-dir" value={direction} onChange={(e) => setDirection(e.target.value)}>
+              <option value="credit">Credit (add money)</option>
+              <option value="debit">Debit (take money back)</option>
+            </Select>
+          </Field>
+          <Field label="Category" htmlFor="wc-cat">
+            <Select id="wc-cat" value={category} onChange={(e) => setCategory(e.target.value)}>
+              {Object.entries(WALLET_CATEGORY).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+            </Select>
+          </Field>
+          <Field label="Amount" htmlFor="wc-amount" required error={err.amount} hint="In rupees.">
+            <MoneyInput id="wc-amount" value={amount} onChange={(e) => setAmount(e.target.value)} invalid={Boolean(err.amount)} data-autofocus />
+          </Field>
+          <Field label="Booking ref" htmlFor="wc-ref" hint="Optional — links the entry to one of this renter’s bookings.">
+            <Input id="wc-ref" value={bookingRef} onChange={(e) => setBookingRef(e.target.value)} maxLength={20} className="num uppercase" placeholder="W2C…" />
+          </Field>
+        </div>
         <Field label="Reason" htmlFor="wc-reason" required error={err.reason}>
-          <Textarea id="wc-reason" rows={3} maxLength={300} value={reason} onChange={(e) => setReason(e.target.value)} invalid={Boolean(err.reason)} placeholder="e.g. Compensation for delayed car handover on W2C…" />
+          <Textarea id="wc-reason" rows={3} maxLength={300} value={reason} onChange={(e) => setReason(e.target.value)} invalid={Boolean(err.reason)} placeholder="e.g. Refund for AC not working on booking W2C…" />
         </Field>
         {err.form ? <p className="text-caption font-semibold text-danger-600" role="alert">{err.form}</p> : null}
       </form>
     </Modal>
+  );
+}
+
+/** Full wallet history, page by page, with who made each manual entry. */
+export function WalletHistory({ userId }) {
+  const [page, setPage] = useState(1);
+  const q = useQuery({ queryKey: ['user-wallet', userId, page], queryFn: () => api.list(`${ADMIN}/users/${userId}/wallet`, { page, limit: 20 }), placeholderData: (p) => p });
+  return (
+    <>
+      <MiniTable
+        columns={[
+          { key: 'at', header: 'Date', cell: (e) => <span className="whitespace-nowrap">{dateTime(e.createdAt)}</span> },
+          { key: 'type', header: 'Entry', cell: (e) => <div><div className="font-semibold text-ink-900">{LEDGER_TYPE[e.type] || humanize(e.type)}{e.category ? <span className="ml-1.5 text-caption font-medium text-ink-500">· {WALLET_CATEGORY[e.category]}</span> : null}</div>{e.note ? <div className="text-caption text-ink-500">{e.note}</div> : null}{e.bookingRef ? <Link to={`/bookings/${e.bookingId}`} className="num text-caption link">{e.bookingRef}</Link> : null}</div> },
+          { key: 'by', header: 'By', cell: (e) => (e.createdBy?.realm === 'admin' ? e.createdBy.name : e.createdBy ? 'System' : 'System') },
+          { key: 'amt', header: 'Amount', align: 'right', cell: (e) => <span className={e.direction === 'credit' ? 'font-semibold text-success-700' : 'font-semibold text-ink-900'}>{money(e.direction === 'credit' ? e.amountPaise : -e.amountPaise, { sign: true })}</span> },
+          { key: 'bal', header: 'Balance', align: 'right', cell: (e) => (e.balanceAfterPaise !== undefined ? money(e.balanceAfterPaise) : '—') },
+        ]}
+        rows={q.data?.data}
+        empty={q.isLoading ? 'Loading…' : 'No wallet activity yet.'}
+      />
+      {q.data?.meta?.pages > 1 ? <div className="border-t border-line px-5 py-2"><Pagination meta={q.data.meta} onPage={setPage} /></div> : null}
+    </>
   );
 }
 
@@ -109,7 +153,7 @@ export default function UserDetail() {
         description={`Joined ${dateLong(u.createdAt)}${u.lastLoginAt ? ` · last signed in ${dateTime(u.lastLoginAt)}` : ''}`}
         actions={
           <>
-            {can('refunds.manage') && u.status !== 'deleted' ? <Button icon={WalletCards} onClick={() => setCrediting(true)}>Credit wallet…</Button> : null}
+            {can('refunds.manage') && u.status !== 'deleted' ? <Button icon={WalletCards} onClick={() => setCrediting(true)}>Adjust wallet…</Button> : null}
             {manage && u.status === 'pending_approval' ? <Button variant="success" icon={CircleCheck} onClick={() => setAction('approve')}>Approve</Button> : null}
             {manage && u.status === 'suspended' ? <Button icon={RotateCcw} onClick={() => setAction('reactivate')}>Reactivate…</Button> : null}
             {manage && ['active', 'pending_approval'].includes(u.status) ? <Button variant="danger-outline" icon={Ban} onClick={() => setAction('suspend')}>Suspend…</Button> : null}
@@ -154,17 +198,8 @@ export default function UserDetail() {
             />
           </Panel>
 
-          <Panel title="Wallet ledger" description={`Balance ${money(u.walletBalancePaise || 0)} · latest 20 entries`} flush>
-            <MiniTable
-              columns={[
-                { key: 'at', header: 'Date', cell: (e) => <span className="whitespace-nowrap">{dateTime(e.createdAt)}</span> },
-                { key: 'type', header: 'Entry', cell: (e) => <div><div className="font-semibold text-ink-900">{LEDGER_TYPE[e.type] || humanize(e.type)}</div>{e.note ? <div className="text-caption text-ink-500">{e.note}</div> : null}</div> },
-                { key: 'amt', header: 'Amount', align: 'right', cell: (e) => <span className={e.direction === 'credit' ? 'font-semibold text-success-700' : 'font-semibold text-ink-900'}>{money(e.direction === 'credit' ? e.amountPaise : -e.amountPaise, { sign: true })}</span> },
-                { key: 'bal', header: 'Balance', align: 'right', cell: (e) => (e.balanceAfterPaise !== undefined ? money(e.balanceAfterPaise) : '—') },
-              ]}
-              rows={u.ledger}
-              empty="No wallet activity yet."
-            />
+          <Panel title="Wallet history" description={`Balance ${money(u.walletBalancePaise || 0)} · every credit and debit`} flush actions={can('refunds.manage') && u.status !== 'deleted' ? <Button size="sm" icon={WalletCards} onClick={() => setCrediting(true)}>Adjust wallet</Button> : null}>
+            <WalletHistory userId={u.id} />
           </Panel>
         </div>
 
@@ -210,7 +245,7 @@ export default function UserDetail() {
         reason={{ label: 'Reason (recorded in the audit log)', minLength: 3 }}
         onConfirm={(reason) => status.mutateAsync({ action, reason })}
       />
-      <WalletCredit userId={u.id} open={crediting} onClose={() => setCrediting(false)} />
+      <WalletCredit userId={u.id} balancePaise={u.walletBalancePaise || 0} open={crediting} onClose={() => setCrediting(false)} />
     </>
   );
 }

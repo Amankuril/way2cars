@@ -22,7 +22,8 @@ import { ErrorState, EmptyState } from '@/admin/components/EmptyState.jsx';
 import { SecureImage } from '@/admin/components/SecureImage.jsx';
 import { useToast } from '@/admin/components/Toast.jsx';
 import { OwnerActionsPanel, ExtensionsPanel, BalancePanel, SplitPanel, ManualRefundAction, OfficePaymentDialog } from './bookingOps.jsx';
-import { OWNERSHIP, BOOKING_SOURCE, OFFICE_METHOD } from '@/admin/lib/labels.js';
+import { OWNERSHIP, BOOKING_SOURCE, OFFICE_METHOD, DEPOSIT_REFUND_STATUS } from '@/admin/lib/labels.js';
+import { DepositPanel, DepositReviewPanel, ConfirmationPanel } from './depositOps.jsx';
 
 const CANCELLABLE = ['pending_payment', 'pending_vendor_approval', 'confirmed'];
 
@@ -53,6 +54,8 @@ function MiniTable({ columns, rows, empty }) {
 }
 
 function priceLine(l) {
+  if (l.kind === 'unlimited_km') return { label: 'Unlimited km add-on', hint: `${money(l.ratePaise)}/day`, value: money(l.amountPaise) };
+  if (l.kind === 'office') return { label: 'Rental (set at the office)', value: money(l.amountPaise) };
   if (l.kind === 'day') return { label: `Day rate · ${l.date}`, hint: l.source === 'override' ? 'special price' : l.source === 'weekend' ? 'weekend rate' : undefined, value: money(l.amountPaise) };
   return { label: `${l.hours} hr${l.hours > 1 ? 's' : ''} · ${l.date}`, hint: l.capped ? 'capped at day rate' : `${money(l.ratePaise)}/hr`, value: money(l.amountPaise) };
 }
@@ -298,8 +301,9 @@ export default function BookingDetail() {
                     ['End (IST)', dateTime(b.endAt)],
                     ['Duration', duration(b.startAt, b.endAt)],
                     b.originalEndAt && String(b.originalEndAt) !== String(b.endAt) ? ['Originally ending', dateTime(b.originalEndAt)] : null,
-                    ['Pickup', b.pickup?.type === 'doorstep' ? `Doorstep delivery${b.pickup.distanceKm ? ` · ${b.pickup.distanceKm} km` : ''}` : 'Host location'],
+                    ['Pickup', b.pickup?.type === 'doorstep' ? `Doorstep delivery${b.pickup.distanceKm ? ` · ${b.pickup.distanceKm} km` : ''}` : b.pickup?.type === 'hub' ? `Pickup point · ${b.pickup.name}` : 'Car location'],
                     { label: 'Address', value: b.pickup?.address, wide: true },
+                    b.dropoff ? { label: 'Drop-off', value: `${b.dropoff.name} · ${b.dropoff.address}`, wide: true } : null,
                     b.holdExpiresAt ? ['Payment hold expires', dateTime(b.holdExpiresAt)] : null,
                     b.vendorDecisionDueAt ? ['Host must respond by', dateTime(b.vendorDecisionDueAt)] : null,
                     b.trip?.startedAt ? ['Trip started', dateTime(b.trip.startedAt)] : null,
@@ -322,11 +326,11 @@ export default function BookingDetail() {
                 { label: 'Convenience fee', value: money(p.convenienceFeePaise) },
                 { label: `GST (${(p.gstBps || 0) / 100}%)`, value: money(p.gstPaise) },
                 { label: 'Trip charges', value: money(p.chargesPaise), strong: true },
-                { label: 'Refundable deposit', value: money(p.depositPaise) },
+                { label: b.depositDetail?.type && b.depositDetail.type !== 'cash' ? `Deposit: ${b.depositDetail.type} at pickup` : 'Refundable deposit', value: money(p.depositPaise) },
                 { label: 'Total', value: money(p.totalPaise), strong: true },
                 p.walletAppliedPaise ? { label: 'Paid from wallet', value: `−${money(p.walletAppliedPaise)}` } : null,
                 { label: 'Payable via gateway', value: money(p.payablePaise) },
-                { label: 'Included distance', value: `${p.includedKm ?? '—'} km · then ${money(p.extraKmChargePaise)}/km` },
+                { label: 'Included distance', value: p.unlimitedKm ? 'Unlimited km' : `${p.includedKm ?? '—'} km · then ${money(p.extraKmChargePaise)}/km` },
                 { label: 'Platform commission', value: `${(p.commissionBps || 0) / 100}%` },
                 p.adjustedBy ? { label: 'Price set at the office', value: p.adjustedBy.note || 'Yes' } : null,
               ]}
@@ -377,8 +381,9 @@ export default function BookingDetail() {
                   { label: `Late return (${settlement.lateHours ?? 0} h)`, value: money(settlement.lateFeePaise) },
                   { label: 'Damage', value: money(settlement.damagePaise) },
                 settlement.extensionDuePaise ? { label: 'Unpaid extension (incl. GST)', value: money(settlement.extensionDuePaise) } : null,
+                  ...(settlement.extraCharges || []).map((c) => ({ label: c.label, hint: c.note || 'added at inspection', value: money(c.amountPaise) })),
                   { label: 'Total deductions', value: money(settlement.totalDeductionsPaise), strong: true },
-                  { label: 'Deposit refund to renter', value: money(settlement.depositRefundPaise), tone: 'success' },
+                  { label: 'Deposit refund to renter', hint: b.settlement?.depositRefundStatus ? `${DEPOSIT_REFUND_STATUS[b.settlement.depositRefundStatus]?.label}${b.settlement.depositRefundAt ? ` · ${dateLong(b.settlement.depositRefundAt)}` : ''}` : undefined, value: money(settlement.depositRefundPaise), tone: 'success' },
                   { label: 'Outstanding from renter', value: money(settlement.outstandingPaise), tone: settlement.outstandingPaise ? 'danger' : undefined },
                 ]}
               />
@@ -391,6 +396,8 @@ export default function BookingDetail() {
               <OfficePaymentDialog booking={b} due={duesOpen ? { purpose: 'settlement', amountPaise: b.settlement?.outstandingPaise, label: 'Trip dues' } : null} onClose={() => setDuesOpen(false)} />
             </Panel>
           ) : null}
+
+          <DepositReviewPanel key={`${b.settlement?.depositRefundStatus}-${b.settlement?.depositReview?.at}`} b={b} />
 
           <Panel title="Payments" flush>
             <MiniTable
@@ -450,6 +457,8 @@ export default function BookingDetail() {
 
         <div className="min-w-0 space-y-5">
           <BalancePanel b={b} />
+          <DepositPanel b={b} />
+          <ConfirmationPanel b={b} />
           {can('payments.read') ? <SplitPanel b={b} /> : null}
           <Panel title="People">
             <div className="space-y-4">

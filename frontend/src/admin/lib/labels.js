@@ -81,10 +81,13 @@ export const REFUND_REASON = {
 };
 export const LEDGER_TYPE = {
   referral_reward: 'Referral reward', loyalty_reward: 'Loyalty reward', wallet_redeemed: 'Used on booking',
-  wallet_redeem_reversed: 'Booking credit returned', admin_adjustment: 'Admin credit', trip_earning: 'Trip earning',
+  wallet_redeem_reversed: 'Booking credit returned', admin_adjustment: 'Admin adjustment', trip_earning: 'Trip earning',
   earning_released: 'Earning released', payout_requested: 'Withdrawal requested', payout_rejected: 'Withdrawal declined',
-  payout_paid: 'Payout paid', earning_reversed: 'Earning reversed',
+  payout_paid: 'Payout paid', earning_reversed: 'Earning reversed', investor_earning: 'Investor share', investor_payout: 'Paid to investor',
 };
+export const WALLET_CATEGORY = { refund: 'Refund', goodwill: 'Goodwill', adjustment: 'Adjustment' };
+export const FOLLOW_UP = { contacted: { label: 'Contacted', tone: 'info' }, no_answer: { label: 'No answer', tone: 'warning' }, converted: { label: 'Booked', tone: 'success' }, not_interested: { label: 'Not interested', tone: 'neutral' } };
+export const MESSAGE_STATUS = { sent: { label: 'Sent', tone: 'success' }, skipped: { label: 'Not configured', tone: 'neutral' }, failed: { label: 'Failed', tone: 'danger' } };
 export const REALM_LABEL = { user: 'Renter', vendor: 'Host', admin: 'Admin', system: 'System', webhook: 'Webhook' };
 export const AUDIENCE = { all: 'Everyone', user: 'Renters', vendor: 'Hosts' };
 

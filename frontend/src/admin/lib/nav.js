@@ -1,7 +1,7 @@
 import {
   LayoutDashboard, CalendarRange, LifeBuoy, ShieldCheck, Car, Building2, Users, Wallet, BarChart3,
   TicketPercent, Image, Megaphone, FileText, HelpCircle, Tags, Star, Settings, UserCog, ScrollText,
-  PlugZap, KeyRound, UserCheck, ClipboardCheck, Scale,
+  PlugZap, KeyRound, UserCheck, ClipboardCheck, Scale, HandCoins, WalletCards, Activity,
 } from 'lucide-react';
 
 /**
@@ -11,7 +11,10 @@ import {
 export const NAV = [
   {
     label: 'Overview',
-    items: [{ label: 'Dashboard', to: '/', icon: LayoutDashboard, perm: 'dashboard.read', end: true }],
+    items: [
+      { label: 'Dashboard', to: '/', icon: LayoutDashboard, perm: 'dashboard.read', end: true },
+      { label: 'App analytics', to: '/analytics', icon: Activity, perm: 'analytics.read' },
+    ],
   },
   {
     label: 'Operations',
@@ -46,6 +49,8 @@ export const NAV = [
     items: [
       { label: 'Settlements', to: '/settlements', icon: Scale, perm: 'payments.read' },
       { label: 'Payouts', to: '/payouts', icon: Wallet, perm: 'payouts.manage' },
+      { label: 'Investors', to: '/investors', icon: HandCoins, perm: 'payments.read' },
+      { label: 'Wallet adjustments', to: '/wallet-adjustments', icon: WalletCards, perm: 'refunds.manage' },
       { label: 'Reports', to: '/reports', icon: BarChart3, perm: 'reports.read' },
     ],
   },

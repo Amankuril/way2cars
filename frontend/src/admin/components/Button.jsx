@@ -27,7 +27,7 @@ const SIZES = {
   lg: 'h-10 px-4 text-bodySm font-semibold gap-2 rounded-md',
 };
 
-function classes({ variant = 'secondary', size = 'md', className, block }) {
+export function classes({ variant = 'secondary', size = 'md', className, block }) {
   return cn(
     'inline-flex shrink-0 select-none items-center justify-center whitespace-nowrap font-semibold transition-colors',
     'disabled:cursor-not-allowed disabled:opacity-55 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500',

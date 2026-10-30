@@ -171,6 +171,74 @@ function CalendarPanel({ id }) {
   );
 }
 
+/** Money settings of the car: commission on an attached car, or the investor share on a fleet car. */
+function CommercialsPanel({ v, canEdit }) {
+  const company = v.ownership === 'company';
+  const hostRate = v.vendor?.commissionBps;
+  const [editing, setEditing] = useState(false);
+  const [commission, setCommission] = useState(v.commissionBps != null ? String(v.commissionBps / 100) : '');
+  const [investorId, setInvestorId] = useState(v.investor?.id ? String(v.investor.id) : '');
+  const [share, setShare] = useState(v.investor?.shareBps ? String(v.investor.shareBps / 100) : '');
+  const [error, setError] = useState(null);
+  const investors = useQuery({ queryKey: ['investors', 'active'], queryFn: () => api.get(`${ADMIN}/investors`, { active: 'true', limit: 100 }), enabled: company && editing });
+  const save = useAction((body) => api.patch(`${ADMIN}/vehicles/${v.id}/commercials`, body), { success: 'Car commercials saved', invalidate: [['vehicle', v.id]], toastError: false, onSuccess: () => setEditing(false) });
+  const submit = () => {
+    setError(null);
+    if (company) {
+      if (!investorId) return save.mutate({ investor: null }, { onError: (e) => setError(errorMessage(e)) });
+      const pct = Number(share);
+      if (!(pct > 0 && pct <= 100)) return setError('Investor share must be between 0.01% and 100%.');
+      return save.mutate({ investor: { investorId, shareBps: Math.round(pct * 100) } }, { onError: (e) => setError(errorMessage(e)) });
+    }
+    if (commission === '') return save.mutate({ commissionBps: null }, { onError: (e) => setError(errorMessage(e)) });
+    const pct = Number(commission);
+    if (!(pct >= 0 && pct <= 90)) return setError('Commission must be 0–90%.');
+    return save.mutate({ commissionBps: Math.round(pct * 100) }, { onError: (e) => setError(errorMessage(e)) });
+  };
+  return (
+    <Panel title={company ? 'Revenue split' : 'Commission'} description={company ? 'Fleet cars earn 100% for WAY2CARS unless an investor funds the car.' : 'Way2Cars’ share of this car’s rentals; the host gets the rest.'}
+      actions={canEdit && !editing ? <Button size="sm" icon={Pencil} onClick={() => setEditing(true)}>Change</Button> : null}>
+      {!editing ? (
+        company ? (
+          v.investor ? (
+            <AmountRows rows={[
+              { label: 'Investor', value: <Link to={`/investors/${v.investor.id}`} className="link">{v.investor.name}</Link> },
+              { label: 'Investor share', value: `${v.investor.shareBps / 100}%` },
+              { label: 'WAY2CARS share', value: `${(10000 - v.investor.shareBps) / 100}%`, strong: true },
+            ]} />
+          ) : <p className="text-bodySm text-ink-800">No investor — 100% of this car’s revenue goes to WAY2CARS.</p>
+        ) : (
+          <AmountRows rows={[
+            { label: 'WAY2CARS commission', value: `${(v.commissionBps ?? hostRate ?? 3000) / 100}%`, hint: v.commissionBps != null ? 'set for this car' : hostRate != null ? 'host rate' : 'platform default' },
+            { label: 'Host earns', value: `${(10000 - (v.commissionBps ?? hostRate ?? 3000)) / 100}%`, strong: true },
+          ]} />
+        )
+      ) : (
+        <div className="space-y-3">
+          {company ? (
+            <>
+              <Field label="Investor" htmlFor="cm-inv">
+                <Select id="cm-inv" value={investorId} onChange={(e) => setInvestorId(e.target.value)}>
+                  <option value="">No investor (100% WAY2CARS)</option>
+                  {(investors.data || []).map((i) => <option key={i.id} value={i.id}>{i.name}</option>)}
+                </Select>
+              </Field>
+              {investorId ? <Field label="Investor share of the car’s earnings" htmlFor="cm-share" hint="Of rent, extra-km, fuel and late charges (excl. GST and fees)."><Input id="cm-share" inputMode="decimal" value={share} onChange={(e) => setShare(e.target.value)} className="num" placeholder="e.g. 60" /></Field> : null}
+              <p className="text-caption text-ink-500">Add investors in Finance → Investors. Applies to new bookings.</p>
+            </>
+          ) : (
+            <Field label="Commission for this car (%)" htmlFor="cm-comm" hint={`Blank = host rate (${((hostRate ?? 3000) / 100)}%). Applies to new bookings.`}>
+              <Input id="cm-comm" inputMode="decimal" value={commission} onChange={(e) => setCommission(e.target.value)} className="num" />
+            </Field>
+          )}
+          {error ? <p className="text-caption font-semibold text-danger-600" role="alert">{error}</p> : null}
+          <div className="flex gap-2"><Button onClick={() => setEditing(false)} disabled={save.isPending}>Cancel</Button><Button variant="primary" loading={save.isPending} onClick={submit}>Save</Button></div>
+        </div>
+      )}
+    </Panel>
+  );
+}
+
 function PublishButton({ v }) {
   const [open, setOpen] = useState(false);
   const publish = useAction(() => api.post(`${ADMIN}/vehicles/${v.id}/publish`), { success: 'Car published — it is now bookable', invalidate: [['vehicle', v.id], ['vehicles']], toastError: false });
@@ -182,7 +250,7 @@ function PublishButton({ v }) {
         open={open}
         onClose={() => setOpen(false)}
         title={gaps.length ? 'This car is not ready yet' : 'Publish this car?'}
-        description={gaps.length ? `Add: ${gaps.join(', ')}.` : 'It appears in search and can be booked in the app and at the office.'}
+        description={gaps.length ? `Add: ${gaps.join(', ')}.` : v.ownership === 'company' ? 'It appears in search and can be booked in the app and at the office.' : 'This approves the listing for the host — it goes live in search and the host is notified.'}
         confirmLabel="Publish"
         onConfirm={() => publish.mutateAsync()}
       />
@@ -223,7 +291,7 @@ export default function VehicleDetail() {
         actions={can('vehicles.manage') ? (
           <>
             <ButtonLink icon={Pencil} to={`/vehicles/${v.id}/edit`}>Edit car</ButtonLink>
-            {company && v.approval?.status !== 'approved' ? <PublishButton v={v} /> : null}
+            {v.approval?.status !== 'approved' && (company || v.vendor?.status === 'approved') ? <PublishButton v={v} /> : null}
           </>
         ) : null}
         description={
@@ -296,12 +364,15 @@ export default function VehicleDetail() {
                 { label: 'Security deposit', value: money(p.securityDepositPaise) },
                 { label: 'Included distance', value: `${p.includedKmPerDay ?? '—'} km/day` },
                 { label: 'Extra distance', value: `${money(p.extraKmChargePaise)}/km` },
+                { label: 'Unlimited km add-on', value: p.unlimitedKmDailyPaise != null ? `${money(p.unlimitedKmDailyPaise)}/day` : 'Not offered' },
               ]}
             />
           </Panel>
 
+          <CommercialsPanel v={v} canEdit={can('payouts.manage')} />
+
           {company ? (
-            <Panel title="Owner"><p className="text-bodySm text-ink-800">WAY2CARS fleet — managed by operations. All revenue stays with WAY2CARS.</p></Panel>
+            <Panel title="Owner"><p className="text-bodySm text-ink-800">WAY2CARS fleet — managed by operations.</p></Panel>
           ) : <Panel title="Host">
             <div className="space-y-3">
               <div>

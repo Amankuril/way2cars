@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useNavigate, useParams } from 'react-router';
+import { useNavigate, useParams, useSearchParams } from 'react-router';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowDown, ArrowUp, Trash2 } from 'lucide-react';
 import { api, ADMIN } from '@/admin/lib/api.js';
@@ -24,7 +24,7 @@ const blank = {
   cityId: '', brandId: '', categoryId: '', model: '', variant: '', year: String(new Date().getFullYear()), registrationNumber: '', color: '',
   fuelType: 'petrol', transmission: 'manual', seats: '5', luggageBags: '2', rangeKm: '', features: [], description: '',
   address: '', area: '', pincode: '', lat: '', lng: '',
-  hourly: '', daily: '', weekend: '', deposit: '', includedKm: '240', extraKm: '',
+  hourly: '', daily: '', weekend: '', deposit: '', includedKm: '240', extraKm: '', unlimitedKm: '', modelId: '',
   deliveryEnabled: false, deliveryMaxKm: '10', instantBooking: true,
 };
 
@@ -35,7 +35,7 @@ function fromVehicle(v) {
     rangeKm: v.rangeKm ? String(v.rangeKm) : '', features: v.features || [], description: v.description || '',
     address: v.location?.address || '', area: v.location?.area || '', pincode: v.location?.pincode || '', lat: String(v.location?.point?.lat ?? ''), lng: String(v.location?.point?.lng ?? ''),
     hourly: toRupeesInput(v.pricing?.hourlyPaise), daily: toRupeesInput(v.pricing?.dailyPaise), weekend: toRupeesInput(v.pricing?.weekendDailyPaise), deposit: toRupeesInput(v.pricing?.securityDepositPaise),
-    includedKm: String(v.pricing?.includedKmPerDay ?? ''), extraKm: toRupeesInput(v.pricing?.extraKmChargePaise),
+    includedKm: String(v.pricing?.includedKmPerDay ?? ''), extraKm: toRupeesInput(v.pricing?.extraKmChargePaise), unlimitedKm: toRupeesInput(v.pricing?.unlimitedKmDailyPaise), modelId: v.modelId ? String(v.modelId) : '',
     deliveryEnabled: Boolean(v.delivery?.enabled), deliveryMaxKm: String(v.delivery?.maxKm ?? 10), instantBooking: Boolean(v.instantBooking),
   };
 }
@@ -48,13 +48,17 @@ const docsFrom = (v) => Object.fromEntries(DOCS.map(({ key }) => {
 export default function VehicleEdit() {
   const { id } = useParams();
   const isNew = !id;
-  useDocumentTitle(isNew ? 'Add fleet car' : 'Edit car');
+  const [params] = useSearchParams();
+  const forHostId = isNew ? params.get('vendorId') : null; // adding a car on behalf of an attached host
+  const forHost = useQuery({ queryKey: ['host', forHostId], queryFn: () => api.get(`${ADMIN}/vendors/${forHostId}`), enabled: Boolean(forHostId) });
+  useDocumentTitle(isNew ? (forHostId ? 'Add car for host' : 'Add fleet car') : 'Edit car');
   const navigate = useNavigate();
   const qc = useQueryClient();
   const toast = useToast();
   const cities = useCatalog('cities');
   const brands = useCatalog('brands');
   const categories = useCatalog('categories');
+  const models = useQuery({ queryKey: ['public', 'models'], queryFn: () => api.get('/api/v1/public/models'), staleTime: 10 * 60_000 });
   const existing = useQuery({ queryKey: ['vehicle', id], queryFn: () => api.get(`${ADMIN}/vehicles/${id}`), enabled: !isNew });
   const [f, setF] = useState(blank);
   const [photos, setPhotos] = useState([]);
@@ -74,7 +78,17 @@ export default function VehicleEdit() {
   if (!isNew && existing.isLoading) return <DetailSkeleton />;
   if (!isNew && existing.error) return <div className="panel"><ErrorState error={existing.error} onRetry={existing.refetch} /></div>;
 
-  const set = (k) => (e) => setF((x) => ({ ...x, [k]: e?.target ? e.target.value : e }));
+  const set = (k) => (e) => setF((x) => ({ ...x, [k]: e?.target ? e.target.value : e, ...(k === 'brandId' ? { modelId: '', model: '', variant: '' } : {}) }));
+  const brandModels = (models.data || []).filter((m) => String(m.brandId) === String(f.brandId));
+  const chosenModel = brandModels.find((m) => String(m.id) === String(f.modelId));
+  const pickModel = (mid) => {
+    const m = brandModels.find((x) => String(x.id) === mid);
+    setF((x) => ({ ...x, modelId: mid, model: m ? m.name : x.model, variant: '', ...(m?.categoryId && !x.categoryId ? { categoryId: String(m.categoryId) } : {}) }));
+  };
+  const pickVariant = (name) => {
+    const v = chosenModel?.variants.find((x) => x.name === name);
+    setF((x) => ({ ...x, variant: name, ...(v?.fuelType ? { fuelType: v.fuelType } : {}), ...(v?.transmission ? { transmission: v.transmission } : {}), ...(v?.seats ? { seats: String(v.seats) } : {}) }));
+  };
   const setDoc = (key, patch) => setDocs((d) => ({ ...d, [key]: { ...d[key], ...patch, changed: true } }));
   const isEv = f.fuelType === 'electric';
 
@@ -93,17 +107,18 @@ export default function VehicleEdit() {
     if (hourly && daily && hourly > daily) e.hourly = 'Cannot exceed the daily price.';
     if (toPaise(f.deposit) === null) e.deposit = 'Enter a deposit (0 for none).';
     if (toPaise(f.extraKm) === null) e.extraKm = 'Enter the extra-km charge.';
+    if (f.unlimitedKm !== '' && toPaise(f.unlimitedKm) === null) e.unlimitedKm = 'Enter a rupee amount, or leave blank.';
     if (f.pincode && !/^\d{6}$/.test(f.pincode)) e.pincode = 'Six digits.';
     setErrors(e);
     return !Object.keys(e).length;
   };
 
   const body = () => ({
-    cityId: f.cityId, brandId: f.brandId, categoryId: f.categoryId, model: f.model.trim(), variant: f.variant.trim() || undefined, year: Number(f.year),
+    cityId: f.cityId, brandId: f.brandId, categoryId: f.categoryId, modelId: f.modelId || (isNew ? undefined : null), model: f.model.trim(), variant: f.variant.trim() || undefined, year: Number(f.year),
     registrationNumber: f.registrationNumber, color: f.color.trim() || undefined, fuelType: f.fuelType, transmission: f.transmission,
     seats: Number(f.seats), luggageBags: Number(f.luggageBags), rangeKm: isEv && f.rangeKm ? Number(f.rangeKm) : undefined, features: f.features, description: f.description.trim() || undefined,
     location: { address: f.address.trim(), area: f.area.trim() || undefined, pincode: f.pincode || undefined, lat: Number(f.lat), lng: Number(f.lng) },
-    pricing: { hourlyPaise: toPaise(f.hourly), dailyPaise: toPaise(f.daily), weekendDailyPaise: f.weekend ? toPaise(f.weekend) : null, securityDepositPaise: toPaise(f.deposit), includedKmPerDay: Number(f.includedKm), extraKmChargePaise: toPaise(f.extraKm) },
+    pricing: { hourlyPaise: toPaise(f.hourly), dailyPaise: toPaise(f.daily), weekendDailyPaise: f.weekend ? toPaise(f.weekend) : null, securityDepositPaise: toPaise(f.deposit), includedKmPerDay: Number(f.includedKm), extraKmChargePaise: toPaise(f.extraKm), unlimitedKmDailyPaise: f.unlimitedKm === '' ? null : toPaise(f.unlimitedKm) },
     delivery: { enabled: f.deliveryEnabled, maxKm: Number(f.deliveryMaxKm) },
     instantBooking: f.instantBooking,
   });
@@ -128,11 +143,11 @@ export default function VehicleEdit() {
     if (d.puc && !d.puc.expiry) return setFormError('PUC needs an expiry date.');
     setSaving(true);
     try {
-      const saved = isNew ? await api.post(`${ADMIN}/vehicles`, body()) : await api.patch(`${ADMIN}/vehicles/${id}`, body());
+      const saved = isNew ? await api.post(`${ADMIN}/vehicles`, { ...body(), ...(forHostId ? { vendorId: forHostId } : {}) }) : await api.patch(`${ADMIN}/vehicles/${id}`, body());
       if (photos.length) await api.put(`${ADMIN}/vehicles/${saved.id}/photos`, { fileIds: photos.map((p) => p.id) });
       if (Object.keys(d).length) await api.put(`${ADMIN}/vehicles/${saved.id}/documents`, d);
       await Promise.all([qc.invalidateQueries({ queryKey: ['vehicle', saved.id] }), qc.invalidateQueries({ queryKey: ['vehicles'] })]);
-      toast.success(isNew ? 'Fleet car added — publish it from the car page when it is ready' : 'Car updated');
+      toast.success(isNew ? `${forHostId ? 'Host car' : 'Fleet car'} added — publish it from the car page when it is ready` : 'Car updated');
       navigate(`/vehicles/${saved.id}`);
     } catch (e) {
       setFormError(errorMessage(e));
@@ -148,8 +163,8 @@ export default function VehicleEdit() {
     <>
       <PageHeader
         back={isNew ? { to: '/vehicles', label: 'Vehicles' } : { to: `/vehicles/${id}`, label: existing.data?.title || 'Car' }}
-        title={isNew ? 'Add WAY2CARS fleet car' : `Edit ${existing.data?.title}`}
-        description={isNew ? 'Company-owned car managed by WAY2CARS. It stays a draft until you publish it with photos and documents.' : existing.data?.ownership === 'company' ? 'WAY2CARS fleet car.' : 'Host car — your changes apply immediately and do not need host review.'}
+        title={isNew ? (forHostId ? `Add car for ${forHost.data?.businessName || forHost.data?.name || 'host'}` : 'Add WAY2CARS fleet car') : `Edit ${existing.data?.title}`}
+        description={isNew ? (forHostId ? 'Attached-host car entered by operations (e.g. papers collected at the office). It stays a draft until you publish it with photos and documents; the host sees it in their app.' : 'Company-owned car managed by WAY2CARS. It stays a draft until you publish it with photos and documents.') : existing.data?.ownership === 'company' ? 'WAY2CARS fleet car.' : 'Host car — your changes apply immediately and do not need host review.'}
       />
       <div className="panel px-5">
         <FormSection title="Car" description="As on the registration certificate.">
@@ -157,8 +172,19 @@ export default function VehicleEdit() {
             {field('cityId', 'City', <Select id="ve-cityId" value={f.cityId} onChange={set('cityId')} invalid={Boolean(errors.cityId)}><option value="">Choose…</option>{options(cities)}</Select>)}
             {field('brandId', 'Brand', <Select id="ve-brandId" value={f.brandId} onChange={set('brandId')} invalid={Boolean(errors.brandId)}><option value="">Choose…</option>{options(brands)}</Select>)}
             {field('categoryId', 'Car type', <Select id="ve-categoryId" value={f.categoryId} onChange={set('categoryId')} invalid={Boolean(errors.categoryId)}><option value="">Choose…</option>{options(categories)}</Select>)}
-            {field('model', 'Model', <Input id="ve-model" value={f.model} onChange={set('model')} maxLength={60} invalid={Boolean(errors.model)} />)}
-            {field('variant', 'Variant', <Input id="ve-variant" value={f.variant} onChange={set('variant')} maxLength={60} />)}
+            {brandModels.length ? field('modelId', 'Model', (
+              <Select id="ve-modelId" value={f.modelId} onChange={(e) => pickModel(e.target.value)} invalid={Boolean(errors.model)}>
+                <option value="">{f.model && !f.modelId ? `${f.model} (not in catalogue)` : 'Choose…'}</option>
+                {brandModels.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
+              </Select>
+            ), { error: errors.model })
+              : field('model', 'Model', <Input id="ve-model" value={f.model} onChange={set('model')} maxLength={60} invalid={Boolean(errors.model)} />, { hint: f.brandId ? 'No catalogue models for this brand yet (Content → Catalog).' : undefined })}
+            {chosenModel?.variants?.length ? field('variant', 'Variant', (
+              <Select id="ve-variant" value={f.variant} onChange={(e) => pickVariant(e.target.value)}>
+                <option value="">Choose…</option>
+                {chosenModel.variants.map((v) => <option key={v.id} value={v.name}>{v.name}</option>)}
+              </Select>
+            )) : field('variant', 'Variant', <Input id="ve-variant" value={f.variant} onChange={set('variant')} maxLength={60} />)}
             {field('year', 'Year', <Input id="ve-year" type="number" min={2005} max={new Date().getFullYear() + 1} value={f.year} onChange={set('year')} className="num" />)}
             {field('registrationNumber', 'Registration number', <Input id="ve-registrationNumber" value={f.registrationNumber} onChange={set('registrationNumber')} className="num uppercase" invalid={Boolean(errors.registrationNumber)} />)}
             {field('color', 'Colour', <Input id="ve-color" value={f.color} onChange={set('color')} maxLength={30} />)}
@@ -197,6 +223,7 @@ export default function VehicleEdit() {
             {field('deposit', 'Security deposit', <MoneyInput id="ve-deposit" value={f.deposit} onChange={set('deposit')} invalid={Boolean(errors.deposit)} />)}
             {field('includedKm', 'Included distance', <AffixInput id="ve-includedKm" suffix="km/day" value={f.includedKm} onChange={set('includedKm')} className="[&_input]:pr-16" />)}
             {field('extraKm', 'Extra distance', <MoneyInput id="ve-extraKm" value={f.extraKm} onChange={set('extraKm')} invalid={Boolean(errors.extraKm)} />, { hint: 'Per km beyond the included distance.' })}
+            {field('unlimitedKm', 'Unlimited km add-on', <AffixInput id="ve-unlimitedKm" prefix="₹" suffix="/day" value={f.unlimitedKm} onChange={set('unlimitedKm')} inputMode="decimal" className="[&_input]:pr-14" invalid={Boolean(errors.unlimitedKm)} />, { hint: 'Extra per 24 hours for no km limit. Blank = not offered. 0 = free.' })}
           </div>
           <Switch label="Instant booking" description="Confirmed as soon as the renter pays. Off: operations or the host accept each request." checked={f.instantBooking} onChange={set('instantBooking')} />
           <Switch label="Doorstep delivery" checked={f.deliveryEnabled} onChange={set('deliveryEnabled')} />

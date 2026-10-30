@@ -15,6 +15,9 @@ import { ImageUpload } from '@/admin/components/FileUpload.jsx';
 import { StatusPill, Tag } from '@/admin/components/StatusPill.jsx';
 import { EmptyState } from '@/admin/components/EmptyState.jsx';
 import { ZoneMap } from '@/admin/components/ZoneMap.jsx';
+import { ModelsTab, LocationsTab } from './catalogExtras.jsx';
+
+const EXTRA_TABS = { models: { label: 'Models & variants', Component: ModelsTab }, locations: { label: 'Pickup points', Component: LocationsTab } };
 
 const slugify = (s) => s.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60);
 const num = (v) => (v === '' || v === null || v === undefined ? NaN : Number(v));
@@ -199,10 +202,11 @@ function ItemForm({ kind, item, onClose, rows = [] }) {
 
 export default function Catalog() {
   const [s, set] = useSearchState({ tab: 'cities' });
+  const extra = EXTRA_TABS[s.tab];
   const kind = KINDS[s.tab] ? s.tab : 'cities';
   const K = KINDS[kind];
   const qc = useQueryClient();
-  const { data, isLoading, error, refetch } = useQuery({ queryKey: ['catalog', kind], queryFn: () => api.get(`${ADMIN}/catalog/${kind}`) });
+  const { data, isLoading, error, refetch } = useQuery({ queryKey: ['catalog', kind], queryFn: () => api.get(`${ADMIN}/catalog/${kind}`), enabled: !extra });
   const [editing, setEditing] = useState(null);
   const [deleting, setDeleting] = useState(null);
   const remove = useAction((id) => api.del(`${ADMIN}/catalog/${kind}/${id}`), {
@@ -263,16 +267,17 @@ export default function Catalog() {
 
   return (
     <>
-      <PageHeader title="Catalog" description="Cities, car brands and categories that hosts choose from and renters filter by." actions={<Button variant="primary" icon={Plus} onClick={() => setEditing({})}>New {K.singular}</Button>} />
-      <Tabs className="mb-4" label="Catalog section" value={kind} onChange={(v) => set({ tab: v })} items={Object.entries(KINDS).map(([k, v]) => ({ value: k, label: v.label, count: k === kind ? data?.length : undefined }))} />
-      <DataTable
+      <PageHeader title="Catalog" description="Cities and their service areas, car brands, models and variants, categories, and Way2Cars pickup / drop-off points." actions={extra ? null : <Button variant="primary" icon={Plus} onClick={() => setEditing({})}>New {K.singular}</Button>} />
+      <Tabs className="mb-4" label="Catalog section" value={extra ? s.tab : kind} onChange={(v) => set({ tab: v })} items={[...Object.entries(KINDS).map(([k, v]) => ({ value: k, label: v.label, count: !extra && k === kind ? data?.length : undefined })), ...Object.entries(EXTRA_TABS).map(([k, v]) => ({ value: k, label: v.label }))]} />
+      {extra ? <extra.Component /> : null}
+      {extra ? null : <DataTable
         columns={columns}
         rows={data}
         loading={isLoading}
         error={error}
         onRetry={refetch}
         empty={<EmptyState icon={Tags} title={`No ${K.label.toLowerCase()} yet`} description={`Add the first ${K.singular}.`} />}
-      />
+      />}
       {editing ? <ItemForm key={`${kind}-${editing.id || 'new'}`} kind={kind} item={editing} rows={data || []} onClose={() => setEditing(null)} /> : null}
       <ConfirmDialog
         open={Boolean(deleting)}

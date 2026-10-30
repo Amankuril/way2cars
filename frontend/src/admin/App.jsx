@@ -15,6 +15,10 @@ const BookingsList = page(() => import('@/admin/pages/operations/BookingsList.js
 const BookingDetail = page(() => import('@/admin/pages/operations/BookingDetail.jsx'));
 const OfficeBooking = page(() => import('@/admin/pages/operations/OfficeBooking.jsx'));
 const Settlements = page(() => import('@/admin/pages/finance/Settlements.jsx'));
+const InvestorsList = page(() => import('@/admin/pages/finance/Investors.jsx').then((m) => ({ default: m.InvestorsList })));
+const InvestorDetail = page(() => import('@/admin/pages/finance/Investors.jsx').then((m) => ({ default: m.InvestorDetail })));
+const WalletTransactions = page(() => import('@/admin/pages/finance/WalletTransactions.jsx'));
+const Analytics = page(() => import('@/admin/pages/Analytics.jsx'));
 const VehicleEdit = page(() => import('@/admin/pages/fleet/VehicleEdit.jsx'));
 const TicketsList = page(() => import('@/admin/pages/operations/TicketsList.jsx'));
 const TicketDetail = page(() => import('@/admin/pages/operations/TicketDetail.jsx'));
@@ -111,6 +115,10 @@ const router = createBrowserRouter(
         { path: 'users/:id', element: guard('users.read', UserDetail) },
         { path: 'payouts', element: guard('payouts.manage', Payouts) },
         { path: 'settlements', element: guard('payments.read', Settlements) },
+        { path: 'investors', element: guard('payments.read', InvestorsList) },
+        { path: 'investors/:id', element: guard('payments.read', InvestorDetail) },
+        { path: 'wallet-adjustments', element: guard('refunds.manage', WalletTransactions) },
+        { path: 'analytics', element: guard('analytics.read', Analytics) },
         { path: 'reports', element: guard('reports.read', Reports) },
         { path: 'coupons', element: guard('coupons.manage', CouponsList) },
         { path: 'coupons/new', element: guard('coupons.manage', CouponEdit) },

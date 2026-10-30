@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
 import { api, ADMIN } from '@/admin/lib/api.js';
 import { money, dateTime, duration } from '@shared/lib/format.js';
-import { KYC_STATUS, OFFICE_METHOD, OWNERSHIP } from '@/admin/lib/labels.js';
+import { KYC_STATUS, OFFICE_METHOD, OWNERSHIP, DEPOSIT_TYPE } from '@/admin/lib/labels.js';
 import { useAction, useDebounced, useDocumentTitle } from '@/admin/lib/hooks.js';
 import { cn, toPaise, errorMessage, istDateTimeInput, fromIstDateTime } from '@/admin/lib/utils.js';
 import { PageHeader } from '@/admin/components/PageHeader.jsx';
@@ -81,7 +81,10 @@ export default function OfficeBooking() {
     startAt: istDateTimeInput(nextHalfHour(HALF_HOUR)), endAt: istDateTimeInput(nextHalfHour(HALF_HOUR + 24 * 3600_000)),
     rental: '', deposit: '', discount: '', waiveFee: false, priceNote: '',
     payStatus: 'paid', amount: '', method: 'cash', reference: '', balanceDueAt: '', note: '',
+    unlimitedKm: false, depositOption: 'cash', cMake: '', cModel: '', cYear: '', cReg: '', cSerial: '', pickupLocationId: '', dropoffLocationId: '',
   }));
+  const company = f.car?.ownership === 'company';
+  const hubs = useQuery({ queryKey: ['public', 'locations', f.car?.city?.id], queryFn: () => api.get('/api/v1/public/locations', { cityId: f.car.city.id }), enabled: Boolean(company && f.car?.city?.id) });
   const [errors, setErrors] = useState({});
   const [formError, setFormError] = useState(null);
   const set = (k) => (e) => setF((x) => ({ ...x, [k]: e?.target ? e.target.value : e }));
@@ -97,16 +100,20 @@ export default function OfficeBooking() {
   }, [f.rental, f.deposit, f.discount, f.waiveFee, f.priceNote]);
 
   // Debounce a string key (a fresh object every render would never settle).
-  const key = useDebounced(JSON.stringify({ start: fromIstDateTime(f.startAt), end: fromIstDateTime(f.endAt), carId: f.car?.id, pricing }), 400);
+  const options = { unlimitedKm: f.unlimitedKm || undefined, depositOption: f.depositOption, pickupLocationId: (company && f.pickupLocationId) || undefined, dropoffLocationId: (company && f.dropoffLocationId) || undefined };
+  const key = useDebounced(JSON.stringify({ start: fromIstDateTime(f.startAt), end: fromIstDateTime(f.endAt), carId: f.car?.id, pricing, options }), 400);
   const win = JSON.parse(key);
   const quote = useQuery({
     queryKey: ['office-quote', key],
-    queryFn: () => api.post(`${ADMIN}/bookings/offline/quote`, { vehicleId: win.carId, startAt: win.start, endAt: win.end, pricing: win.pricing }),
+    queryFn: () => api.post(`${ADMIN}/bookings/offline/quote`, { vehicleId: win.carId, startAt: win.start, endAt: win.end, pricing: win.pricing, ...win.options }),
     enabled: Boolean(win.carId && win.start && win.end && win.end > win.start),
     retry: false,
   });
   const q = quote.data;
-  useEffect(() => setErrors({}), [f.car]);
+  useEffect(() => {
+    setErrors({});
+    setF((x) => ({ ...x, unlimitedKm: false, pickupLocationId: '', dropoffLocationId: '' }));
+  }, [f.car]);
 
   const create = useAction((body) => api.post(`${ADMIN}/bookings/offline`, body), {
     success: (d) => `Booking ${d.ref} confirmed`,
@@ -122,6 +129,13 @@ export default function OfficeBooking() {
     if (!f.startAt || !f.endAt || f.endAt <= f.startAt) e.endAt = 'Return must be after pickup.';
     for (const k of ['startAt', 'endAt']) if (f[k] && !/:(00|30)$/.test(f[k])) e[k] = 'Use a time on the hour or half hour.';
     if (pricing && Object.values(pricing).some((v) => v === null)) e.pricing = 'Check the price fields.';
+    let collateral;
+    if (f.depositOption !== 'cash') {
+      collateral = { make: f.cMake.trim(), model: f.cModel.trim(), year: Number(f.cYear), ...(f.depositOption === 'bike' ? { registrationNumber: f.cReg.trim() } : { serialNumber: f.cSerial.trim() }) };
+      if (!collateral.make || !collateral.model || !collateral.year) e.collateral = `Enter the ${f.depositOption}'s make, model and year.`;
+      else if (f.depositOption === 'bike' && !collateral.registrationNumber) e.collateral = "Enter the bike's registration number.";
+      else if (f.depositOption === 'laptop' && !collateral.serialNumber) e.collateral = "Enter the laptop's serial number.";
+    }
     const payment = f.payStatus === 'unpaid' ? { status: 'unpaid' } : { status: f.payStatus, method: f.method, reference: f.reference.trim() || undefined };
     if (f.payStatus === 'partial') {
       payment.amountPaise = toPaise(f.amount);
@@ -134,7 +148,7 @@ export default function OfficeBooking() {
     create.mutate({
       phone: digits(f.phone), name: f.name.trim() || undefined, vehicleId: f.car.id,
       startAt: fromIstDateTime(f.startAt), endAt: fromIstDateTime(f.endAt),
-      pricing, payment,
+      pricing, payment, ...options, ...(collateral ? { collateral } : {}),
       balanceDueAt: f.payStatus !== 'paid' && f.balanceDueAt ? fromIstDateTime(f.balanceDueAt) : undefined,
       note: f.note.trim() || undefined,
     }, { onError: (err) => setFormError(errorMessage(err)) });
@@ -192,6 +206,32 @@ export default function OfficeBooking() {
             {errors.pricing ? <p className="text-caption font-semibold text-danger-600">{errors.pricing}</p> : null}
           </FormSection>
 
+          <FormSection title="Trip options" description="Unlimited km, the security deposit, and (for WAY2CARS fleet cars) pickup / drop-off points.">
+            {f.car?.unlimitedKm ? <Switch label={`Unlimited km (+${money(f.car.unlimitedKm.dailyPaise)}/day)`} description="No extra-km charge at return." checked={f.unlimitedKm} onChange={(v) => setF((x) => ({ ...x, unlimitedKm: v }))} /> : f.car ? <p className="text-caption text-ink-500">This car does not offer unlimited km.</p> : null}
+            <Field label="Security deposit" htmlFor="ob-dep">
+              <Select id="ob-dep" value={f.depositOption} onChange={set('depositOption')} className="sm:max-w-xs">
+                {Object.entries(DEPOSIT_TYPE).map(([k, l]) => <option key={k} value={k}>{k === 'cash' ? 'Money deposit' : `${l} (handed over at pickup)`}</option>)}
+              </Select>
+            </Field>
+            {f.depositOption !== 'cash' ? (
+              <div className="grid gap-4 sm:grid-cols-4">
+                <Field label={f.depositOption === 'bike' ? 'Bike make' : 'Laptop brand'} htmlFor="ob-cmake"><Input id="ob-cmake" value={f.cMake} onChange={set('cMake')} maxLength={40} /></Field>
+                <Field label="Model" htmlFor="ob-cmodel"><Input id="ob-cmodel" value={f.cModel} onChange={set('cModel')} maxLength={60} /></Field>
+                <Field label="Model year" htmlFor="ob-cyear" hint={f.depositOption === 'bike' ? '2022 or newer' : 'Latest models only'}><Input id="ob-cyear" inputMode="numeric" value={f.cYear} onChange={set('cYear')} maxLength={4} className="num" /></Field>
+                {f.depositOption === 'bike'
+                  ? <Field label="Registration no." htmlFor="ob-creg"><Input id="ob-creg" value={f.cReg} onChange={set('cReg')} maxLength={15} className="num uppercase" /></Field>
+                  : <Field label="Serial no." htmlFor="ob-cserial"><Input id="ob-cserial" value={f.cSerial} onChange={set('cSerial')} maxLength={60} className="num" /></Field>}
+              </div>
+            ) : null}
+            {errors.collateral ? <p className="text-caption font-semibold text-danger-600">{errors.collateral}</p> : null}
+            {company && hubs.data?.length ? (
+              <div className="grid gap-4 sm:grid-cols-2">
+                <Field label="Pickup point" htmlFor="ob-hub-p"><Select id="ob-hub-p" value={f.pickupLocationId} onChange={set('pickupLocationId')}><option value="">Car’s own location</option>{hubs.data.filter((h) => h.kinds.includes('pickup')).map((h) => <option key={h.id} value={h.id}>{h.name}</option>)}</Select></Field>
+                <Field label="Drop-off point" htmlFor="ob-hub-d"><Select id="ob-hub-d" value={f.dropoffLocationId} onChange={set('dropoffLocationId')}><option value="">Same as pickup</option>{hubs.data.filter((h) => h.kinds.includes('dropoff')).map((h) => <option key={h.id} value={h.id}>{h.name}</option>)}</Select></Field>
+              </div>
+            ) : null}
+          </FormSection>
+
           <FormSection title="Payment" description="Money taken at the office. Anything left is shown to the customer as a balance they can pay in the app or here.">
             <Field label="Payment status" htmlFor="ob-pay">
               <Select id="ob-pay" value={f.payStatus} onChange={set('payStatus')}>
@@ -244,7 +284,8 @@ export default function OfficeBooking() {
                       q.discountPaise ? { label: 'Discount', value: `−${money(q.discountPaise)}`, tone: 'success' } : null,
                       { label: 'Convenience fee', value: money(q.convenienceFeePaise) },
                       { label: `GST (${(q.gstBps || 0) / 100}%)`, value: money(q.gstPaise) },
-                      { label: 'Refundable deposit', value: money(q.depositPaise) },
+                      q.unlimitedKmPaise ? { label: 'incl. unlimited km', value: money(q.unlimitedKmPaise) } : null,
+                      { label: f.depositOption === 'cash' ? 'Refundable deposit' : `Deposit: ${f.depositOption} at pickup`, value: money(q.depositPaise) },
                       { label: 'Total to collect', value: money(q.payablePaise), strong: true },
                       f.payStatus === 'partial' && toPaise(f.amount) ? { label: 'Balance after advance', value: money(q.payablePaise - toPaise(f.amount)) } : null,
                     ]}

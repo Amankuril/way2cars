@@ -75,6 +75,20 @@ export const TICKET_STATUS = {
   closed: { label: 'Closed', tone: 'neutral' },
 };
 
+export const DEPOSIT_TYPE = { cash: 'Money deposit', bike: 'Bike', laptop: 'Laptop' };
+export const COLLATERAL_STATUS = {
+  none: { label: 'Not needed', tone: 'neutral' },
+  awaiting: { label: 'Hand over at pickup', tone: 'warning' },
+  received: { label: 'Received', tone: 'info' },
+  returned: { label: 'Returned', tone: 'success' },
+};
+export const DEPOSIT_REFUND_STATUS = {
+  none: { label: 'Nothing to refund', tone: 'neutral' },
+  pending_review: { label: 'Car under inspection', tone: 'warning' },
+  scheduled: { label: 'Refund scheduled', tone: 'info' },
+  refunded: { label: 'Refunded', tone: 'success' },
+};
+
 export const FUEL = { petrol: 'Petrol', diesel: 'Diesel', cng: 'CNG', electric: 'Electric', hybrid: 'Hybrid' };
 export const TRANSMISSION = { manual: 'Manual', automatic: 'Automatic' };
 export const BODY_TYPE = { hatchback: 'Hatchback', sedan: 'Sedan', suv: 'SUV', compact_suv: 'Compact SUV', muv: 'MUV', coupe: 'Coupe', convertible: 'Convertible', pickup: 'Pickup', van: 'Van' };

@@ -7,7 +7,7 @@ import { useAction } from '@/admin/lib/hooks.js';
 import { cn, errorMessage } from '@/admin/lib/utils.js';
 import { PageHeader } from '@/admin/components/PageHeader.jsx';
 import { Button, IconButton } from '@/admin/components/Button.jsx';
-import { Field, Input, MoneyInput, PercentInput, AffixInput, Switch, FormSection, StickySaveBar } from '@/admin/components/Form.jsx';
+import { Field, Input, MoneyInput, PercentInput, AffixInput, Switch, Textarea, FormSection, StickySaveBar } from '@/admin/components/Form.jsx';
 import { DetailSkeleton } from '@/admin/components/Skeleton.jsx';
 import { ErrorState } from '@/admin/components/EmptyState.jsx';
 import { ConfirmDialog } from '@/admin/components/Modal.jsx';
@@ -57,9 +57,31 @@ const SECTIONS = [
     key: 'advance', title: 'Advance payment', description: 'Renters can pay part of the price to block their dates, and the rest before pickup.',
     fields: [
       { path: 'advance.enabled', label: 'Offer “pay advance now”', unit: 'bool' },
-      { path: 'advance.percentBps', label: 'Advance amount', unit: 'pct', min: 10, max: 90, hint: 'Of the trip charges (typically 30–40%). The deposit is collected with the balance.' },
+      { path: 'advance.percentBps', label: 'Advance amount — host cars', unit: 'pct', min: 10, max: 90, hint: 'Of the trip charges on attached-host cars (typically 30–40%). The deposit is collected with the balance.' },
+      { path: 'advance.companyPercentBps', label: 'Advance amount — WAY2CARS fleet', unit: 'pct', min: 10, max: 90, hint: 'Of the trip charges on Way2Cars’ own cars.' },
       { path: 'advance.balanceDueHoursBeforeStart', label: 'Balance due', unit: 'int', suffix: 'hrs before', min: 0, max: 168, hint: 'Renters are reminded 6 hours before this deadline.' },
       { path: 'advance.autoCancelUnpaid', label: 'Cancel if the balance is unpaid at pickup time', unit: 'bool', hint: 'The cancellation policy decides how much of the advance is kept.' },
+    ],
+  },
+  {
+    key: 'deposit', title: 'Security deposit', description: 'Renters leave a money deposit of at least the minimum, or hand over a recent bike or laptop at pickup.',
+    fields: [
+      { path: 'deposit.minCashPaise', label: 'Minimum money deposit', unit: 'rupees', hint: 'Cars with a lower deposit are charged this amount.' },
+      { path: 'deposit.defaultRefundDays', label: 'Default refund timeline', unit: 'int', suffix: 'days', min: 0, max: 60, hint: 'Pre-filled refund date when operations approve a deposit refund.' },
+      { path: 'deposit.allowBike', label: 'Accept a bike as deposit', unit: 'bool' },
+      { path: 'deposit.bikeMinYear', label: 'Bike — oldest model year', unit: 'int', min: 2000, max: 2100 },
+      { path: 'deposit.allowLaptop', label: 'Accept a laptop as deposit', unit: 'bool' },
+      { path: 'deposit.laptopMinYear', label: 'Laptop — oldest model year', unit: 'int', min: 2000, max: 2100 },
+      { path: 'deposit.requireRefundApproval', label: 'Inspect the car before refunding the deposit', unit: 'bool', hint: 'On: settled deposits wait in Bookings → “Deposit review” until operations approve the refund and its date.' },
+    ],
+  },
+  {
+    key: 'bookingTerms', title: 'Trip rules sent to renters', description: 'Sent with every booking confirmation on WhatsApp/SMS and shown on the trip page, together with the car’s km allowance and extra-km, late-return and fuel charges.',
+    fields: [
+      { path: 'bookingTerms.speedLimitKmph', label: 'Speed limit', unit: 'int', suffix: 'km/h', min: 20, max: 200 },
+      { path: 'messaging.bookingWhatsapp', label: 'Send booking confirmation on WhatsApp', unit: 'bool', hint: 'Needs the WhatsApp Cloud API keys (System → Integrations).' },
+      { path: 'messaging.bookingSms', label: 'Send booking confirmation by SMS', unit: 'bool', hint: 'Needs the booking DLT template (System → Integrations).' },
+      { path: 'bookingTerms.rules', label: 'Rules (one per line)', unit: 'lines', wide: true, maxLines: 20 },
     ],
   },
   {
@@ -125,6 +147,7 @@ const ALL_FIELDS = SECTIONS.flatMap((s) => s.fields);
 const get = (obj, path) => path.split('.').reduce((o, k) => (o == null ? undefined : o[k]), obj);
 function toDisplay(f, v) {
   if (f.unit === 'bool') return Boolean(v);
+  if (f.unit === 'lines') return (v || []).join('\n');
   if (v === null || v === undefined) return '';
   if (f.unit === 'rupees' || f.unit === 'pct') return String(v / 100);
   if (f.unit === 'mult') return String(v / 10000);
@@ -133,6 +156,7 @@ function toDisplay(f, v) {
 function fromDisplay(f, v) {
   if (f.unit === 'bool') return v;
   if (f.unit === 'text') return f.upper ? v.trim().toUpperCase() : v.trim();
+  if (f.unit === 'lines') return v.split('\n').map((l) => l.trim()).filter(Boolean);
   const n = Number(v);
   if (f.unit === 'rupees' || f.unit === 'pct') return Math.round(n * 100);
   if (f.unit === 'mult') return Math.round(n * 10000);
@@ -141,6 +165,11 @@ function fromDisplay(f, v) {
 function check(f, v) {
   if (f.unit === 'bool') return null;
   if (f.unit === 'text') return f.pattern && !f.pattern.test(v.trim()) ? f.patternMsg : null;
+  if (f.unit === 'lines') {
+    const lines = v.split('\n').map((l) => l.trim()).filter(Boolean);
+    if (lines.length > f.maxLines) return `At most ${f.maxLines} rules.`;
+    return lines.some((l) => l.length < 3 || l.length > 200) ? 'Each rule must be 3–200 characters.' : null;
+  }
   if (v === '' || !Number.isFinite(Number(v))) return 'Enter a number.';
   const n = Number(v);
   if (f.unit === 'int' && !Number.isInteger(n)) return 'Whole number.';
@@ -266,6 +295,7 @@ export default function Settings() {
         : f.unit === 'pct' ? <PercentInput {...common} />
           : f.unit === 'mult' ? <AffixInput {...common} suffix="×" inputMode="decimal" />
             : f.unit === 'int' ? <AffixInput {...common} suffix={f.suffix} inputMode="numeric" />
+              : f.unit === 'lines' ? <Textarea {...common} rows={6} />
               : <Input {...common} maxLength={f.maxLength} className={f.upper ? 'uppercase' : undefined} />;
     return (
       <Field key={f.path} label={f.label} htmlFor={id} error={err} hint={f.hint} className={cn(f.wide && 'sm:col-span-2')} aside={mod ? <span className="text-caption font-semibold text-brand-600">Changed</span> : null}>
@@ -307,7 +337,7 @@ export default function Settings() {
         <ul className="max-h-60 list-disc space-y-0.5 overflow-y-auto pl-5 text-caption text-ink-700">
           {changed.map((f) => (
             <li key={f.path}>
-              <span className="font-semibold">{f.label}:</span> {String(initial.values[f.path]) || '—'} → {String(values[f.path]) || '—'}
+              <span className="font-semibold">{f.label}:</span> {f.unit === 'lines' ? 'updated' : <>{String(initial.values[f.path]) || '—'} → {String(values[f.path]) || '—'}</>}
             </li>
           ))}
           {tiersChanged ? <li><span className="font-semibold">Cancellation tiers</span> updated</li> : null}

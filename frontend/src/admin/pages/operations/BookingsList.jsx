@@ -99,7 +99,7 @@ export default function BookingsList() {
         <SearchInput value={s.ref} onChange={(v) => set({ ref: v })} placeholder="Booking ref, e.g. W2C…" label="Search by booking reference" className="sm:w-56" />
         <FilterSelect label="Status" value={s.status} onChange={(v) => set({ status: v })} options={BOOKING_STATUS} allLabel="All statuses" />
         <FilterSelect label="City" value={s.cityId} onChange={(v) => set({ cityId: v })} options={(cities.data || []).map((c) => ({ value: c.id, label: c.name }))} allLabel="All cities" />
-        <FilterSelect label="Needs attention" value={s.attention} onChange={(v) => set({ attention: v })} options={[{ value: 'extension_requests', label: 'Extension requests' }, { value: 'balance_due', label: 'Balance due' }]} allLabel="Everything" />
+        <FilterSelect label="Needs attention" value={s.attention} onChange={(v) => set({ attention: v })} options={[{ value: 'extension_requests', label: 'Extension requests' }, { value: 'balance_due', label: 'Balance due' }, { value: 'deposit_review', label: 'Deposit review (car inspection)' }, { value: 'collateral', label: 'Bike / laptop deposits held' }]} allLabel="Everything" />
         <FilterSelect label="Booked via" value={s.source} onChange={(v) => set({ source: v })} options={[{ value: 'app', label: 'App' }, { value: 'offline', label: 'Office' }]} allLabel="App and office" />
         <FilterSelect label="Car owner" value={s.ownership} onChange={(v) => set({ ownership: v })} options={[{ value: 'company', label: 'WAY2CARS fleet' }, { value: 'host', label: 'Attached hosts' }]} allLabel="All cars" />
         <DateRangePicker label="Trip start (IST)" value={{ from: s.from, to: s.to }} onChange={(r) => set({ from: r.from, to: r.to })} />
