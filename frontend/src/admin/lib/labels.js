@@ -77,11 +77,11 @@ export const OWNER_PAYOUT = {
 export const REFUND_REASON = {
   user_cancellation: 'Cancelled by renter', vendor_rejection: 'Declined by host', approval_timeout: 'Host did not respond',
   admin_cancellation: 'Cancelled by admin', deposit_settlement: 'Deposit refund', late_payment: 'Late payment', admin_adjustment: 'Admin adjustment',
-  extension_unavailable: 'Extension unavailable', extension_rejected: 'Extension not approved',
+  extension_unavailable: 'Extension unavailable', extension_rejected: 'Extension not approved', price_adjustment: 'Payment adjustment',
 };
 export const LEDGER_TYPE = {
   referral_reward: 'Referral reward', loyalty_reward: 'Loyalty reward', wallet_redeemed: 'Used on booking',
-  wallet_redeem_reversed: 'Booking credit returned', admin_adjustment: 'Admin adjustment', trip_earning: 'Trip earning',
+  wallet_redeem_reversed: 'Booking credit returned', admin_adjustment: 'Admin adjustment', booking_refund: 'Booking refund to wallet', trip_earning: 'Trip earning',
   earning_released: 'Earning released', payout_requested: 'Withdrawal requested', payout_rejected: 'Withdrawal declined',
   payout_paid: 'Payout paid', earning_reversed: 'Earning reversed', investor_earning: 'Investor share', investor_payout: 'Paid to investor',
 };

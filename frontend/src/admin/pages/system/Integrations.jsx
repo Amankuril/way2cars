@@ -51,7 +51,7 @@ export default function Integrations() {
             {d.sms.bookingTemplate ? 'Sent through the booking DLT template.' : 'Set SMS_INDIA_HUB_BOOKING_TEMPLATE and SMS_INDIA_HUB_BOOKING_DLT_TEMPLATE_ID on the server (the text must match the DLT template).'}
           </Card>
           <Card icon={MessageSquare} title="WhatsApp (booking confirmation)" description="Booking details, trip rules and the terms link on WhatsApp." status={on(d.whatsapp?.configured)}>
-            {d.whatsapp?.configured ? 'Sent through the WhatsApp Cloud API template.' : 'Set WHATSAPP_ENABLED, WHATSAPP_ACCESS_TOKEN, WHATSAPP_PHONE_NUMBER_ID and WHATSAPP_BOOKING_TEMPLATE on the server. Until then, staff can send it from the booking page with “Open in WhatsApp”.'}
+            {d.whatsapp?.configured ? `Sent through ${d.whatsapp.provider === 'meta' ? 'the WhatsApp Cloud API' : 'Textora (BUZWAP)'} with template “${d.whatsapp.template}” (${(d.whatsapp.params || []).join(', ')}).` : 'Set WHATSAPP_ENABLED=true, TEXTORA_FROM, TEXTORA_AUTHKEY, TEXTORA_BUSINESS_ACCOUNT_ID, WHATSAPP_BOOKING_TEMPLATE and WHATSAPP_BOOKING_PARAMS on the server. Until then, staff can send it from the booking page with “Open in WhatsApp”.'}
           </Card>
           <Card icon={KeyRound} title="OTP safeguards" description="Development and review bypasses." status={d.otp.globalBypass ? <StatusPill tone="danger">Bypass ON</StatusPill> : <StatusPill tone="success">Normal</StatusPill>}>
             <ul className="space-y-1">

@@ -24,6 +24,7 @@ import { useToast } from '@/admin/components/Toast.jsx';
 import { OwnerActionsPanel, ExtensionsPanel, BalancePanel, SplitPanel, ManualRefundAction, OfficePaymentDialog } from './bookingOps.jsx';
 import { OWNERSHIP, BOOKING_SOURCE, OFFICE_METHOD, DEPOSIT_REFUND_STATUS } from '@/admin/lib/labels.js';
 import { DepositPanel, DepositReviewPanel, ConfirmationPanel } from './depositOps.jsx';
+import { AdjustmentsPanel, RefundToWalletAction, RefundDestination } from './adjustOps.jsx';
 
 const CANCELLABLE = ['pending_payment', 'pending_vendor_approval', 'confirmed'];
 
@@ -227,10 +228,11 @@ export default function BookingDetail() {
   const [confirm, setConfirm] = useState(null);
   const [downloading, setDownloading] = useState(null);
   const [duesOpen, setDuesOpen] = useState(false);
+  const [cancelTo, setCancelTo] = useState('source');
   const { data: b, isLoading, error, refetch } = useQuery({ queryKey: ['booking', id], queryFn: () => api.get(`${ADMIN}/bookings/${id}`) });
 
   const invalidate = [['booking', id], ['bookings'], ['dashboard']];
-  const cancel = useAction((reason) => api.post(`${ADMIN}/bookings/${id}/cancel`, { reason }), { success: 'Booking cancelled — full refund initiated', invalidate, toastError: false });
+  const cancel = useAction((reason) => api.post(`${ADMIN}/bookings/${id}/cancel`, { reason, refundTo: cancelTo }), { success: cancelTo === 'wallet' ? 'Booking cancelled — refund credited to the wallet' : 'Booking cancelled — full refund initiated', invalidate, toastError: false });
   const waive = useAction((reason) => api.post(`${ADMIN}/bookings/${id}/waive-outstanding`, { reason }), { success: 'Outstanding amount waived', invalidate, toastError: false });
 
   if (isLoading) return <DetailSkeleton />;
@@ -397,6 +399,8 @@ export default function BookingDetail() {
             </Panel>
           ) : null}
 
+          <AdjustmentsPanel b={b} />
+
           <DepositReviewPanel key={`${b.settlement?.depositRefundStatus}-${b.settlement?.depositReview?.at}`} b={b} />
 
           <Panel title="Payments" flush>
@@ -435,7 +439,8 @@ export default function BookingDetail() {
               empty="No refunds on this booking."
               columns={[
                 { key: 'when', header: 'Created', cell: (x) => <span className="whitespace-nowrap">{dateTime(x.createdAt)}</span> },
-                { key: 'reason', header: 'Reason', cell: (x) => REFUND_REASON[x.reason] || humanize(x.reason) },
+                { key: 'reason', header: 'Reason', cell: (x) => <div>{REFUND_REASON[x.reason] || humanize(x.reason)}{x.note ? <p className="max-w-[240px] text-caption text-ink-500">{x.note}</p> : null}</div> },
+                { key: 'to', header: 'To', cell: (x) => (x.destination === 'wallet' ? 'WAY2CARS wallet' : 'Original payment') },
                 {
                   key: 'status',
                   header: 'Status',
@@ -446,6 +451,7 @@ export default function BookingDetail() {
                       {x.razorpayRefundId ? <p className="num mt-1 text-caption text-ink-500">{x.razorpayRefundId}</p> : null}
                       {x.manualReference ? <p className="num mt-1 text-caption text-ink-500">{x.manualReference}</p> : null}
                       <ManualRefundAction bookingId={b.id} refund={x} />
+                      <RefundToWalletAction bookingId={b.id} refund={x} />
                     </div>
                   ),
                 },
@@ -579,7 +585,9 @@ export default function BookingDetail() {
         tone="danger"
         reason={{ label: 'Reason (shared with renter and host)', minLength: 5, placeholder: 'e.g. Car unavailable due to breakdown' }}
         onConfirm={(reason) => cancel.mutateAsync(reason)}
-      />
+      >
+        {b.payment?.paidPaise ? <RefundDestination value={cancelTo} onChange={setCancelTo} offline={b.source === 'offline'} /> : null}
+      </ConfirmDialog>
       <ConfirmDialog
         open={confirm === 'waive'}
         onClose={() => setConfirm(null)}

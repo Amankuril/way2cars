@@ -13,6 +13,7 @@ import { StatusPill } from '@/admin/components/StatusPill.jsx';
 import { Button, IconButton, classes as buttonClasses } from '@/admin/components/Button.jsx';
 import { ConfirmDialog } from '@/admin/components/Modal.jsx';
 import { Field, Input, MoneyInput, Textarea, Checkbox } from '@/admin/components/Form.jsx';
+import { RefundDestination } from './adjustOps.jsx';
 
 /**
  * Booking-page panels for the security deposit (money or a bike / laptop handed over), the deposit
@@ -73,6 +74,7 @@ export function DepositReviewPanel({ b }) {
   const prevExtra = (st?.extraCharges || []).reduce((t, c) => t + c.amountPaise, 0);
   const [rows, setRows] = useState(() => (st?.extraCharges || []).map((c) => ({ label: c.label, amount: String(c.amountPaise / 100), note: c.note || '' })));
   const [refundNow, setRefundNow] = useState(false);
+  const [refundTo, setRefundTo] = useState(st?.depositRefundTo || 'source');
   const [date, setDate] = useState(() => istDateInput(new Date(Date.now() + (b.depositDefaultRefundDays ?? 7) * 86400000)));
   const [note, setNote] = useState('');
   const [error, setError] = useState(null);
@@ -134,6 +136,7 @@ export function DepositReviewPanel({ b }) {
             {!refundNow ? <Field label="Refund on" htmlFor="dr-date" hint="The refund is sent automatically on this date."><Input id="dr-date" type="date" min={istDateInput(new Date())} value={date} onChange={(e) => setDate(e.target.value)} className="num" /></Field> : null}
           </div>
         ) : null}
+        {!collateral && refund > 0 ? <RefundDestination value={refundTo} onChange={setRefundTo} offline={b.source === 'offline'} /> : null}
         <Field label="Inspection note" htmlFor="dr-note"><Textarea id="dr-note" rows={2} maxLength={500} value={note} onChange={(e) => setNote(e.target.value)} placeholder="e.g. Minor scratch on rear bumper — existing; interior needed cleaning" /></Field>
         {error ? <p className="text-caption font-semibold text-danger-600" role="alert">{error}</p> : null}
         <Button variant="primary" icon={ShieldCheck} onClick={submit}>{collateral ? 'Save inspection' : refund > 0 ? (refundNow ? `Approve refund of ${money(refund)} now` : 'Approve and schedule refund') : 'Save inspection'}</Button>
@@ -146,7 +149,7 @@ export function DepositReviewPanel({ b }) {
         confirmLabel="Confirm"
         onConfirm={async () => {
           try {
-            await review.mutateAsync({ extraCharges: parsed.map((r) => ({ label: r.label, amountPaise: r.amountPaise, ...(r.note ? { note: r.note } : {}) })), ...(refundNow || collateral ? {} : { refundAt: new Date(`${date}T10:00:00+05:30`).toISOString() }), ...(note.trim() ? { note: note.trim() } : {}) });
+            await review.mutateAsync({ extraCharges: parsed.map((r) => ({ label: r.label, amountPaise: r.amountPaise, ...(r.note ? { note: r.note } : {}) })), ...(refundNow || collateral ? {} : { refundAt: new Date(`${date}T10:00:00+05:30`).toISOString() }), ...(note.trim() ? { note: note.trim() } : {}), refundTo });
           } catch (e) {
             setError(errorMessage(e));
             throw e;

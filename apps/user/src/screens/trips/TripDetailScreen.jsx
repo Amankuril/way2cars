@@ -367,6 +367,14 @@ export function TripDetailScreen({ route, navigation }) {
           </Card>
         ) : null}
         <Card className="mx-4 p-4"><PriceBreakdown p={{ ...b.pricing, depositOptions: { selected: b.deposit?.type || 'cash' } }} showPayable={b.status === 'pending_payment'} /></Card>
+        {b.adjustments?.length ? (
+          <Card className="mx-4 mt-3 p-4">
+            <T variant="label" className="mb-1">Amount adjusted by WAY2CARS</T>
+            {b.adjustments.map((a, i) => (
+              <KeyValue key={i} label={a.reason} hint={[dateTime(a.at), a.balancePaise ? `balance −${money(a.balancePaise)}` : null, a.outstandingPaise ? `dues −${money(a.outstandingPaise)}` : null, a.refundPaise ? `${money(a.refundPaise)} refunded to ${a.refundTo === 'wallet' ? 'your wallet' : 'your payment method'}` : null].filter(Boolean).join(' · ')} value={money(-a.amountPaise)} tone="success" />
+            ))}
+          </Card>
+        ) : null}
         {b.refunds?.length ? (
           <Card className="mx-4 mt-3 p-4">
             <View className="mb-1 flex-row items-center">
@@ -377,7 +385,7 @@ export function TripDetailScreen({ route, navigation }) {
               <View key={r.id} className={cn('flex-row items-center py-2.5', i > 0 && 'border-t border-line')}>
                 <View className="mr-3 flex-1">
                   <T variant="bodySm" className="font-semibold capitalize">{r.reason.replace(/_/g, ' ')}</T>
-                  <T variant="caption" tone="subtle">{dateTime(r.createdAt)}</T>
+                  <T variant="caption" tone="subtle">{dateTime(r.createdAt)} · {r.destination === 'wallet' ? 'to your WAY2CARS wallet' : 'to your payment method'}</T>
                 </View>
                 <View className="items-end">
                   <T variant="bodySm" tone={r.status === 'processed' ? 'success' : 'default'} className="font-extrabold" style={{ fontVariant: ['tabular-nums'] }}>{money(r.amountPaise)}</T>

@@ -42,16 +42,47 @@ function CustomerLookup({ phone }) {
   );
 }
 
-function CarPicker({ value, onChange }) {
+const TIMES = Array.from({ length: 48 }, (_, i) => `${String(Math.floor(i / 2)).padStart(2, '0')}:${i % 2 ? '30' : '00'}`);
+const timeLabel = (t) => {
+  const [h, m] = t.split(':').map(Number);
+  return `${((h + 11) % 12) + 1}:${String(m).padStart(2, '0')} ${h < 12 ? 'AM' : 'PM'}`;
+};
+const SEATS = [{ value: '', label: 'All cars' }, { value: '5', label: '5 seater' }, { value: '7', label: '7 seater' }];
+
+/** Cars free for the whole chosen period (from the server), with seat filters and search. */
+function AvailableCars({ startAt, endAt, value, onChange }) {
   const [q, setQ] = useState('');
+  const [seats, setSeats] = useState('');
   const dq = useDebounced(q);
-  const list = useQuery({ queryKey: ['office-cars', dq], queryFn: () => api.list(`${ADMIN}/vehicles`, { approval: 'approved', q: dq || undefined, limit: 20 }) });
+  const ready = Boolean(startAt && endAt && endAt > startAt);
+  const list = useQuery({
+    queryKey: ['office-available', startAt, endAt, seats, dq],
+    queryFn: () => api.list(`${ADMIN}/bookings/offline/available-cars`, { startAt, endAt, seats: seats || undefined, q: dq || undefined }),
+    enabled: ready,
+    retry: false,
+  });
   const cars = list.data?.data || [];
+  const meta = list.data?.meta;
+  useEffect(() => {
+    if (value && list.data && !cars.some((c) => c.id === value.id)) onChange(null); // chosen car no longer free for the new times
+  }, [list.data]); // eslint-disable-line react-hooks/exhaustive-deps
+  if (!ready) return <p className="text-caption text-ink-500">Choose the start and end date &amp; time to see the cars that are free.</p>;
   return (
     <div className="space-y-2">
-      <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search by registration or model" aria-label="Search cars" />
-      <div className="scroll-thin max-h-64 divide-y divide-line overflow-y-auto rounded-md border border-line">
-        {list.isLoading ? <p className="p-3 text-caption text-ink-500">Loading cars…</p> : !cars.length ? <p className="p-3 text-caption text-ink-500">No approved cars match.</p> : cars.map((c) => (
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="inline-flex rounded-md border border-line p-0.5" role="radiogroup" aria-label="Seats">
+          {SEATS.map((o) => (
+            <button key={o.value} type="button" role="radio" aria-checked={seats === o.value} onClick={() => setSeats(o.value)}
+              className={cn('rounded px-3 py-1.5 text-label', seats === o.value ? 'bg-brand-500 text-white' : 'text-ink-700 hover:bg-ink-50')}>{o.label}</button>
+          ))}
+        </div>
+        <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search registration or model" aria-label="Search cars" className="min-w-[200px] flex-1" />
+      </div>
+      <p className="text-caption text-ink-500">
+        {list.isFetching ? 'Checking availability…' : list.error ? errorMessage(list.error) : `${meta?.total ?? 0} car${meta?.total === 1 ? '' : 's'} free for this period${meta?.unavailable ? ` · ${meta.unavailable} booked or blocked` : ''}`}
+      </p>
+      <div className="scroll-thin max-h-80 divide-y divide-line overflow-y-auto rounded-md border border-line">
+        {!list.isLoading && !cars.length ? <p className="p-3 text-caption text-ink-500">No free cars match. Try other times or seats.</p> : cars.map((c) => (
           <button
             key={c.id}
             type="button"
@@ -62,10 +93,9 @@ function CarPicker({ value, onChange }) {
             {c.photos?.[0] ? <img src={c.photos[0]} alt="" className="h-10 w-14 shrink-0 rounded-sm object-cover" /> : <span className="h-10 w-14 shrink-0 rounded-sm bg-ink-100" />}
             <span className="min-w-0 flex-1">
               <span className="block truncate text-label text-ink-900">{c.title}</span>
-              <span className="num block text-caption text-ink-500">{c.registrationNumber} · {c.city?.name} · {money(c.pricing?.dailyPaise)}/day</span>
+              <span className="num block text-caption text-ink-500">{c.registrationNumber} · {c.seats} seats · {c.city?.name} · {money(c.estimate?.rentalPaise)} for {c.estimate?.hours} h</span>
             </span>
             <StatusPill map={OWNERSHIP} value={c.ownership} dot={false} />
-            {c.status !== 'active' || c.adminSuspended ? <StatusPill tone="warning" dot={false}>{c.adminSuspended ? 'Suspended' : c.status}</StatusPill> : null}
           </button>
         ))}
       </div>
@@ -78,7 +108,8 @@ export default function OfficeBooking() {
   const navigate = useNavigate();
   const [f, setF] = useState(() => ({
     phone: '', name: '', car: null,
-    startAt: istDateTimeInput(nextHalfHour(HALF_HOUR)), endAt: istDateTimeInput(nextHalfHour(HALF_HOUR + 24 * 3600_000)),
+    startDate: istDateTimeInput(nextHalfHour(HALF_HOUR)).slice(0, 10), startTime: istDateTimeInput(nextHalfHour(HALF_HOUR)).slice(11, 16),
+    endDate: istDateTimeInput(nextHalfHour(HALF_HOUR + 24 * 3600_000)).slice(0, 10), endTime: istDateTimeInput(nextHalfHour(HALF_HOUR + 24 * 3600_000)).slice(11, 16),
     rental: '', deposit: '', discount: '', waiveFee: false, priceNote: '',
     payStatus: 'paid', amount: '', method: 'cash', reference: '', balanceDueAt: '', note: '',
     unlimitedKm: false, depositOption: 'cash', cMake: '', cModel: '', cYear: '', cReg: '', cSerial: '', pickupLocationId: '', dropoffLocationId: '',
@@ -88,6 +119,9 @@ export default function OfficeBooking() {
   const [errors, setErrors] = useState({});
   const [formError, setFormError] = useState(null);
   const set = (k) => (e) => setF((x) => ({ ...x, [k]: e?.target ? e.target.value : e }));
+  // Composed IST "YYYY-MM-DDTHH:mm" values (what the rest of the form and the API helpers use).
+  const startAt = f.startDate && f.startTime ? `${f.startDate}T${f.startTime}` : '';
+  const endAt = f.endDate && f.endTime ? `${f.endDate}T${f.endTime}` : '';
 
   const pricing = useMemo(() => {
     const out = {};
@@ -101,7 +135,7 @@ export default function OfficeBooking() {
 
   // Debounce a string key (a fresh object every render would never settle).
   const options = { unlimitedKm: f.unlimitedKm || undefined, depositOption: f.depositOption, pickupLocationId: (company && f.pickupLocationId) || undefined, dropoffLocationId: (company && f.dropoffLocationId) || undefined };
-  const key = useDebounced(JSON.stringify({ start: fromIstDateTime(f.startAt), end: fromIstDateTime(f.endAt), carId: f.car?.id, pricing, options }), 400);
+  const key = useDebounced(JSON.stringify({ start: fromIstDateTime(startAt), end: fromIstDateTime(endAt), carId: f.car?.id, pricing, options }), 400);
   const win = JSON.parse(key);
   const quote = useQuery({
     queryKey: ['office-quote', key],
@@ -126,8 +160,8 @@ export default function OfficeBooking() {
     const e = {};
     if (digits(f.phone).length !== 10) e.phone = 'Enter a 10-digit mobile number.';
     if (!f.car) e.car = 'Choose a car.';
-    if (!f.startAt || !f.endAt || f.endAt <= f.startAt) e.endAt = 'Return must be after pickup.';
-    for (const k of ['startAt', 'endAt']) if (f[k] && !/:(00|30)$/.test(f[k])) e[k] = 'Use a time on the hour or half hour.';
+    if (!startAt || !endAt || endAt <= startAt) e.endAt = 'Return must be after pickup.';
+
     if (pricing && Object.values(pricing).some((v) => v === null)) e.pricing = 'Check the price fields.';
     let collateral;
     if (f.depositOption !== 'cash') {
@@ -147,7 +181,7 @@ export default function OfficeBooking() {
     setFormError(null);
     create.mutate({
       phone: digits(f.phone), name: f.name.trim() || undefined, vehicleId: f.car.id,
-      startAt: fromIstDateTime(f.startAt), endAt: fromIstDateTime(f.endAt),
+      startAt: fromIstDateTime(startAt), endAt: fromIstDateTime(endAt),
       pricing, payment, ...options, ...(collateral ? { collateral } : {}),
       balanceDueAt: f.payStatus !== 'paid' && f.balanceDueAt ? fromIstDateTime(f.balanceDueAt) : undefined,
       note: f.note.trim() || undefined,
@@ -171,18 +205,28 @@ export default function OfficeBooking() {
             <CustomerLookup phone={f.phone} />
           </FormSection>
 
-          <FormSection title="Car and dates" description="Pickup and return in IST, on the hour or half hour.">
-            <Field label="Car" error={errors.car}>
-              <CarPicker value={f.car} onChange={(c) => setF((x) => ({ ...x, car: c }))} />
-            </Field>
-            <div className="grid gap-4 sm:grid-cols-2">
-              <Field label="Pickup" htmlFor="ob-start" required error={errors.startAt}>
-                <Input id="ob-start" type="datetime-local" step={1800} value={f.startAt} onChange={set('startAt')} className="num" invalid={Boolean(errors.startAt)} />
+          <FormSection title="Schedule" description="Start and end date and time (IST). Times are on the hour or half hour.">
+            <div className="grid gap-4 sm:grid-cols-4">
+              <Field label="Start date" htmlFor="ob-sdate" required error={errors.startAt}>
+                <Input id="ob-sdate" type="date" value={f.startDate} onChange={set('startDate')} className="num" invalid={Boolean(errors.startAt)} />
               </Field>
-              <Field label="Return" htmlFor="ob-end" required error={errors.endAt}>
-                <Input id="ob-end" type="datetime-local" step={1800} value={f.endAt} onChange={set('endAt')} className="num" invalid={Boolean(errors.endAt)} />
+              <Field label="Start time" htmlFor="ob-stime" required>
+                <Select id="ob-stime" value={f.startTime} onChange={set('startTime')}>{TIMES.map((t) => <option key={t} value={t}>{timeLabel(t)}</option>)}</Select>
+              </Field>
+              <Field label="End date" htmlFor="ob-edate" required error={errors.endAt}>
+                <Input id="ob-edate" type="date" min={f.startDate} value={f.endDate} onChange={set('endDate')} className="num" invalid={Boolean(errors.endAt)} />
+              </Field>
+              <Field label="End time" htmlFor="ob-etime" required>
+                <Select id="ob-etime" value={f.endTime} onChange={set('endTime')}>{TIMES.map((t) => <option key={t} value={t}>{timeLabel(t)}</option>)}</Select>
               </Field>
             </div>
+            {startAt && endAt && endAt > startAt ? <p className="text-caption text-ink-600">{dateTime(fromIstDateTime(startAt))} → {dateTime(fromIstDateTime(endAt))} · {duration(fromIstDateTime(startAt), fromIstDateTime(endAt))}</p> : null}
+          </FormSection>
+
+          <FormSection title="Available cars" description="Only cars free for the whole period are listed (existing bookings, the buffer between trips and blocked dates are checked).">
+            <Field label="Car" error={errors.car}>
+              <AvailableCars startAt={fromIstDateTime(startAt)} endAt={fromIstDateTime(endAt)} value={f.car} onChange={(c) => setF((x) => ({ ...x, car: c }))} />
+            </Field>
           </FormSection>
 
           <FormSection title="Pricing" description="Leave blank to use the car’s own rates. Changes are recorded on the booking.">
@@ -275,7 +319,7 @@ export default function OfficeBooking() {
             ) : q ? (
               <div className="space-y-3">
                 <p className={cn('rounded-md p-2 text-caption font-semibold', q.available ? 'bg-success-50 text-success-700' : 'bg-danger-50 text-danger-700')}>
-                  {q.available ? `Available · ${duration(fromIstDateTime(f.startAt), fromIstDateTime(f.endAt))}` : q.message || 'Not available for these times.'}
+                  {q.available ? `Available · ${duration(fromIstDateTime(startAt), fromIstDateTime(endAt))}` : q.message || 'Not available for these times.'}
                 </p>
                 {q.available ? (
                   <AmountRows
@@ -291,7 +335,7 @@ export default function OfficeBooking() {
                     ]}
                   />
                 ) : null}
-                <p className="text-caption text-ink-500">{dateTime(fromIstDateTime(f.startAt))} → {dateTime(fromIstDateTime(f.endAt))} IST</p>
+                <p className="text-caption text-ink-500">{dateTime(fromIstDateTime(startAt))} → {dateTime(fromIstDateTime(endAt))} IST</p>
               </div>
             ) : null}
           </Panel>

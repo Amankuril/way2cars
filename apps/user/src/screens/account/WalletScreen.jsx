@@ -5,7 +5,7 @@ import { Screen, HeroHeader, T, ErrorState, EmptyState, Card, SectionHeader, Fad
 import { money, dateTime } from '@shared/lib/format';
 import { api } from '../../api';
 
-const LABEL = { referral_reward: 'Referral reward', loyalty_reward: 'Trip reward', wallet_redeemed: 'Used for booking', wallet_redeem_reversed: 'Returned from booking', admin_adjustment: 'Credit from WAY2CARS' };
+const LABEL = { referral_reward: 'Referral reward', loyalty_reward: 'Trip reward', wallet_redeemed: 'Used for booking', wallet_redeem_reversed: 'Returned from booking', admin_adjustment: 'Adjustment by WAY2CARS', booking_refund: 'Booking refund' };
 
 function BalanceHero({ balance, loading }) {
   return (
