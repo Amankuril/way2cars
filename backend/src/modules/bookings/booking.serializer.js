@@ -88,8 +88,8 @@ export function serializeBooking(b, { audience = 'user', user, vendor, vehicle, 
     } : null,
     pricing: audience === 'vendor'
       ? (show.bookingAmounts
-        ? { hours: b.pricing.hours, rentalPaise: b.pricing.rentalPaise, depositPaise: b.pricing.depositPaise, includedKm: b.pricing.includedKm, extraKmChargePaise: b.pricing.extraKmChargePaise, commissionBps: b.pricing.commissionBps, deliveryFeePaise: b.pricing.deliveryFeePaise }
-        : { hours: b.pricing.hours, includedKm: b.pricing.includedKm, extraKmChargePaise: b.pricing.extraKmChargePaise })
+        ? { hours: b.pricing.hours, rentalPaise: b.pricing.rentalPaise, depositPaise: b.pricing.depositPaise, includedKm: b.pricing.includedKm, extraKmChargePaise: b.pricing.extraKmChargePaise, commissionBps: b.pricing.commissionBps, deliveryFeePaise: b.pricing.deliveryFeePaise, unlimitedKm: b.pricing.unlimitedKm }
+        : { hours: b.pricing.hours, includedKm: b.pricing.includedKm, extraKmChargePaise: b.pricing.extraKmChargePaise, unlimitedKm: b.pricing.unlimitedKm })
       : b.pricing,
     payment: audience === 'vendor' ? (show.paymentStatus ? { status: b.payment.status } : null) : b.payment,
     balance: audience === 'vendor' || !b.balance?.status ? null : { duePaise: b.balance.duePaise, dueAt: b.balance.dueAt, status: b.balance.status, paidAt: b.balance.paidAt },

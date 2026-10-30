@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Phone, BadgeCheck, Navigation, MessageSquare, Check, X } from 'lucide-react-native';
 import { Screen, Header, T, Button, Section, Panel, KeyValue, Divider, Pill, Notice, Loading, ErrorState, Sheet, Field, ListItem, Chip, useToast, cn } from '@shared/native';
 import { colors } from '@shared/theme/tokens';
-import { BOOKING_STATUS, CHECKLIST, PHOTO_ANGLE, fuelLabel } from '@shared/lib/labels';
+import { BOOKING_STATUS, CHECKLIST, PHOTO_ANGLE, fuelLabel, DEPOSIT_TYPE, COLLATERAL_STATUS } from '@shared/lib/labels';
 import { money, dateTime, dayLabel, timeLabel, duration, pct } from '../../lib';
 import { api, privateSource } from '../../api';
 import { useCountdown, mmss } from '../../hooks/useCountdown';
@@ -49,6 +49,11 @@ export function BookingDetailScreen({ route, navigation }) {
   const decide = useMutation({
     mutationFn: (body) => api.post(`/api/v1/vendor/bookings/${id}/decision`, body),
     onSuccess: (_d, body) => { setRejectOpen(false); toast(body.decision === 'accept' ? 'Booking confirmed' : 'Booking declined — renter refunded', body.decision === 'accept' ? 'success' : 'neutral'); refresh(); },
+    onError: (e) => toast(e.message, 'danger'),
+  });
+  const collateral = useMutation({
+    mutationFn: (action) => api.post(`/api/v1/vendor/bookings/${id}/collateral`, { action }),
+    onSuccess: (_d, action) => { toast(action === 'received' ? 'Deposit marked received — the renter can start the trip' : 'Deposit marked returned', 'success'); refresh(); },
     onError: (e) => toast(e.message, 'danger'),
   });
   const acceptReturn = useMutation({
@@ -140,10 +145,28 @@ export function BookingDetailScreen({ route, navigation }) {
         </Panel>
       </Section>
 
+      {b.deposit?.type && b.deposit.type !== 'cash' ? (
+        <Section title="Security deposit">
+          <Panel>
+            <View className="flex-row items-center justify-between">
+              <T variant="body" className="mr-2 flex-1 font-semibold">{DEPOSIT_TYPE[b.deposit.type]}: {[b.deposit.collateral?.make, b.deposit.collateral?.model, b.deposit.collateral?.year].filter(Boolean).join(' ')}</T>
+              {COLLATERAL_STATUS[b.deposit.status] ? <Pill label={COLLATERAL_STATUS[b.deposit.status].label} tone={COLLATERAL_STATUS[b.deposit.status].tone} /> : null}
+            </View>
+            {b.deposit.collateral?.registrationNumber ? <KeyValue label="Registration no." value={b.deposit.collateral.registrationNumber} /> : null}
+            {b.deposit.collateral?.serialNumber ? <KeyValue label="Serial no." value={b.deposit.collateral.serialNumber} /> : null}
+            {b.deposit.receivedAt ? <KeyValue label="Received" value={dateTime(b.deposit.receivedAt)} /> : null}
+            {b.deposit.returnedAt ? <KeyValue label="Returned" value={dateTime(b.deposit.returnedAt)} /> : null}
+            <T variant="caption" tone="subtle" className="mt-1">The renter hands this over instead of a money deposit. Check it matches, mark it received at pickup (the trip can’t start before), and give it back once the car is returned.</T>
+            {b.deposit.status === 'awaiting' && ['confirmed', 'ongoing'].includes(b.status) ? <Button title={`Mark ${b.deposit.type} received`} className="mt-3" loading={collateral.isPending} onPress={() => collateral.mutate('received')} /> : null}
+            {b.deposit.status === 'received' && ['return_pending', 'completed', 'cancelled', 'rejected'].includes(b.status) ? <Button title={`Mark ${b.deposit.type} returned`} variant="secondary" className="mt-3" loading={collateral.isPending} onPress={() => collateral.mutate('returned')} /> : null}
+          </Panel>
+        </Section>
+      ) : null}
+
       {b.settlementPreview && !b.settlement ? (
         <Section title="Return summary">
           <Panel>
-            <KeyValue label="Distance driven" value={`${b.settlementPreview.kmDriven} km (${b.pricing.includedKm} included)`} />
+            <KeyValue label="Distance driven" value={`${b.settlementPreview.kmDriven} km (${b.pricing.unlimitedKm ? 'unlimited km' : `${b.pricing.includedKm} included`})`} />
             <KeyValue label="Extra km" value={`${b.settlementPreview.extraKm} km${b.settlementPreview.extraKmPaise != null ? ` · ${money(b.settlementPreview.extraKmPaise)}` : ''}`} />
             <KeyValue label="Fuel shortfall" value={`${b.settlementPreview.fuelShortEighths}/8${b.settlementPreview.fuelPaise != null ? ` · ${money(b.settlementPreview.fuelPaise)}` : ''}`} />
             <KeyValue label="Late by" value={`${b.settlementPreview.lateHours} h${b.settlementPreview.lateFeePaise != null ? ` · ${money(b.settlementPreview.lateFeePaise)}` : ''}`} />

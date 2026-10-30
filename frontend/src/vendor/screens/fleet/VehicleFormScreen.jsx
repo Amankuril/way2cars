@@ -14,12 +14,12 @@ const paise = (r) => Math.round(Number(r || 0) * 100);
 const YEARS = Array.from({ length: 15 }, (_, i) => new Date().getFullYear() + 1 - i);
 
 function fromVehicle(v, account) {
-  if (!v) return { cityId: account?.cityId || null, brandId: null, categoryId: null, model: '', variant: '', year: new Date().getFullYear() - 1, registrationNumber: '', color: '', fuelType: 'petrol', transmission: 'manual', seats: 5, luggageBags: 2, rangeKm: '', features: ['ac'], description: '', location: null, area: '', pincode: '', hourly: '', daily: '', weekend: '', deposit: '3000', kmPerDay: '250', extraKm: '10', deliveryEnabled: false, deliveryMaxKm: '10', instantBooking: false };
+  if (!v) return { cityId: account?.cityId || null, brandId: null, categoryId: null, model: '', variant: '', year: new Date().getFullYear() - 1, registrationNumber: '', color: '', fuelType: 'petrol', transmission: 'manual', seats: 5, luggageBags: 2, rangeKm: '', features: ['ac'], description: '', location: null, area: '', pincode: '', hourly: '', daily: '', weekend: '', deposit: '3000', kmPerDay: '250', extraKm: '10', unlimitedKm: '', modelId: null, deliveryEnabled: false, deliveryMaxKm: '10', instantBooking: false };
   return {
     cityId: v.city?.id, brandId: v.brand?.id, categoryId: v.category?.id, model: v.model, variant: v.variant || '', year: v.year, registrationNumber: v.registrationNumber, color: v.color || '',
     fuelType: v.fuelType, transmission: v.transmission, seats: v.seats, luggageBags: v.luggageBags, rangeKm: v.rangeKm ? String(v.rangeKm) : '', features: v.features || [], description: v.description || '',
     location: v.location?.point ? { address: v.location.address, lat: v.location.point.lat, lng: v.location.point.lng, placeId: v.location.placeId } : null, area: v.location?.area || '', pincode: v.location?.pincode || '',
-    hourly: rupees(v.pricing.hourlyPaise), daily: rupees(v.pricing.dailyPaise), weekend: rupees(v.pricing.weekendDailyPaise), deposit: rupees(v.pricing.securityDepositPaise), kmPerDay: String(v.pricing.includedKmPerDay), extraKm: rupees(v.pricing.extraKmChargePaise),
+    hourly: rupees(v.pricing.hourlyPaise), daily: rupees(v.pricing.dailyPaise), weekend: rupees(v.pricing.weekendDailyPaise), deposit: rupees(v.pricing.securityDepositPaise), kmPerDay: String(v.pricing.includedKmPerDay), extraKm: rupees(v.pricing.extraKmChargePaise), unlimitedKm: rupees(v.pricing.unlimitedKmDailyPaise), modelId: v.modelId || null,
     deliveryEnabled: !!v.delivery?.enabled, deliveryMaxKm: String(v.delivery?.maxKm ?? 10), instantBooking: !!v.instantBooking,
   };
 }
@@ -41,13 +41,24 @@ export function VehicleFormScreen({ route, navigation }) {
   const set = (k) => (v) => { setF((x) => ({ ...x, [k]: v })); setErrors((e) => ({ ...e, [k]: undefined })); };
   const toggleFeature = (k) => setF((x) => ({ ...x, features: x.features.includes(k) ? x.features.filter((y) => y !== k) : [...x.features, k] }));
   const brandList = useMemo(() => (brands.data || []).filter((b) => b.name.toLowerCase().includes(brandQ.toLowerCase())), [brands.data, brandQ]);
+  const models = useQuery({ queryKey: ['models', f?.brandId], queryFn: () => api.get('/api/v1/public/models', { brandId: f.brandId }), enabled: Boolean(f?.brandId), staleTime: 10 * 60_000 });
+  const chosenModel = (models.data || []).find((m) => m.id === f?.modelId);
+  const pickModel = (m) => {
+    setF((x) => ({ ...x, modelId: m?.id || null, model: m ? m.name : '', variant: '', ...(m?.categoryId && !x.categoryId ? { categoryId: m.categoryId } : {}) }));
+    setErrors((e) => ({ ...e, model: undefined }));
+    setSheet(null);
+  };
+  const pickVariant = (v) => {
+    setF((x) => ({ ...x, variant: v.name, ...(v.fuelType ? { fuelType: v.fuelType } : {}), ...(v.transmission ? { transmission: v.transmission } : {}), ...(v.seats ? { seats: v.seats } : {}) }));
+    setSheet(null);
+  };
 
   const body = () => ({
-    cityId: f.cityId, brandId: f.brandId, categoryId: f.categoryId, model: f.model.trim(), variant: f.variant.trim() || undefined, year: f.year,
+    cityId: f.cityId, brandId: f.brandId, categoryId: f.categoryId, modelId: f.modelId || (editId ? null : undefined), model: f.model.trim(), variant: f.variant.trim() || undefined, year: f.year,
     registrationNumber: f.registrationNumber.trim().toUpperCase(), color: f.color.trim() || undefined, fuelType: f.fuelType, transmission: f.transmission,
     seats: f.seats, luggageBags: f.luggageBags, rangeKm: f.fuelType === 'electric' && f.rangeKm ? Number(f.rangeKm) : undefined, features: f.features, description: f.description.trim() || undefined,
     location: f.location ? { address: f.location.address, area: f.area.trim() || undefined, pincode: /^\d{6}$/.test(f.pincode) ? f.pincode : undefined, placeId: f.location.placeId, lat: f.location.lat, lng: f.location.lng } : undefined,
-    pricing: { hourlyPaise: paise(f.hourly), dailyPaise: paise(f.daily), weekendDailyPaise: f.weekend ? paise(f.weekend) : null, securityDepositPaise: paise(f.deposit), includedKmPerDay: Number(f.kmPerDay || 0), extraKmChargePaise: paise(f.extraKm) },
+    pricing: { hourlyPaise: paise(f.hourly), dailyPaise: paise(f.daily), weekendDailyPaise: f.weekend ? paise(f.weekend) : null, securityDepositPaise: paise(f.deposit), includedKmPerDay: Number(f.kmPerDay || 0), extraKmChargePaise: paise(f.extraKm), unlimitedKmDailyPaise: f.unlimitedKm === '' ? null : paise(f.unlimitedKm) },
     delivery: { enabled: f.deliveryEnabled, maxKm: Number(f.deliveryMaxKm || 0) },
     instantBooking: f.instantBooking,
   });
@@ -63,7 +74,7 @@ export function VehicleFormScreen({ route, navigation }) {
     onError: (e) => {
       const fe = e.fieldErrors || {};
       const mapped = {};
-      for (const [k, msg] of Object.entries(fe)) mapped[{ 'pricing.hourlyPaise': 'hourly', 'pricing.dailyPaise': 'daily', 'pricing.weekendDailyPaise': 'weekend', 'pricing.securityDepositPaise': 'deposit', 'pricing.includedKmPerDay': 'kmPerDay', 'pricing.extraKmChargePaise': 'extraKm' }[k] || k.split('.')[0]] = msg;
+      for (const [k, msg] of Object.entries(fe)) mapped[{ 'pricing.hourlyPaise': 'hourly', 'pricing.dailyPaise': 'daily', 'pricing.weekendDailyPaise': 'weekend', 'pricing.securityDepositPaise': 'deposit', 'pricing.includedKmPerDay': 'kmPerDay', 'pricing.extraKmChargePaise': 'extraKm', 'pricing.unlimitedKmDailyPaise': 'unlimitedKm', modelId: 'model' }[k] || k.split('.')[0]] = msg;
       setErrors(mapped);
       toast(Object.keys(fe).length ? 'Please fix the highlighted fields' : e.message, 'danger');
     },
@@ -80,7 +91,16 @@ export function VehicleFormScreen({ route, navigation }) {
       <Section title="The car" first={!editId}>
         <Panel>
           <Field label="Brand" value={brand?.name || ''} placeholder="Select brand" onPress={() => setSheet('brand')} suffix={<ChevronDown size={18} color={colors.ink[400]} />} error={errors.brandId} />
-          <View className="flex-row"><Field className="mr-3 flex-1" label="Model" value={f.model} onChangeText={set('model')} placeholder="Creta" error={errors.model} /><Field className="flex-1" label="Variant" value={f.variant} onChangeText={set('variant')} placeholder="SX (O)" /></View>
+          {models.data?.length ? (
+            <View className="flex-row">
+              <Field className="mr-3 flex-1" label="Model" value={f.model} placeholder="Select model" onPress={() => setSheet('model')} suffix={<ChevronDown size={18} color={colors.ink[400]} />} error={errors.model} />
+              {chosenModel?.variants?.length
+                ? <Field className="flex-1" label="Variant" value={f.variant} placeholder="Select variant" onPress={() => setSheet('variant')} suffix={<ChevronDown size={18} color={colors.ink[400]} />} />
+                : <Field className="flex-1" label="Variant" value={f.variant} onChangeText={set('variant')} placeholder="SX (O)" />}
+            </View>
+          ) : (
+            <View className="flex-row"><Field className="mr-3 flex-1" label="Model" value={f.model} onChangeText={set('model')} placeholder="Creta" error={errors.model} /><Field className="flex-1" label="Variant" value={f.variant} onChangeText={set('variant')} placeholder="SX (O)" /></View>
+          )}
           <View className="flex-row">
             <Field className="mr-3 flex-1" label="Year" value={String(f.year)} onPress={() => setSheet('year')} suffix={<ChevronDown size={18} color={colors.ink[400]} />} />
             <Field className="flex-1" label="Colour" value={f.color} onChangeText={set('color')} placeholder="White" />
@@ -121,6 +141,7 @@ export function VehicleFormScreen({ route, navigation }) {
           <Field label="Weekend day rate (₹, optional)" value={f.weekend} onChangeText={(t) => set('weekend')(t.replace(/\D/g, ''))} keyboardType="number-pad" hint="Applies to Saturdays and Sundays" error={errors.weekend} />
           <Field label="Security deposit (₹)" value={f.deposit} onChangeText={(t) => set('deposit')(t.replace(/\D/g, ''))} keyboardType="number-pad" hint="Refunded to the renter after the trip, minus extra charges" error={errors.deposit} />
           <View className="flex-row"><Field className="mr-3 flex-1" label="Free km per day" value={f.kmPerDay} onChangeText={(t) => set('kmPerDay')(t.replace(/\D/g, ''))} keyboardType="number-pad" error={errors.kmPerDay} /><Field className="flex-1" label="Extra km (₹/km)" value={f.extraKm} onChangeText={(t) => set('extraKm')(t.replace(/[^\d.]/g, ''))} keyboardType="decimal-pad" error={errors.extraKm} /></View>
+          <Field label="Unlimited km (₹ extra per day)" value={f.unlimitedKm} onChangeText={(t) => set('unlimitedKm')(t.replace(/[^\d.]/g, ''))} keyboardType="decimal-pad" placeholder="Leave empty to not offer it" hint="Renters can pay this per day to drive without a km limit." error={errors.unlimitedKm} />
           <T variant="caption" tone="subtle">Trips longer than a few hours are charged per day; partial days are charged hourly, capped at the day rate. Set special prices for festivals in the pricing calendar.</T>
         </Panel>
       </Section>
@@ -150,7 +171,17 @@ export function VehicleFormScreen({ route, navigation }) {
       <Sheet visible={sheet === 'brand'} onClose={() => setSheet(null)} title="Brand">
         <View className="px-5"><Field placeholder="Search brands" value={brandQ} onChangeText={setBrandQ} /></View>
         <FlatList style={{ maxHeight: 360 }} data={brandList} keyExtractor={(b) => b.id} keyboardShouldPersistTaps="handled" renderItem={({ item }) => (
-          <Pressable onPress={() => { set('brandId')(item.id); setSheet(null); }} className="px-5 py-3.5 active:bg-ink-50"><T variant="body" className={f.brandId === item.id ? 'font-bold text-brand-700' : ''}>{item.name}</T></Pressable>
+          <Pressable onPress={() => { if (item.id !== f.brandId) setF((x) => ({ ...x, modelId: null, model: '', variant: '' })); set('brandId')(item.id); setSheet(null); }} className="px-5 py-3.5 active:bg-ink-50"><T variant="body" className={f.brandId === item.id ? 'font-bold text-brand-700' : ''}>{item.name}</T></Pressable>
+        )} />
+      </Sheet>
+      <Sheet visible={sheet === 'model'} onClose={() => setSheet(null)} title="Model">
+        <FlatList style={{ maxHeight: 360 }} data={models.data || []} keyExtractor={(m) => m.id} keyboardShouldPersistTaps="handled" renderItem={({ item }) => (
+          <Pressable onPress={() => pickModel(item)} className="px-5 py-3.5 active:bg-ink-50"><T variant="body" className={f.modelId === item.id ? 'font-bold text-brand-700' : ''}>{item.name}</T></Pressable>
+        )} />
+      </Sheet>
+      <Sheet visible={sheet === 'variant'} onClose={() => setSheet(null)} title="Variant">
+        <FlatList style={{ maxHeight: 360 }} data={chosenModel?.variants || []} keyExtractor={(v) => v.id} keyboardShouldPersistTaps="handled" renderItem={({ item }) => (
+          <Pressable onPress={() => pickVariant(item)} className="px-5 py-3.5 active:bg-ink-50"><T variant="body" className={f.variant === item.name ? 'font-bold text-brand-700' : ''}>{item.name}</T>{[FUEL[item.fuelType], TRANSMISSION[item.transmission], item.seats ? `${item.seats} seats` : null].filter(Boolean).length ? <T variant="caption" tone="subtle">{[FUEL[item.fuelType], TRANSMISSION[item.transmission], item.seats ? `${item.seats} seats` : null].filter(Boolean).join(' · ')}</T> : null}</Pressable>
         )} />
       </Sheet>
       <Sheet visible={sheet === 'year'} onClose={() => setSheet(null)} title="Model year">
