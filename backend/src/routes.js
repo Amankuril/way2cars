@@ -18,13 +18,15 @@ import { vendorEarningsRouter, adminPayoutRouter } from './modules/payouts/payou
 import { userOffersRouter, adminCouponRouter } from './modules/coupons/coupon.routes.js';
 import { mapsRouter } from './modules/maps/maps.routes.js';
 import { adminTrackingRouter, ingestTracking } from './modules/tracking/tracking.js';
-import { adminUsersRouter, adminVendorsRouter, adminKycRouter } from './modules/admin/admin.users.routes.js';
+import { adminUsersRouter, adminVendorsRouter, adminKycRouter, adminWalletRouter } from './modules/admin/admin.users.routes.js';
 import { adminCoreRouter } from './modules/admin/admin.core.routes.js';
 import { adminReportsRouter } from './modules/reports/report.routes.js';
 import { handleRazorpayWebhook } from './modules/payments/payment.service.js';
 import { getSettings, publicSettings } from './modules/settings/settings.service.js';
 import { publicKeyId } from './integrations/razorpay.js';
 import { env } from './config/env.js';
+import { publicAnalyticsRouter, adminAnalyticsRouter } from './modules/analytics/analytics.routes.js';
+import { adminInvestorRouter } from './modules/investors/investor.routes.js';
 
 export const apiRouter = Router();
 
@@ -43,7 +45,7 @@ v1.get('/public/config', async (_req, res) => {
   const s = await getSettings();
   ok(res, { ...publicSettings(s), razorpayKeyId: publicKeyId(), mapsBrowserKey: env.GOOGLE_MAPS_BROWSER_KEY || null, apiVersion: 1 });
 });
-v1.use('/public', publicCatalogRouter, publicCmsRouter, searchRouter);
+v1.use('/public', publicCatalogRouter, publicCmsRouter, searchRouter, publicAnalyticsRouter);
 
 // ---- webhooks (raw body, signature-verified)
 v1.post('/webhooks/razorpay', async (req, res) => {
@@ -106,6 +108,9 @@ admin.use('/catalog', adminCatalogRouter);
 admin.use('/cms', adminCmsRouter);
 admin.use('/tracking', adminTrackingRouter);
 admin.use('/maps', mapsRouter);
+admin.use('/analytics', adminAnalyticsRouter);
+admin.use('/wallet', adminWalletRouter);
+admin.use('/investors', adminInvestorRouter);
 v1.use('/admin', admin);
 
 apiRouter.use('/v1', v1);

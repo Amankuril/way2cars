@@ -216,7 +216,8 @@ RazorpayX payout confirms) — a request is never presented as a completed payou
 
 | Service | Module | Notes |
 |---|---|---|
-| SMS India Hub | `integrations/sms` | **Login OTPs only.** `vendorsms/pushsms.aspx` (APIKey, sid, DLT_TE_ID, uname); text from `SMS_INDIA_HUB_OTP_TEMPLATE` must match the DLT template exactly; never retried (no double codes); OTP never logged |
+| WhatsApp Cloud API | `integrations/whatsapp` | Booking confirmation template (details + key rules + terms link); off until `WHATSAPP_*` is set. Staff always get a wa.me click-to-send fallback |
+| SMS India Hub | `integrations/sms` | Login OTPs, and the booking confirmation (second DLT template `SMS_INDIA_HUB_BOOKING_TEMPLATE`). `vendorsms/pushsms.aspx` (APIKey, sid, DLT_TE_ID, uname); text from `SMS_INDIA_HUB_OTP_TEMPLATE` must match the DLT template exactly; never retried (no double codes); OTP never logged |
 | Razorpay | `integrations/razorpay` | Orders, signature + webhook HMAC verification, fetch/reconcile, refunds |
 | Firebase (FCM) | `integrations/firebase` | firebase-admin; invalid tokens pruned; disabled cleanly if not configured |
 | Google Maps | `integrations/maps` | Places Autocomplete/Details (New), Geocoding, Routes (distance/ETA); server key; LRU cache; geo maths for proximity/geofence |
@@ -224,7 +225,8 @@ RazorpayX payout confirms) — a request is never presented as a completed payou
 | Tracking | `integrations/tracking` | Provider boundary + signed ingest endpoint. **No provider is configured yet → live tracking shows "no device"**; nothing is simulated |
 
 `notifications` service is the single dispatcher: an event (`booking.confirmed`, …) fans out to
-in-app inbox, push and email according to templates and user preferences (SMS is reserved for login OTPs).
+in-app inbox, push and email according to templates and user preferences. `booking.confirmed` additionally
+sends the WhatsApp/SMS confirmation (`modules/messaging`), logged on `booking.messages`.
 
 ## 9. Scheduled jobs (in-process, Mongo lease lock)
 Expire unpaid holds · reconcile pending payments with Razorpay · auto-reject vendor approvals past
@@ -234,3 +236,36 @@ SLA · pickup/return reminders · auto-confirm unreviewed returns · release ven
 Credentials for Razorpay, SMS India Hub (+ DLT sender/templates), Firebase project, Google Maps
 keys, SMTP; GPS/telematics provider for live tracking; legal text for the rental agreement, privacy
 policy and terms (editable in CMS); production MongoDB replica set; TLS certificates.
+
+## 11. Additional requirements (v1.2)
+
+* **Booking errors** on `/user/bookings*` and `/public/vehicles*` (400/403/409/410) append "Need help? Call us
+  on <support.phone>" to the message and return `error.support.phone` (old APKs show it too).
+* **BOOKED badge**: search with `includeBooked=true` returns booked cars after free ones with
+  `availability { available:false, nextAvailableAt }` (`availability.service.nextAvailableStarts`: earliest
+  30-minute start free for the same duration, honouring the buffer and host blocks).
+* **Unlimited km**: `vehicle.pricing.unlimitedKmDailyPaise` (unset = not offered). The add-on is a pro-rated
+  `unlimited_km` rental line, so GST/discount/commission/cancellation shares treat it as rent; settlement
+  skips extra-km charges; extensions add the same surcharge.
+* **Security deposit** (`settings.deposit`): money ≥ `minCashPaise` (₹15,000) or a bike (≥ `bikeMinYear`) /
+  laptop (≥ `laptopMinYear`) recorded in `booking.deposit`. Collateral is marked received (ops or host) before
+  pickup is allowed, and returned after the car is handed back. With `requireRefundApproval`, a settled
+  money deposit waits (`settlement.depositRefundStatus = pending_review`); operations inspect, add
+  `extraCharges` (kept by Way2Cars) and approve a refund date — today refunds at once, later dates are sent
+  by the `trips.deposit-refunds` job.
+* **Advance %**: `advance.percentBps` (host cars) and `advance.companyPercentBps` (fleet).
+* **Commission / investors**: car override `vehicle.commissionBps` > host > platform. Fleet cars may link an
+  investor (`vehicle.investor { investorId, shareBps }`, snapshotted on the booking); at settlement the
+  investor gets `shareBps` of usage charges (rent + extra km + fuel + late fee) as an `investor_earning`
+  ledger row; finance records payouts with a UTR (`admin_investors`, `investor_payouts`). No investor → 100%
+  Way2Cars.
+* **Catalogue**: `admin_vehicle_models` (per brand, with variants) and `admin_locations` (pickup / drop-off
+  hubs per city, usable for fleet cars). Service areas remain the city zones.
+* **Analytics**: the renter app batches events to `POST /public/analytics/events` (anonymous device id, user
+  attached when signed in) → `analytics_events` (13-month TTL). Admin → Analytics shows installs (first
+  opens), active users, funnel, bounce rate, top cars, and a call list of signed-in renters who dropped off
+  before paying, with follow-up notes (`analytics_followups`).
+* **Wallet**: admins credit or debit with a mandatory reason and a category (refund/goodwill/adjustment),
+  optionally tied to a booking ref; full history per renter and across renters (`/admin/wallet/transactions`).
+* **Host documents**: admins can upload (and approve) a host's KYC, add a car on a host's behalf, and publish
+  an approved host's car directly.

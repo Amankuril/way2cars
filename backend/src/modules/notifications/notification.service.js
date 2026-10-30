@@ -38,6 +38,7 @@ const T = {
   'deposit.collateral_returned': (d) => ({ category: 'trip', title: `${d.item === 'bike' ? 'Bike' : 'Laptop'} returned`, body: `Your ${d.item} given as the deposit for booking ${d.ref} has been returned to you.`, link: `/trips/${d.bookingId}` }),
   'kyc.approved': () => ({ category: 'kyc', title: 'Verification approved', body: 'Your documents are verified. You can now book any car.', link: '/profile/kyc' }),
   'kyc.rejected': (d) => ({ category: 'kyc', title: 'Verification needs attention', body: d.reason ? `We couldn't verify your documents: ${d.reason}` : "We couldn't verify your documents. Please re-upload.", link: '/profile/kyc' }),
+  'wallet.credited': (d) => ({ category: 'payment', title: 'Wallet credited', body: `₹${(d.amountPaise / 100).toFixed(2)} was added to your WAY2CARS wallet: ${d.reason}`, link: '/wallet' }),
   'referral.rewarded': (d) => ({ category: 'promo', title: 'Referral reward credited', body: `₹${(d.amountPaise / 100).toFixed(0)} was added to your WAY2CARS wallet.`, link: '/wallet' }),
   'support.reply': (d) => ({ category: 'support', title: 'Support replied', body: `New reply on ticket ${d.ref}.`, link: `/support/${d.ticketId}` }),
   'promo.broadcast': (d) => ({ category: 'promo', title: d.title, body: d.body, link: d.link || '/', promotional: true }),
@@ -114,6 +115,11 @@ export async function notify(event, to, data = {}, { dedupeKey } = {}) {
       })).status;
     }
     if (Object.keys(channels).length) await Notification.updateOne({ _id: doc._id }, { $set: { channels } });
+    // Confirmed bookings also get the details + trip rules on WhatsApp / SMS.
+    if (event === 'booking.confirmed' && data.bookingId) {
+      const { sendBookingConfirmation } = await import('../messaging/booking.messages.js');
+      setImmediate(() => sendBookingConfirmation(data.bookingId));
+    }
     return doc;
   } catch (err) {
     logger.error({ err, event }, 'notification dispatch failed');

@@ -26,6 +26,7 @@ const schema = new mongoose.Schema(
     // PAN — required for hosts (payouts / TDS).
     pan: { numberEnc: String, numberMasked: String, fileId: { type: oid, ref: 'File' } },
     selfieFileId: { type: oid, ref: 'File' },
+    submittedByAdmin: { type: oid, ref: 'AdminUser' }, // documents uploaded by operations for the host
     dateOfBirth: Date,
     status: { type: String, enum: ['pending', 'approved', 'rejected', 'superseded'], default: 'pending' },
     review: {

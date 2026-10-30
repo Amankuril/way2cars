@@ -9,7 +9,7 @@ import { Category, BODY_TYPES } from '../catalog/catalog.model.js';
 import { BLOCKING_STATUSES } from '../bookings/booking.model.js';
 import { Review } from '../reviews/review.model.js';
 import { serializeVehicle, vehicleCalendar } from '../vehicles/vehicle.service.js';
-import { validateTripWindow, isVehicleAvailable } from '../bookings/availability.service.js';
+import { validateTripWindow, isVehicleAvailable, nextAvailableStarts } from '../bookings/availability.service.js';
 import { computeRental } from '../pricing/pricing.js';
 import { getSettings, publicSettings } from '../settings/settings.service.js';
 import { getPublishedPage } from '../cms/cms.routes.js';
@@ -41,6 +41,8 @@ const searchQuery = z.object({
   minHostRating: z.coerce.number().min(1).max(5).optional(),
   minRating: z.coerce.number().min(1).max(5).optional(),
   sort: z.enum(['recommended', 'price_asc', 'price_desc', 'rating', 'distance', 'newest']).default('recommended'),
+  // Newer apps show booked cars (with a BOOKED badge and the next free time) after the available ones.
+  includeBooked: z.enum(['true', 'false']).optional(),
   page: z.coerce.number().int().min(1).max(500).default(1),
   limit: z.coerce.number().int().min(1).max(50).default(20),
 }).refine((q) => (q.startAt && q.endAt) || (!q.startAt && !q.endAt), { message: 'Provide both pickup and return times', path: ['endAt'] })
@@ -114,9 +116,12 @@ searchRouter.get('/vehicles', validate({ query: searchQuery }), async (req, res)
         { $match: { $expr: { $eq: ['$vehicleId', '$$vid'] }, startAt: { $lt: window.endAt }, endAt: { $gt: window.startAt } } },
         { $limit: 1 }, { $project: { _id: 1 } },
       ] } },
-      { $match: { clash: { $size: 0 }, blocked: { $size: 0 } } },
+      q.includeBooked === 'true'
+        ? { $addFields: { booked: { $gt: [{ $add: [{ $size: '$clash' }, { $size: '$blocked' }] }, 0] } } }
+        : { $match: { clash: { $size: 0 }, blocked: { $size: 0 } } },
     );
   }
+  const bookedLast = window && q.includeBooked === 'true' ? { booked: 1 } : {};
   const sorts = {
     recommended: { isFeatured: -1, featuredRank: -1, 'rating.avg': -1, 'stats.trips': -1, _id: 1 },
     price_asc: { 'pricing.dailyPaise': 1, _id: 1 },
@@ -126,7 +131,7 @@ searchRouter.get('/vehicles', validate({ query: searchQuery }), async (req, res)
     newest: { createdAt: -1, _id: 1 },
   };
   pipeline.push({ $facet: {
-    items: [{ $sort: sorts[q.sort] }, { $skip: (q.page - 1) * q.limit }, { $limit: q.limit }, { $project: { _id: 1, distanceMeters: 1 } }],
+    items: [{ $sort: { ...bookedLast, ...sorts[q.sort] } }, { $skip: (q.page - 1) * q.limit }, { $limit: q.limit }, { $project: { _id: 1, distanceMeters: 1, booked: 1 } }],
     total: [{ $count: 'n' }],
   } });
 
@@ -135,6 +140,8 @@ searchRouter.get('/vehicles', validate({ query: searchQuery }), async (req, res)
   const docs = await Vehicle.find({ _id: { $in: ids } }).populate(POPULATE).lean();
   const byId = new Map(docs.map((d) => [String(d._id), d]));
   const overrides = window ? await overridesFor(ids, window.startAt, window.endAt) : new Map();
+  const bookedIds = items.filter((i) => i.booked).map((i) => i._id);
+  const nextFree = bookedIds.length ? await nextAvailableStarts(bookedIds, window.startAt, window.endAt - window.startAt, { bufferMinutes: settings.booking.bufferMinutes }) : new Map();
 
   const results = items.map((i) => {
     const v = byId.get(String(i._id));
@@ -142,6 +149,7 @@ searchRouter.get('/vehicles', validate({ query: searchQuery }), async (req, res)
     if (window) {
       const rental = computeRental({ startAt: window.startAt, endAt: window.endAt, pricing: v.pricing, overrides: overrides.get(String(v._id)) });
       out.estimate = { hours: rental.hours, rentalPaise: rental.rentalPaise, includedKm: rental.includedKm };
+      if (q.includeBooked === 'true') out.availability = { available: !i.booked, nextAvailableAt: i.booked ? nextFree.get(String(v._id)) || null : null };
     }
     return out;
   });
@@ -181,7 +189,9 @@ searchRouter.get('/vehicles/:id', validate({ params: z.object({ id: objectId }),
   if (startAt && endAt) {
     const window = await validateTripWindow(startAt, endAt);
     const overrides = (await overridesFor([v._id], window.startAt, window.endAt)).get(String(v._id));
-    out.availability = { available: await isVehicleAvailable(v._id, window.startAt, window.endAt), startAt: window.startAt, endAt: window.endAt };
+    const available = await isVehicleAvailable(v._id, window.startAt, window.endAt);
+    const nextAvailableAt = available ? null : (await nextAvailableStarts([v._id], window.startAt, window.endAt - window.startAt)).get(String(v._id)) || null;
+    out.availability = { available, startAt: window.startAt, endAt: window.endAt, nextAvailableAt };
     out.estimate = computeRental({ startAt: window.startAt, endAt: window.endAt, pricing: v.pricing, overrides });
   }
   ok(res, out);

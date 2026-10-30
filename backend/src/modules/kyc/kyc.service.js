@@ -54,8 +54,11 @@ function validateId(type, number) {
 
 const MODELS = { user: User, vendor: Vendor };
 
-/** Creates a new KYC submission (any previous pending one is superseded). */
-export async function submitKyc(req, realm, body) {
+/**
+ * Creates a new KYC submission (any previous pending one is superseded). `subjectId` lets an admin
+ * submit a host's documents on their behalf (files uploaded by the admin).
+ */
+export async function submitKyc(req, realm, body, { subjectId = req.auth.id } = {}) {
   const now = new Date();
   const age = yearsBetween(body.dateOfBirth, now);
   if (realm === 'user') {
@@ -64,20 +67,22 @@ export async function submitKyc(req, realm, body) {
   } else if (age < 18) {
     throw badRequest('Hosts must be at least 18 years old.', undefined, 'KYC_UNDERAGE');
   }
-  const account = await MODELS[realm].findById(req.auth.id).select('kyc').lean();
-  if (account.kyc?.status === 'approved') throw conflict('Your verification is already approved.', 'KYC_ALREADY_APPROVED');
+  const account = await MODELS[realm].findById(subjectId).select('kyc').lean();
+  if (!account) throw notFound('Account');
+  if (account.kyc?.status === 'approved') throw conflict(req.auth.realm === 'admin' ? 'This account’s verification is already approved.' : 'Your verification is already approved.', 'KYC_ALREADY_APPROVED');
 
   const docPurposes = ['kyc_document'];
   const ids = [body.idProofFrontFileId, body.idProofBackFileId, body.licenceFrontFileId, body.licenceBackFileId, body.panFileId].filter(Boolean);
 
   return withTransaction(async (session) => {
     await claimFiles(req.auth, ids, docPurposes, { session });
-    await claimFiles(req.auth, [body.selfieFileId], ['kyc_selfie'], { session });
+    if (body.selfieFileId) await claimFiles(req.auth, [body.selfieFileId], ['kyc_selfie'], { session });
 
-    await KycSubmission.updateMany({ subjectType: realm, subjectId: req.auth.id, status: 'pending' }, { $set: { status: 'superseded' } }, { session });
+    await KycSubmission.updateMany({ subjectType: realm, subjectId, status: 'pending' }, { $set: { status: 'superseded' } }, { session });
     const doc = {
       subjectType: realm,
-      subjectId: req.auth.id,
+      subjectId,
+      submittedByAdmin: req.auth.realm === 'admin' ? req.auth.id : undefined,
       idProof: { type: body.idProofType, ...validateId(body.idProofType, body.idProofNumber), frontFileId: body.idProofFrontFileId, backFileId: body.idProofBackFileId },
       selfieFileId: body.selfieFileId,
       dateOfBirth: body.dateOfBirth,
@@ -89,13 +94,13 @@ export async function submitKyc(req, realm, body) {
       doc.pan = { numberEnc: encrypt(body.panNumber), numberMasked: mask(body.panNumber), fileId: body.panFileId };
     }
     const [submission] = await KycSubmission.create([doc], { session });
-    await attachFiles([...ids, body.selfieFileId], { type: 'kyc_submission', id: submission._id }, session);
+    await attachFiles([...ids, body.selfieFileId].filter(Boolean), { type: 'kyc_submission', id: submission._id }, session);
 
     const set = { kyc: { status: 'pending', submissionId: submission._id, submittedAt: now, licenceExpiry: body.licenceExpiry } };
     if (realm === 'user') set.dateOfBirth = body.dateOfBirth;
     const update = { $set: set };
     if (realm === 'vendor') update.$addToSet = { completedSteps: 'kyc' };
-    await MODELS[realm].updateOne({ _id: req.auth.id }, update, { session });
+    await MODELS[realm].updateOne({ _id: subjectId }, update, { session });
     await audit(req, 'kyc.submitted', { type: 'kyc_submission', id: submission._id }, { session });
     return submission;
   });

@@ -16,3 +16,4 @@ const base = { standardHeaders: 'draft-7', legacyHeaders: false, handler, skip: 
 export const apiLimiter = rateLimit({ ...base, windowMs: env.RATE_LIMIT_WINDOW_SECONDS * 1000, limit: env.RATE_LIMIT_MAX });
 export const authLimiter = rateLimit({ ...base, windowMs: 15 * 60_000, limit: env.RATE_LIMIT_AUTH_MAX });
 export const uploadLimiter = rateLimit({ ...base, windowMs: 60 * 60_000, limit: 120 });
+export const analyticsLimiter = rateLimit({ ...base, windowMs: 60_000, limit: 60 });

@@ -14,7 +14,7 @@ import { formatIst } from '../../core/time.js';
 import { evaluateCoupon, reserveCoupon } from '../coupons/coupon.service.js';
 import { debitUserWallet } from '../wallet/wallet.service.js';
 import { drivingRoute, fromGeoPoint, validLatLng } from '../../integrations/maps.js';
-import { isVehicleAvailable, validateTripWindow } from './availability.service.js';
+import { isVehicleAvailable, validateTripWindow, nextAvailableStarts } from './availability.service.js';
 import { transition, cancelBooking, cancellationQuote, runEffects, newEffects, releaseHeldValue } from './booking.lifecycle.js';
 import { notify, notifyAdmins } from '../notifications/notification.service.js';
 import { openPaymentOrder } from '../payments/payment.service.js';
@@ -55,7 +55,8 @@ export async function buildQuote({ userId, vehicleId, startAt, endAt, delivery, 
   const vehicle = await Vehicle.findOne(vehicleFilter).populate('brandId', 'name').session(session || null).lean();
   if (!vehicle) throw notFound('Car');
   if (!skipAvailability && !(await isVehicleAvailable(vehicle._id, window.startAt, window.endAt, { session }))) {
-    throw conflict('This car is not available for the selected time. Try different times or another car.', 'VEHICLE_UNAVAILABLE');
+    const next = (await nextAvailableStarts([vehicle._id], window.startAt, window.endAt - window.startAt)).get(String(vehicle._id));
+    throw conflict(`This car is booked for the selected time.${next ? ` It is next available from ${formatIst(next)}.` : ''} Try different times or another car.`, 'VEHICLE_UNAVAILABLE', { nextAvailableAt: next || null });
   }
   const overrides = await loadOverrides(vehicle._id, window.startAt, window.endAt, session);
   let rental = computeRental({ startAt: window.startAt, endAt: window.endAt, pricing: vehicle.pricing, overrides });

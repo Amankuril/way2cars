@@ -1,4 +1,4 @@
-import { Booking, overlapFilter } from './booking.model.js';
+import { Booking, overlapFilter, BLOCKING_STATUSES } from './booking.model.js';
 import { VehicleBlock } from '../vehicles/vehicle.model.js';
 import { getSettings } from '../settings/settings.service.js';
 import { badRequest } from '../../core/errors.js';
@@ -32,4 +32,36 @@ export async function validateTripWindow(startAt, endAt, { now = new Date(), ski
   if (hours < booking.minDurationHours) throw badRequest(`Minimum trip length is ${booking.minDurationHours} hours.`, undefined, 'TRIP_TOO_SHORT');
   if (hours > booking.maxDurationDays * 24) throw badRequest(`Maximum trip length is ${booking.maxDurationDays} days.`, undefined, 'TRIP_TOO_LONG');
   return { startAt: s, endAt: e, hours };
+}
+
+const STEP_MS = 30 * 60_000;
+const ceilStep = (ms) => Math.ceil(ms / STEP_MS) * STEP_MS;
+
+/**
+ * Earliest start (on a 30-minute step, at or after `from`) when each car is free for `durationMs`,
+ * honouring the buffer around bookings and host blocks. Looks `horizonDays` ahead; null if still busy.
+ * Returns Map(vehicleId string → Date | null).
+ */
+export async function nextAvailableStarts(vehicleIds, from, durationMs, { bufferMinutes, horizonDays = 90, now = new Date() } = {}) {
+  const buffer = (bufferMinutes ?? (await getSettings()).booking.bufferMinutes) * 60_000;
+  const start = new Date(from);
+  const horizon = new Date(start.getTime() + horizonDays * DAY_MS);
+  const [bookings, blocks] = await Promise.all([
+    Booking.find({ vehicleId: { $in: vehicleIds }, status: { $in: BLOCKING_STATUSES }, blockEndAt: { $gt: new Date(start.getTime() - buffer) }, startAt: { $lt: horizon }, $or: [{ status: { $ne: 'pending_payment' } }, { holdExpiresAt: { $gt: now } }] }).select('vehicleId startAt blockEndAt').lean(),
+    VehicleBlock.find({ vehicleId: { $in: vehicleIds }, endAt: { $gt: start }, startAt: { $lt: horizon } }).select('vehicleId startAt endAt').lean(),
+  ]);
+  const busy = new Map(vehicleIds.map((id) => [String(id), []]));
+  for (const b of bookings) busy.get(String(b.vehicleId))?.push([b.startAt.getTime() - buffer, b.blockEndAt.getTime() + buffer]);
+  for (const b of blocks) busy.get(String(b.vehicleId))?.push([b.startAt.getTime(), b.endAt.getTime()]);
+  const out = new Map();
+  for (const [id, list] of busy) {
+    list.sort((a, b) => a[0] - b[0]);
+    let t = ceilStep(start.getTime());
+    for (const [s, e] of list) {
+      if (s >= t + durationMs) break;
+      if (e > t) t = ceilStep(e);
+    }
+    out.set(id, t < horizon.getTime() ? new Date(t) : null);
+  }
+  return out;
 }

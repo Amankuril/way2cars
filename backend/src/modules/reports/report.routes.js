@@ -182,15 +182,16 @@ adminReportsRouter.get('/settlements', requirePermission('payments.read'), valid
   const bookings = await Booking.find(match).sort({ startAt: -1 }).limit(2000).lean();
   const ids = bookings.map((b) => b._id);
   const [earnings, vendors] = await Promise.all([
-    LedgerEntry.find({ bookingId: { $in: ids }, type: 'trip_earning' }).select('bookingId amountPaise released releaseAt').lean(),
+    LedgerEntry.find({ bookingId: { $in: ids }, type: { $in: ['trip_earning', 'investor_earning'] } }).select('bookingId type amountPaise released releaseAt').lean(),
     Vendor.find({ _id: { $in: [...new Set(bookings.map((b) => String(b.vendorId)))] } }).select('name businessName isCompany').lean(),
   ]);
   const eMap = new Map();
   for (const e of earnings) eMap.set(String(e.bookingId), [...(eMap.get(String(e.bookingId)) || []), e]);
   const vMap = new Map(vendors.map((v) => [String(v._id), v]));
   const rows = bookings.map((b) => {
-    const entries = eMap.get(String(b._id)) || [];
-    const split = bookingSplit(b, { ownerEarnedPaise: entries.reduce((t, e) => t + e.amountPaise, 0) });
+    const all = eMap.get(String(b._id)) || [];
+    const entries = all.filter((e) => e.type === 'trip_earning');
+    const split = bookingSplit(b, { ownerEarnedPaise: entries.reduce((t, e) => t + e.amountPaise, 0), investorEarnedPaise: all.filter((e) => e.type === 'investor_earning').reduce((t, e) => t + e.amountPaise, 0) });
     const ownerPayout = split.ownership === 'company' ? 'not_applicable' : !entries.length ? split.status : entries.every((e) => e.released) ? 'released' : 'on_hold';
     return {
       bookingId: String(b._id),
@@ -206,6 +207,8 @@ adminReportsRouter.get('/settlements', requirePermission('payments.read'), valid
       gstPaise: split.gstPaise,
       commissionBps: split.commissionBps,
       ownerSharePaise: split.ownerPaise,
+      investorSharePaise: split.investorPaise || 0,
+      investorShareBps: split.investorShareBps,
       platformSharePaise: split.platformPaise,
       depositHeldPaise: split.depositHeldPaise || 0,
       balanceDuePaise: b.balance?.status === 'due' ? b.balance.duePaise : 0,
@@ -214,7 +217,7 @@ adminReportsRouter.get('/settlements', requirePermission('payments.read'), valid
   });
   const sum = (k) => rows.reduce((t, r) => t + (r[k] || 0), 0);
   out(req, res, 'settlements', rows, {
-    totals: { bookings: rows.length, collectedPaise: sum('collectedPaise'), gstPaise: sum('gstPaise'), ownerSharePaise: sum('ownerSharePaise'), platformSharePaise: sum('platformSharePaise'), depositHeldPaise: sum('depositHeldPaise'), balanceDuePaise: sum('balanceDuePaise') },
+    totals: { bookings: rows.length, collectedPaise: sum('collectedPaise'), gstPaise: sum('gstPaise'), ownerSharePaise: sum('ownerSharePaise'), investorSharePaise: sum('investorSharePaise'), platformSharePaise: sum('platformSharePaise'), depositHeldPaise: sum('depositHeldPaise'), balanceDuePaise: sum('balanceDuePaise') },
   });
 });
 

@@ -69,6 +69,16 @@ const schema = z.object({
   // Must match the DLT-approved text character for character; {otp} is replaced with the code.
   SMS_INDIA_HUB_OTP_TEMPLATE: z.string().optional().transform((v) => (v && v.trim() ? v.trim() : '{otp} is your WAY2CARS verification code. Do not share it with anyone.')),
   SMS_INDIA_HUB_TIMEOUT_MS: int(15000, { min: 1000, max: 30000 }),
+  // Booking confirmation SMS (separate DLT template). Placeholders: {name} {ref} {vehicle} {start} {end} {link}
+  SMS_INDIA_HUB_BOOKING_TEMPLATE: optStr,
+  SMS_INDIA_HUB_BOOKING_DLT_TEMPLATE_ID: optStr,
+  // WhatsApp Cloud API (Meta) — booking confirmations with terms. Template must be approved in WhatsApp Manager.
+  WHATSAPP_ENABLED: bool(false),
+  WHATSAPP_ACCESS_TOKEN: optStr,
+  WHATSAPP_PHONE_NUMBER_ID: optStr,
+  WHATSAPP_BOOKING_TEMPLATE: optStr, // body params: {{1}} name {{2}} ref {{3}} car {{4}} pickup {{5}} return {{6}} place {{7}} paid {{8}} terms summary {{9}} link
+  WHATSAPP_TEMPLATE_LANG: z.string().optional().transform((v) => (v && v.trim() ? v.trim() : 'en')),
+  WHATSAPP_API_VERSION: z.string().optional().transform((v) => (v && v.trim() ? v.trim() : 'v21.0')),
 
   RAZORPAY_KEY_ID: optStr,
   RAZORPAY_KEY_SECRET: optStr,

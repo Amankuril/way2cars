@@ -25,6 +25,7 @@ import { User } from '../users/user.model.js';
 import { Vendor, hostVisibilityFor } from '../vendors/vendor.model.js';
 import { audit } from '../../core/audit.js';
 import { DamageClaim } from '../trips/trip.model.js';
+import { bookingTerms, confirmationPreview, sendBookingConfirmation } from '../messaging/booking.messages.js';
 
 const objectId = z.string().regex(/^[a-f0-9]{24}$/);
 const idParams = z.object({ id: objectId });
@@ -108,6 +109,7 @@ userBookingRouter.get('/:id', validate({ params: idParams }), async (req, res) =
   out.refunds = refunds.map(serializeRefund);
   out.invoices = invoices.map((i) => ({ id: i._id, number: i.number, type: i.type, totalPaise: i.totalPaise, issuedAt: i.issuedAt }));
   if (b.status === 'return_pending') out.settlementPreview = await previewSettlement(b);
+  out.terms = bookingTerms(b, await getSettings());
   ok(res, out);
 });
 
@@ -292,6 +294,22 @@ adminBookingRouter.post('/:id/cancel', requirePermission('bookings.manage'), val
 adminBookingRouter.post('/:id/damage-claim', requirePermission('trips.manage'), validate({ params: idParams, body: z.object({ decision: z.enum(['approve', 'reject']), approvedPaise: z.number().int().min(0).max(50_000_000).optional(), note: z.string().trim().max(500).optional() }).strict() }), async (req, res) => {
   await resolveDamageClaim(req, req.valid.params.id, req.valid.body);
   ok(res, serializeBooking(await Booking.findById(req.valid.params.id).lean(), { audience: 'admin' }));
+});
+
+/** The confirmation text, its WhatsApp click-to-send link, and the send log. */
+adminBookingRouter.get('/:id/confirmation-message', requirePermission('bookings.read'), validate({ params: idParams }), async (req, res) => {
+  const b = await Booking.findById(req.valid.params.id).lean();
+  if (!b) throw notFound('Booking');
+  ok(res, { ...(await confirmationPreview(b)), messages: b.messages || [] });
+});
+
+adminBookingRouter.post('/:id/confirmation-message', requirePermission('bookings.manage'), validate({ params: idParams }), async (req, res) => {
+  const b = await Booking.findById(req.valid.params.id).lean();
+  if (!b) throw notFound('Booking');
+  if (!['confirmed', 'ongoing', 'return_pending', 'completed'].includes(b.status)) throw conflict('Only confirmed bookings get a confirmation message.', 'NOT_CONFIRMED');
+  const results = await sendBookingConfirmation(b._id, { force: true });
+  await audit(req, 'booking.confirmation_resent', { type: 'booking', id: b._id }, { changes: { channels: results.map((r) => `${r.channel}:${r.status}`) } });
+  ok(res, { results, messages: (await Booking.findById(b._id).select('messages').lean()).messages || [] });
 });
 
 adminBookingRouter.post('/:id/deposit-review', requirePermission('trips.manage'), validate({

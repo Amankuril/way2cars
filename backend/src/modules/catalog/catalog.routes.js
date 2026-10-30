@@ -5,7 +5,7 @@ import { notFound, conflict } from '../../core/errors.js';
 import { audit } from '../../core/audit.js';
 import { validate } from '../../middleware/validate.js';
 import { requirePermission } from '../../middleware/auth.js';
-import { City, Brand, Category, BODY_TYPES } from './catalog.model.js';
+import { City, Brand, Category, VehicleModel, ServiceLocation, BODY_TYPES, LOCATION_KINDS } from './catalog.model.js';
 import { FileRecord } from '../files/file.model.js';
 import { publicUrl } from '../../integrations/storage.js';
 import { fromGeoPoint } from '../../integrations/maps.js';
@@ -36,6 +36,34 @@ const categorySchema = z.object({
   imageFileId: fileId, isActive: z.boolean().default(true), isPopular: z.boolean().default(false), sortOrder: z.number().int().min(0).max(10000).default(0),
 }).strict();
 
+const oid = z.string().regex(/^[a-f0-9]{24}$/);
+const modelSchema = z.object({
+  brandId: oid,
+  name: z.string().trim().min(1).max(60),
+  categoryId: oid.nullable().optional(),
+  variants: z.array(z.object({
+    id: oid.optional(),
+    name: z.string().trim().min(1).max(60),
+    fuelType: z.enum(['petrol', 'diesel', 'cng', 'electric', 'hybrid']).optional(),
+    transmission: z.enum(['manual', 'automatic']).optional(),
+    seats: z.number().int().min(2).max(12).optional(),
+    isActive: z.boolean().default(true),
+  }).strict()).max(40).default([]),
+  isActive: z.boolean().default(true),
+  sortOrder: z.number().int().min(0).max(10000).default(0),
+}).strict();
+const locationSchema = z.object({
+  cityId: oid,
+  name: z.string().trim().min(2).max(80),
+  address: z.string().trim().min(5).max(300),
+  lat: z.number().min(-90).max(90),
+  lng: z.number().min(-180).max(180),
+  kinds: z.array(z.enum(LOCATION_KINDS)).min(1).max(2).default([...LOCATION_KINDS]),
+  instructions: z.string().trim().max(300).optional(),
+  isActive: z.boolean().default(true),
+  sortOrder: z.number().int().min(0).max(10000).default(0),
+}).strict();
+
 async function resolveImage(fileIdValue, purpose) {
   if (!fileIdValue) return { fileId: null, url: null };
   const f = await FileRecord.findOne({ _id: fileIdValue, purpose, visibility: 'public', status: { $ne: 'deleted' } }).lean();
@@ -49,6 +77,12 @@ export const serializeCity = (c) => ({
   hasPolygon: Boolean(c.geofencePolygon?.length), imageUrl: c.imageUrl || null, gstStateCode: c.gstStateCode || null, isActive: c.isActive, isPopular: c.isPopular, sortOrder: c.sortOrder,
 });
 const serializeBrand = (b) => ({ id: b._id, name: b.name, slug: b.slug, logoUrl: b.logoUrl || null, isActive: b.isActive, sortOrder: b.sortOrder });
+const serializeModel = (m) => ({
+  id: m._id, brandId: m.brandId, name: m.name, categoryId: m.categoryId || null, isActive: m.isActive, sortOrder: m.sortOrder,
+  variants: (m.variants || []).map((v) => ({ id: v._id, name: v.name, fuelType: v.fuelType || null, transmission: v.transmission || null, seats: v.seats || null, isActive: v.isActive })),
+});
+const publicModel = (m) => ({ ...serializeModel(m), variants: serializeModel(m).variants.filter((v) => v.isActive) });
+const serializeLocation = (l) => ({ id: l._id, cityId: l.cityId, name: l.name, address: l.address, point: fromGeoPoint(l.point), kinds: l.kinds, instructions: l.instructions || null, isActive: l.isActive, sortOrder: l.sortOrder });
 const serializeCategory = (c) => ({ id: c._id, name: c.name, slug: c.slug, bodyType: c.bodyType, description: c.description, imageUrl: c.imageUrl || null, isActive: c.isActive, isPopular: c.isPopular, sortOrder: c.sortOrder });
 
 /** Public catalogue (active items only). */
@@ -56,6 +90,13 @@ export const publicCatalogRouter = Router();
 publicCatalogRouter.get('/cities', async (_req, res) => ok(res, (await City.find({ isActive: true }).sort({ sortOrder: 1, name: 1 }).lean()).map(serializeCity)));
 publicCatalogRouter.get('/brands', async (_req, res) => ok(res, (await Brand.find({ isActive: true }).sort({ sortOrder: 1, name: 1 }).lean()).map(serializeBrand)));
 publicCatalogRouter.get('/categories', async (_req, res) => ok(res, (await Category.find({ isActive: true }).sort({ sortOrder: 1, name: 1 }).lean()).map(serializeCategory)));
+publicCatalogRouter.get('/models', validate({ query: z.object({ brandId: oid.optional() }) }), async (req, res) => {
+  const filter = { isActive: true, ...(req.valid.query.brandId ? { brandId: req.valid.query.brandId } : {}) };
+  ok(res, (await VehicleModel.find(filter).sort({ sortOrder: 1, name: 1 }).lean()).map(publicModel));
+});
+publicCatalogRouter.get('/locations', validate({ query: z.object({ cityId: oid }) }), async (req, res) => {
+  ok(res, (await ServiceLocation.find({ cityId: req.valid.query.cityId, isActive: true }).sort({ sortOrder: 1, name: 1 }).lean()).map(serializeLocation));
+});
 
 /** Admin CRUD. Deleting is blocked when vehicles reference the item — deactivate instead. */
 export const adminCatalogRouter = Router();
@@ -94,7 +135,7 @@ function crud(path, Model, schema, serialize, { imageField, imagePurpose, toDoc,
   });
 
   adminCatalogRouter.delete(`/${path}/:id`, validate({ params: id }), async (req, res) => {
-    const inUse = await Vehicle.exists({ [refField]: req.valid.params.id });
+    const inUse = refField && (await Vehicle.exists({ [refField]: req.valid.params.id }));
     if (inUse) throw conflict('Vehicles use this item. Deactivate it instead of deleting.', 'IN_USE');
     const doc = await Model.findByIdAndDelete(req.valid.params.id).lean();
     if (!doc) throw notFound();
@@ -110,3 +151,10 @@ crud('cities', City, citySchema, serializeCity, {
 });
 crud('brands', Brand, brandSchema, serializeBrand, { imageField: 'logoFileId', imagePurpose: 'brand_logo', refField: 'brandId' });
 crud('categories', Category, categorySchema, serializeCategory, { imageField: 'imageFileId', imagePurpose: 'category_image', refField: 'categoryId' });
+crud('models', VehicleModel, modelSchema, serializeModel, {
+  refField: 'modelId',
+  toDoc: ({ variants, ...rest }) => ({ ...rest, ...(rest.categoryId === null ? { categoryId: undefined } : {}), ...(variants ? { variants: variants.map(({ id: vid, ...v }) => ({ ...(vid ? { _id: vid } : {}), ...v })) } : {}) }),
+});
+crud('locations', ServiceLocation, locationSchema, serializeLocation, {
+  toDoc: ({ lat, lng, ...rest }) => (lat !== undefined && lng !== undefined ? { ...rest, point: { type: 'Point', coordinates: [lng, lat] } } : rest),
+});

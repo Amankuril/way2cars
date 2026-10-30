@@ -6,12 +6,13 @@
  *  - Every failure is an ApiError with a stable `code` the UI can switch on.
  */
 export class ApiError extends Error {
-  constructor({ status = 0, code = 'UNKNOWN', message = 'Something went wrong.', details, requestId } = {}) {
+  constructor({ status = 0, code = 'UNKNOWN', message = 'Something went wrong.', details, requestId, support } = {}) {
     super(message);
     this.status = status;
     this.code = code;
     this.details = details;
     this.requestId = requestId;
+    this.supportPhone = support?.phone || null; // booking errors carry the support number (already in the message)
   }
   /** Field errors from a 422 as { field: message }. */
   get fieldErrors() {

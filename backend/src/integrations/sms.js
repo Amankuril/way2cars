@@ -3,8 +3,8 @@ import { logger } from '../core/logger.js';
 import { maskPhone } from '../core/phone.js';
 
 /**
- * SMS India Hub — the ONLY place that talks to the SMS provider, and it is used ONLY for login
- * OTPs (bookings, payments and reminders go out by push, email and in-app).
+ * SMS India Hub — the ONLY place that talks to the SMS provider. Used for login OTPs and for the
+ * booking confirmation (its own DLT template); everything else goes out by push, email and in-app.
  * Endpoint and parameters follow the SMS India Hub "vendorsms" push API. Indian DLT rules: the
  * text must match the registered template exactly, and the sender ID must be the DLT header
  * linked to that template.
@@ -76,4 +76,37 @@ export async function sendOtpSms(phone10, otp) {
   }
   logger.info({ to: maskPhone(phone10), providerRef: result.providerRef, unverified: result.unverified || undefined }, 'otp sms sent');
   return { status: 'sent', providerRef: result.providerRef };
+}
+
+export const bookingSmsConfigured = () => smsConfigured() && Boolean(env.SMS_INDIA_HUB_BOOKING_TEMPLATE);
+
+/** Fills the booking DLT template. Values are trimmed so the text stays within the registered variable lengths. */
+export function buildBookingSms(vars) {
+  return Object.entries(vars).reduce((text, [k, v]) => text.split(`{${k}}`).join(String(v ?? '').slice(0, 30)), env.SMS_INDIA_HUB_BOOKING_TEMPLATE || '');
+}
+
+/** Booking confirmation SMS. Same result shape as sendOtpSms; never throws. */
+export async function sendBookingSms(phone10, vars) {
+  if (!bookingSmsConfigured()) return { status: 'skipped' };
+  const url = new URL(PUSH_URL);
+  url.searchParams.set('APIKey', env.SMS_INDIA_HUB_API_KEY);
+  url.searchParams.set('sid', env.SMS_INDIA_HUB_SENDER_ID);
+  url.searchParams.set('msisdn', `91${String(phone10).replace(/\D/g, '').slice(-10)}`);
+  url.searchParams.set('msg', buildBookingSms(vars));
+  url.searchParams.set('gwid', '2');
+  url.searchParams.set('fl', '0');
+  if (env.SMS_INDIA_HUB_USERNAME) url.searchParams.set('uname', env.SMS_INDIA_HUB_USERNAME);
+  if (env.SMS_INDIA_HUB_BOOKING_DLT_TEMPLATE_ID) url.searchParams.set('DLT_TE_ID', env.SMS_INDIA_HUB_BOOKING_DLT_TEMPLATE_ID);
+  try {
+    const res = await fetch(url, { signal: AbortSignal.timeout(env.SMS_INDIA_HUB_TIMEOUT_MS) });
+    const result = parseResponse(res.status, await res.text());
+    if (!result.ok) {
+      logger.error({ to: maskPhone(phone10), providerCode: result.code, error: result.reason }, 'booking sms rejected by provider');
+      return { status: 'failed', error: result.reason };
+    }
+    return { status: 'sent', providerRef: result.providerRef };
+  } catch (err) {
+    logger.error({ to: maskPhone(phone10), err: err.message }, 'booking sms request failed');
+    return { status: 'failed', error: err.message };
+  }
 }
