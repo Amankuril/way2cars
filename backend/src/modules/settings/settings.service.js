@@ -63,6 +63,8 @@ export function publicSettings(s) {
     fees: { convenienceFeePaise: s.fees.convenienceFeePaise, deliveryBaseFeePaise: s.fees.deliveryBaseFeePaise, deliveryPerKmPaise: s.fees.deliveryPerKmPaise, deliveryMaxKm: s.fees.deliveryMaxKm },
     trip: { lateGraceMinutes: s.trip.lateGraceMinutes, minPickupPhotos: s.trip.minPickupPhotos, lateFeeMultiplierBps: s.trip.lateFeeMultiplierBps },
     advance: s.advance,
+    deposit: { minCashPaise: s.deposit.minCashPaise, allowBike: s.deposit.allowBike, bikeMinYear: s.deposit.bikeMinYear, allowLaptop: s.deposit.allowLaptop, laptopMinYear: s.deposit.laptopMinYear },
+    bookingTerms: s.bookingTerms,
     extension: s.extension,
     referral: s.referral,
     support: s.support,

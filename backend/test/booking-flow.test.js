@@ -53,6 +53,12 @@ beforeAll(async () => {
   ctx.brand = await Brand.create({ name: 'Hyundai', slug: 'hyundai' });
   ctx.category = await Category.create({ name: 'SUV', slug: 'suv', bodyType: 'suv' });
   await CmsPage.create({ slug: 'rental-agreement', title: 'Rental Agreement', blocks: [{ type: 'paragraph', text: 'Test agreement' }] });
+  // This suite covers the original money flow: the car's own deposit, refunded as soon as the trip settles.
+  // The ₹15,000 minimum and inspection-before-refund rules are covered in deposit-options.test.js.
+  const { Settings } = await import('../src/modules/settings/settings.model.js');
+  const { invalidateSettings } = await import('../src/modules/settings/settings.service.js');
+  await Settings.create({ _id: 'platform', deposit: { minCashPaise: 0, requireRefundApproval: false } });
+  invalidateSettings();
   const admin = await AdminUser.create({ email: 'ops@test.in', name: 'Ops', role: 'super_admin', passwordHash: 'x' });
   ctx.adminToken = await tokenFor('admin', admin);
   ctx.vendor = await Vendor.create({ phone: '9800000001' });

@@ -56,3 +56,46 @@ const category = new mongoose.Schema(
 );
 category.index({ slug: 1 }, { unique: true });
 export const Category = mongoose.model('Category', category, 'admin_vehicle_categories');
+
+/** Catalogue models per brand, each with its variants (hosts and admins pick from these). */
+const variant = new mongoose.Schema(
+  {
+    name: { type: String, required: true, trim: true, maxlength: 60 },
+    fuelType: { type: String, enum: ['petrol', 'diesel', 'cng', 'electric', 'hybrid'] },
+    transmission: { type: String, enum: ['manual', 'automatic'] },
+    seats: { type: Number, min: 2, max: 12 },
+    isActive: { type: Boolean, default: true },
+  },
+  { _id: true },
+);
+const vehicleModel = new mongoose.Schema(
+  {
+    brandId: { type: mongoose.Schema.Types.ObjectId, ref: 'Brand', required: true },
+    name: { type: String, required: true, trim: true, maxlength: 60 },
+    categoryId: { type: mongoose.Schema.Types.ObjectId, ref: 'Category' }, // suggested car type
+    variants: { type: [variant], default: [] },
+    isActive: { type: Boolean, default: true },
+    sortOrder: { type: Number, default: 0 },
+  },
+  { timestamps: true, versionKey: false },
+);
+vehicleModel.index({ brandId: 1, name: 1 }, { unique: true, collation: { locale: 'en', strength: 2 } });
+export const VehicleModel = mongoose.model('VehicleModel', vehicleModel, 'admin_vehicle_models');
+
+/** Way2Cars pickup / drop-off points (hubs) inside a city. Renters of fleet cars can choose them. */
+export const LOCATION_KINDS = ['pickup', 'dropoff'];
+const location = new mongoose.Schema(
+  {
+    cityId: { type: mongoose.Schema.Types.ObjectId, ref: 'City', required: true },
+    name: { type: String, required: true, trim: true, maxlength: 80 },
+    address: { type: String, required: true, trim: true, maxlength: 300 },
+    point: { type: geoPoint, required: true },
+    kinds: { type: [String], enum: LOCATION_KINDS, default: () => [...LOCATION_KINDS] },
+    instructions: { type: String, maxlength: 300 },
+    isActive: { type: Boolean, default: true },
+    sortOrder: { type: Number, default: 0 },
+  },
+  { timestamps: true, versionKey: false },
+);
+location.index({ cityId: 1, isActive: 1, sortOrder: 1 });
+export const ServiceLocation = mongoose.model('ServiceLocation', location, 'admin_locations');

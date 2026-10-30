@@ -32,9 +32,39 @@ const schema = new mongoose.Schema(
     // Pay part now to block the dates; the balance is due `balanceDueHoursBeforeStart` before pickup.
     advance: {
       enabled: { type: Boolean, default: true },
-      percentBps: { type: Number, default: 3000, min: 1000, max: 9000 },
+      percentBps: { type: Number, default: 3000, min: 1000, max: 9000 }, // attached-host cars
+      companyPercentBps: { type: Number, default: 3000, min: 1000, max: 9000 }, // Way2Cars' own fleet
       balanceDueHoursBeforeStart: { type: Number, default: 24, min: 0, max: 168 },
       autoCancelUnpaid: { type: Boolean, default: true }, // at pickup time, cancel per policy if the balance is still due
+    },
+    // Security deposit: money (at least minCashPaise), or a recent bike / laptop handed over at pickup.
+    deposit: {
+      minCashPaise: { type: Number, default: 1500000, min: 0 },
+      allowBike: { type: Boolean, default: true },
+      bikeMinYear: { type: Number, default: 2022, min: 2000, max: 2100 },
+      allowLaptop: { type: Boolean, default: true },
+      laptopMinYear: { type: Number, default: 2023, min: 2000, max: 2100 },
+      // Operations inspect the returned car and approve the deposit refund (with a refund date).
+      requireRefundApproval: { type: Boolean, default: true },
+      defaultRefundDays: { type: Number, default: 7, min: 0, max: 60 },
+    },
+    // Rules sent with every booking confirmation (WhatsApp/SMS) and shown on the trip page.
+    bookingTerms: {
+      speedLimitKmph: { type: Number, default: 80, min: 20, max: 200 },
+      rules: {
+        type: [String],
+        default: () => [
+          'Carry your original driving licence and ID during the trip.',
+          'No smoking, alcohol or pets inside the car.',
+          'Traffic fines, tolls and parking during the trip are paid by the renter.',
+          'Do not take the car outside the permitted state without written approval.',
+          'Return the car with the same fuel level and in the same condition.',
+        ],
+      },
+    },
+    messaging: {
+      bookingWhatsapp: { type: Boolean, default: true },
+      bookingSms: { type: Boolean, default: true },
     },
     extension: {
       minHoursBeforeEnd: { type: Number, default: 12, min: 0, max: 72 },

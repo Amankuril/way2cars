@@ -7,7 +7,8 @@ import { Booking, overlapFilter, BLOCKING_STATUSES } from './booking.model.js';
 import { Vehicle, VehiclePriceOverride } from '../vehicles/vehicle.model.js';
 import { User } from '../users/user.model.js';
 import { getSettings } from '../settings/settings.service.js';
-import { computeRental, assembleQuote, deliveryFee, cancellationRefundBps } from '../pricing/pricing.js';
+import { computeRental, assembleQuote, deliveryFee, cancellationRefundBps, addUnlimitedKm } from '../pricing/pricing.js';
+import { ServiceLocation } from '../catalog/catalog.model.js';
 import { Vendor, commissionBpsFor } from '../vendors/vendor.model.js';
 import { formatIst } from '../../core/time.js';
 import { evaluateCoupon, reserveCoupon } from '../coupons/coupon.service.js';
@@ -46,7 +47,7 @@ async function assertUserCanBook(user, endAt, settings) {
  * Computes the full server-side price. Never trusts client totals: callers pass only the
  * vehicle, window, delivery address, coupon code and whether to use wallet credit.
  */
-export async function buildQuote({ userId, vehicleId, startAt, endAt, delivery, couponCode, useWallet, paymentPlan = 'full' }, { session, skipAvailability = false, office = null } = {}) {
+export async function buildQuote({ userId, vehicleId, startAt, endAt, delivery, couponCode, useWallet, paymentPlan = 'full', unlimitedKm = false, depositOption = 'cash', pickupLocationId, dropoffLocationId }, { session, skipAvailability = false, office = null } = {}) {
   const settings = await getSettings();
   // Office (offline) bookings may start right away and may use approved cars that are not listed.
   const window = await validateTripWindow(startAt, endAt, { skipLead: Boolean(office) });
@@ -57,11 +58,17 @@ export async function buildQuote({ userId, vehicleId, startAt, endAt, delivery, 
     throw conflict('This car is not available for the selected time. Try different times or another car.', 'VEHICLE_UNAVAILABLE');
   }
   const overrides = await loadOverrides(vehicle._id, window.startAt, window.endAt, session);
-  const rental = computeRental({ startAt: window.startAt, endAt: window.endAt, pricing: vehicle.pricing, overrides });
+  let rental = computeRental({ startAt: window.startAt, endAt: window.endAt, pricing: vehicle.pricing, overrides });
   if (office?.rentalPaise !== undefined) {
     rental.rentalPaise = office.rentalPaise;
     rental.lines = [{ kind: 'office', hours: rental.hours, ratePaise: office.rentalPaise, amountPaise: office.rentalPaise, source: 'office' }];
   }
+  if (unlimitedKm) {
+    if (vehicle.pricing.unlimitedKmDailyPaise == null) throw badRequest('Unlimited km is not offered on this car.', undefined, 'UNLIMITED_KM_UNAVAILABLE');
+    rental = addUnlimitedKm(rental, vehicle.pricing.unlimitedKmDailyPaise);
+  }
+  const hubs = await resolveHubs(vehicle, { pickupLocationId, dropoffLocationId, delivery }, session);
+  const deposit = depositFor(vehicle, depositOption, settings, office);
 
   let deliveryInfo = null;
   if (delivery) {
@@ -81,7 +88,7 @@ export async function buildQuote({ userId, vehicleId, startAt, endAt, delivery, 
     ({ coupon, discountPaise } = await evaluateCoupon(couponCode, { userId, vehicle, rentalPaise: rental.rentalPaise }, session));
   }
   if (office?.discountPaise) discountPaise = Math.min(rental.rentalPaise, discountPaise + office.discountPaise);
-  const advance = advanceOption(window, settings);
+  const advance = advanceOption(window, settings, { ownership: vehicle.ownership });
   const wantsAdvance = paymentPlan === 'advance' && advance.available;
   const user = userId ? await User.findById(userId).select('walletBalancePaise').session(session || null).lean() : null;
   const quote = assembleQuote({
@@ -90,7 +97,7 @@ export async function buildQuote({ userId, vehicleId, startAt, endAt, delivery, 
     convenienceFeePaise: office?.waiveConvenienceFee ? 0 : settings.fees.convenienceFeePaise,
     discountPaise,
     gstBps: settings.tax.rentalGstBps,
-    depositPaise: office?.depositPaise ?? vehicle.pricing.securityDepositPaise,
+    depositPaise: deposit.paise,
     walletBalancePaise: user?.walletBalancePaise || 0,
     useWallet: Boolean(useWallet) && !wantsAdvance && !office, // wallet credit can't be split across advance + balance
     maxRedeemBps: settings.wallet.maxRedeemBps,
@@ -100,19 +107,86 @@ export async function buildQuote({ userId, vehicleId, startAt, endAt, delivery, 
     advance.balancePaise = quote.payablePaise - advance.advancePaise;
   }
   if (wantsAdvance) quote.advancePaise = advance.advancePaise;
-  return { vehicle, window, quote, coupon, deliveryInfo, settings, advance };
+  if (unlimitedKm) Object.assign(quote, { unlimitedKm: true, unlimitedKmPaise: rental.unlimitedKmPaise });
+  return { vehicle, window, quote, coupon, deliveryInfo, settings, advance, deposit, hubs };
+}
+
+/** Money deposit (at least the platform minimum) or a bike / laptop handed over at pickup instead. */
+export function depositFor(vehicle, option, settings, office) {
+  const d = settings.deposit;
+  if (option === 'bike' && !d.allowBike) throw badRequest('A bike is not accepted as a deposit right now.', undefined, 'DEPOSIT_OPTION_UNAVAILABLE');
+  if (option === 'laptop' && !d.allowLaptop) throw badRequest('A laptop is not accepted as a deposit right now.', undefined, 'DEPOSIT_OPTION_UNAVAILABLE');
+  if (option !== 'cash') return { option, paise: 0 };
+  return { option, paise: office?.depositPaise ?? Math.max(vehicle.pricing.securityDepositPaise, d.minCashPaise) };
+}
+
+/** Checks the bike / laptop a renter offers as the deposit against the platform rules. */
+export function validateCollateral(option, c, settings) {
+  if (option === 'cash') return undefined;
+  const d = settings.deposit;
+  if (!c?.make || !c?.model || !c?.year) throw badRequest(`Enter the ${option}'s make, model and year.`, undefined, 'COLLATERAL_REQUIRED');
+  if (option === 'bike') {
+    if (c.year < d.bikeMinYear) throw badRequest(`The bike must be a ${d.bikeMinYear} or newer model.`, undefined, 'COLLATERAL_TOO_OLD');
+    if (!c.registrationNumber) throw badRequest("Enter the bike's registration number.", undefined, 'COLLATERAL_REQUIRED');
+  } else {
+    if (c.year < d.laptopMinYear) throw badRequest(`The laptop must be a ${d.laptopMinYear} or newer model.`, undefined, 'COLLATERAL_TOO_OLD');
+    if (!c.serialNumber) throw badRequest("Enter the laptop's serial number.", undefined, 'COLLATERAL_REQUIRED');
+  }
+  return { make: c.make, model: c.model, year: c.year, registrationNumber: c.registrationNumber?.toUpperCase().replace(/[\s-]/g, ''), serialNumber: c.serialNumber, description: c.description };
+}
+
+/** Way2Cars pickup / drop-off points chosen for a fleet car (null = the car's own location). */
+async function resolveHubs(vehicle, { pickupLocationId, dropoffLocationId, delivery }, session) {
+  if (!pickupLocationId && !dropoffLocationId) return { pickup: null, dropoff: null };
+  if (vehicle.ownership !== 'company') throw badRequest('Pickup points are only available on WAY2CARS fleet cars.', undefined, 'HUB_UNAVAILABLE');
+  if (pickupLocationId && delivery) throw badRequest('Choose doorstep delivery or a pickup point, not both.', undefined, 'HUB_UNAVAILABLE');
+  const load = async (id, kind) => {
+    if (!id) return null;
+    const loc = await ServiceLocation.findOne({ _id: id, cityId: vehicle.cityId, isActive: true, kinds: kind }).session(session || null).lean();
+    if (!loc) throw badRequest(`Choose a ${kind === 'pickup' ? 'pickup' : 'drop-off'} point in the car's city.`, undefined, 'HUB_INVALID');
+    return loc;
+  };
+  return { pickup: await load(pickupLocationId, 'pickup'), dropoff: await load(dropoffLocationId, 'dropoff') };
+}
+
+const hubPlace = (loc) => ({ type: 'hub', locationId: loc._id, name: loc.name, address: loc.address, point: loc.point });
+
+/** Pricing snapshot, deposit, places and ownership shared by app and office bookings. */
+export function bookingSnapshot({ vehicle, owner, quote, settings, coupon, deposit, collateral, hubs, deliveryInfo }) {
+  const company = Boolean(owner?.isCompany);
+  const carPlace = { type: 'host_location', address: vehicle.location.address, point: vehicle.location.point };
+  const pickup = deliveryInfo
+    ? { type: 'doorstep', address: deliveryInfo.address, point: { type: 'Point', coordinates: [deliveryInfo.lng, deliveryInfo.lat] }, distanceKm: deliveryInfo.km }
+    : hubs?.pickup ? hubPlace(hubs.pickup) : carPlace;
+  return {
+    ownership: company ? 'company' : 'host',
+    pickup,
+    dropoff: hubs?.dropoff ? hubPlace(hubs.dropoff) : pickup,
+    deposit: { type: deposit.option, collateral, status: deposit.option === 'cash' ? 'none' : 'awaiting' },
+    pricing: {
+      ...quote,
+      extraKmChargePaise: vehicle.pricing.extraKmChargePaise,
+      hourlyPaise: vehicle.pricing.hourlyPaise,
+      dailyPaise: vehicle.pricing.dailyPaise,
+      commissionBps: commissionBpsFor(owner, settings, vehicle),
+      ...(company && vehicle.investor?.investorId ? { investorId: vehicle.investor.investorId, investorShareBps: vehicle.investor.shareBps } : {}),
+      couponCode: coupon?.code,
+      settingsVersion: settings.version,
+    },
+  };
 }
 
 /** Whether "pay an advance now, rest later" is offered for this trip window, and when the rest is due. */
-export function advanceOption(window, settings, now = new Date()) {
+export function advanceOption(window, settings, { ownership = 'host', now = new Date() } = {}) {
   const a = settings.advance;
+  const percentBps = ownership === 'company' ? (a.companyPercentBps ?? a.percentBps) : a.percentBps;
   const dueAt = new Date(window.startAt.getTime() - a.balanceDueHoursBeforeStart * 3600_000);
   // The renter needs at least an hour between booking and the balance deadline.
   const available = Boolean(a.enabled) && dueAt.getTime() > now.getTime() + 3600_000;
-  return { available, percentBps: a.percentBps, balanceDueAt: available ? dueAt : null };
+  return { available, percentBps, balanceDueAt: available ? dueAt : null };
 }
 
-export function serializeQuote({ quote, coupon, deliveryInfo, window, vehicle, advance }) {
+export function serializeQuote({ quote, coupon, deliveryInfo, window, vehicle, advance, deposit, hubs, settings }) {
   return {
     vehicleId: vehicle._id,
     startAt: window.startAt,
@@ -123,6 +197,16 @@ export function serializeQuote({ quote, coupon, deliveryInfo, window, vehicle, a
     delivery: deliveryInfo ? { km: deliveryInfo.km, feePaise: deliveryInfo.feePaise, address: deliveryInfo.address } : null,
     instantBooking: vehicle.instantBooking,
     advance: advance ? { available: advance.available, percentBps: advance.percentBps, advancePaise: advance.advancePaise ?? null, balancePaise: advance.balancePaise ?? null, balanceDueAt: advance.balanceDueAt } : null,
+    unlimitedKmOption: vehicle.pricing.unlimitedKmDailyPaise != null ? { dailyPaise: vehicle.pricing.unlimitedKmDailyPaise, selected: Boolean(quote.unlimitedKm), amountPaise: quote.unlimitedKmPaise ?? Math.round((vehicle.pricing.unlimitedKmDailyPaise * quote.hours) / 24) } : null,
+    depositOptions: settings ? {
+      selected: deposit?.option || 'cash',
+      cashPaise: Math.max(vehicle.pricing.securityDepositPaise, settings.deposit.minCashPaise),
+      bike: settings.deposit.allowBike ? { minYear: settings.deposit.bikeMinYear } : null,
+      laptop: settings.deposit.allowLaptop ? { minYear: settings.deposit.laptopMinYear } : null,
+    } : null,
+    pickupLocation: hubs?.pickup ? { id: hubs.pickup._id, name: hubs.pickup.name, address: hubs.pickup.address } : null,
+    dropoffLocation: hubs?.dropoff ? { id: hubs.dropoff._id, name: hubs.dropoff.name, address: hubs.dropoff.address } : null,
+    ownership: vehicle.ownership || 'host',
   };
 }
 
@@ -190,29 +274,19 @@ export async function createBooking(req, input) {
     const mine = await Booking.exists({ ...overlap, userId }).session(session);
     if (mine) throw conflict('You already have a trip during these times.', 'USER_OVERLAP');
 
-    const { vehicle, window, quote, coupon, deliveryInfo, advance } = await buildQuote({ ...input, userId }, { session });
+    const { vehicle, window, quote, coupon, deliveryInfo, advance, deposit, hubs } = await buildQuote({ ...input, userId }, { session });
     if (input.paymentPlan === 'advance' && !quote.advancePaise) throw conflict('Paying an advance is not available for this trip. Pay the full amount instead.', 'ADVANCE_UNAVAILABLE');
+    const collateral = validateCollateral(deposit.option, input.collateral, settings);
     const owner = await Vendor.findById(vehicle.vendorId).select('isCompany commissionBps').session(session).lean();
-    const pickup = deliveryInfo
-      ? { type: 'doorstep', address: deliveryInfo.address, point: { type: 'Point', coordinates: [deliveryInfo.lng, deliveryInfo.lat] }, distanceKm: deliveryInfo.km }
-      : { type: 'host_location', address: vehicle.location.address, point: vehicle.location.point };
+    const snap = bookingSnapshot({ vehicle, owner, quote, settings, coupon, deposit, collateral, hubs, deliveryInfo });
     const now = new Date();
     const created = await createBookingDoc({
-      userId, vehicle, window, quote, session, pickup,
+      userId, vehicle, window, quote, session, pickup: snap.pickup,
       extra: {
+        ...snap,
         holdExpiresAt: new Date(now.getTime() + settings.booking.holdMinutes * 60_000),
-        ownership: owner?.isCompany ? 'company' : 'host',
         createdBy: { realm: 'user', id: userId },
         ...(quote.advancePaise ? { balance: { duePaise: quote.payablePaise - quote.advancePaise, dueAt: advance.balanceDueAt, status: 'due', autoCancel: settings.advance.autoCancelUnpaid } } : {}),
-        pricing: {
-          ...quote,
-          extraKmChargePaise: vehicle.pricing.extraKmChargePaise,
-          hourlyPaise: vehicle.pricing.hourlyPaise,
-          dailyPaise: vehicle.pricing.dailyPaise,
-          commissionBps: commissionBpsFor(owner, settings),
-          couponCode: coupon?.code,
-          settingsVersion: settings.version,
-        },
         couponId: coupon?._id,
         idempotencyKey,
       },
@@ -336,7 +410,8 @@ export async function requestExtension(req, bookingId, newEndAt) {
     }
     const vehicle = await Vehicle.findById(b.vehicleId).select('pricing').session(session).lean();
     const overrides = await loadOverrides(b.vehicleId, b.endAt, end, session);
-    const rental = computeRental({ startAt: b.endAt, endAt: end, pricing: vehicle.pricing, overrides });
+    let rental = computeRental({ startAt: b.endAt, endAt: end, pricing: vehicle.pricing, overrides });
+    if (b.pricing.unlimitedKm) rental = addUnlimitedKm(rental, vehicle.pricing.unlimitedKmDailyPaise ?? 0);
     const gst = pct(rental.rentalPaise, b.pricing.gstBps);
     const needsApproval = settings.extension.requireApproval;
     const ext = {

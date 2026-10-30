@@ -7,13 +7,13 @@ import { normalizeIndianMobile } from '../../core/phone.js';
 import { Booking, overlapFilter } from './booking.model.js';
 import { Vehicle, VehiclePriceOverride } from '../vehicles/vehicle.model.js';
 import { User } from '../users/user.model.js';
-import { Vendor, commissionBpsFor } from '../vendors/vendor.model.js';
+import { Vendor } from '../vendors/vendor.model.js';
 import { getSettings } from '../settings/settings.service.js';
-import { computeRental } from '../pricing/pricing.js';
+import { computeRental, addUnlimitedKm } from '../pricing/pricing.js';
 import { findOrCreate } from '../auth/auth.service.js';
 import { issueInvoice } from '../payments/invoice.service.js';
 import { isVehicleAvailable } from './availability.service.js';
-import { buildQuote, createBookingDoc } from './booking.service.js';
+import { buildQuote, createBookingDoc, bookingSnapshot, validateCollateral } from './booking.service.js';
 import { newEffects, runEffects, recordOfflinePayment, onBalancePaid, onExtensionPaid, onSettlementPaid } from './booking.lifecycle.js';
 
 /**
@@ -34,7 +34,8 @@ async function loadOverrides(vehicleId, startAt, endAt, session) {
 /** Prices extra time on a booking from the car's own rates (calendar overrides included). */
 async function priceExtension(b, end, session, rentalOverridePaise) {
   const vehicle = await Vehicle.findById(b.vehicleId).select('pricing').session(session).lean();
-  const rental = computeRental({ startAt: b.endAt, endAt: end, pricing: vehicle.pricing, overrides: await loadOverrides(b.vehicleId, b.endAt, end, session) });
+  let rental = computeRental({ startAt: b.endAt, endAt: end, pricing: vehicle.pricing, overrides: await loadOverrides(b.vehicleId, b.endAt, end, session) });
+  if (b.pricing.unlimitedKm) rental = addUnlimitedKm(rental, vehicle.pricing.unlimitedKmDailyPaise ?? 0);
   const rentalPaise = rentalOverridePaise ?? rental.rentalPaise;
   const gst = pct(rentalPaise, b.pricing.gstBps);
   return { hours: rental.hours, rentalPaise, gstPaise: gst, totalPaise: rentalPaise + gst, includedKm: rental.includedKm, lines: rental.lines };
@@ -69,8 +70,10 @@ export async function createOfflineBooking(req, input) {
     const { vehicleId: _ignored, ...overlap } = overlapFilter(locked._id, new Date(input.startAt), new Date(input.endAt), 0);
     if (await Booking.exists({ ...overlap, userId: account._id }).session(session)) throw conflict('This customer already has a trip during these times.', 'USER_OVERLAP');
     const office = { rentalPaise: input.pricing?.rentalPaise, depositPaise: input.pricing?.depositPaise, discountPaise: input.pricing?.discountPaise, waiveConvenienceFee: input.pricing?.waiveConvenienceFee };
-    const { vehicle, window, quote } = await buildQuote({ userId: account._id, vehicleId: input.vehicleId, startAt: input.startAt, endAt: input.endAt }, { session, office });
+    const { vehicle, window, quote, deposit, hubs } = await buildQuote({ userId: account._id, vehicleId: input.vehicleId, startAt: input.startAt, endAt: input.endAt, unlimitedKm: input.unlimitedKm, depositOption: input.depositOption, pickupLocationId: input.pickupLocationId, dropoffLocationId: input.dropoffLocationId }, { session, office });
+    const collateral = validateCollateral(deposit.option, input.collateral, settings);
     const owner = await Vendor.findById(vehicle.vendorId).select('isCompany commissionBps').session(session).lean();
+    const snap = bookingSnapshot({ vehicle, owner, quote, settings, deposit, collateral, hubs });
     const now = new Date();
     const total = quote.payablePaise;
     const pay = input.payment;
@@ -79,22 +82,17 @@ export async function createOfflineBooking(req, input) {
 
     const b = await createBookingDoc({
       userId: account._id, vehicle, window, quote, session,
-      pickup: { type: 'host_location', address: vehicle.location.address, point: vehicle.location.point },
+      pickup: snap.pickup,
       extra: {
+        ...snap,
         status: 'confirmed',
         statusHistory: [{ status: 'confirmed', at: now, by: by(req), note: 'Booked at the office' }],
         source: 'offline',
-        ownership: owner?.isCompany ? 'company' : 'host',
         createdBy: by(req),
         officeNote: input.note,
         instantBooking: true,
         pricing: {
-          ...quote,
-          extraKmChargePaise: vehicle.pricing.extraKmChargePaise,
-          hourlyPaise: vehicle.pricing.hourlyPaise,
-          dailyPaise: vehicle.pricing.dailyPaise,
-          commissionBps: commissionBpsFor(owner, settings),
-          settingsVersion: settings.version,
+          ...snap.pricing,
           ...(input.pricing && Object.keys(input.pricing).length ? { adjustedBy: { id: req.auth.id, note: input.pricing.note } } : {}),
         },
         ...(collected < total ? { balance: { duePaise: total - collected, dueAt: input.balanceDueAt || window.startAt, status: 'due', autoCancel: false } } : {}),

@@ -43,6 +43,10 @@ const pricing = new mongoose.Schema(
     hourlyPaise: Number,
     dailyPaise: Number,
     commissionBps: Number,
+    investorId: { type: oid, ref: 'Investor' }, // fleet car funded by an investor (snapshot)
+    investorShareBps: Number,
+    unlimitedKm: Boolean, // renter chose unlimited km: no extra-km charge at settlement
+    unlimitedKmPaise: Number, // included in rentalPaise (as an 'unlimited_km' line)
     advancePaise: Number, // set when the renter chose to pay an advance to block the dates
     adjustedBy: { id: oid, note: String }, // admin-set price on an offline booking
     couponCode: String,
@@ -52,7 +56,7 @@ const pricing = new mongoose.Schema(
 );
 
 const place = new mongoose.Schema(
-  { type: { type: String, enum: ['host_location', 'doorstep'], default: 'host_location' }, address: String, point: geoPoint, distanceKm: Number },
+  { type: { type: String, enum: ['host_location', 'doorstep', 'hub'], default: 'host_location' }, address: String, point: geoPoint, distanceKm: Number, locationId: { type: oid, ref: 'ServiceLocation' }, name: String },
   { _id: false },
 );
 
@@ -122,6 +126,19 @@ const schema = new mongoose.Schema(
       autoCancel: Boolean, // cancel per policy at pickup time if still due (app advance bookings)
       reminderSent: Boolean,
     },
+    // Security deposit: money (in pricing.depositPaise) or a bike / laptop handed over at pickup and returned after the trip.
+    deposit: {
+      type: { type: String, enum: ['cash', 'bike', 'laptop'], default: 'cash' },
+      collateral: { make: String, model: String, year: Number, registrationNumber: String, serialNumber: String, description: String },
+      status: { type: String, enum: ['none', 'awaiting', 'received', 'returned'], default: 'none' },
+      receivedAt: Date,
+      receivedBy: actor,
+      returnedAt: Date,
+      returnedBy: actor,
+      note: String,
+    },
+    // WhatsApp / SMS messages sent about this booking (confirmation with terms).
+    messages: [{ _id: false, channel: { type: String, enum: ['whatsapp', 'sms'] }, kind: String, status: String, error: String, providerRef: String, at: Date }],
     cancellation: { by: actor, reason: String, at: Date, hoursBeforeStart: Number, refundBps: Number, refundPaise: Number, walletRefundPaise: Number },
     extensions: [extension],
     trip: {
@@ -143,7 +160,13 @@ const schema = new mongoose.Schema(
       totalDeductionsPaise: Number, depositRefundPaise: Number, outstandingPaise: Number,
       outstandingStatus: { type: String, enum: ['none', 'due', 'paid', 'waived'] },
       outstandingPaymentId: { type: oid, ref: 'Payment' },
-      commissionPaise: Number, vendorEarningPaise: Number, settledAt: Date, settledBy: actor,
+      commissionPaise: Number, vendorEarningPaise: Number, investorEarningPaise: Number, settledAt: Date, settledBy: actor,
+      // Charges added by operations when inspecting the returned car (cleaning, challans, late handover…).
+      extraCharges: [{ _id: false, label: String, amountPaise: Number, note: String }],
+      // none (nothing to refund) → pending_review (awaiting inspection) → scheduled (refund date set) → refunded
+      depositRefundStatus: { type: String, enum: ['none', 'pending_review', 'scheduled', 'refunded'] },
+      depositRefundAt: Date,
+      depositReview: { by: actor, at: Date, note: String },
     },
     reviewed: { byUser: { type: Boolean, default: false } },
     idempotencyKey: String, // client-supplied Idempotency-Key for create
@@ -164,6 +187,8 @@ schema.index({ status: 1, 'trip.returnReviewDueAt': 1 });
 schema.index({ createdAt: -1 });
 schema.index({ 'balance.status': 1, 'balance.dueAt': 1 });
 schema.index({ 'extensions.status': 1 });
+schema.index({ 'settlement.depositRefundStatus': 1, 'settlement.depositRefundAt': 1 });
+schema.index({ 'deposit.status': 1 });
 
 export const Booking = mongoose.model('Booking', schema, 'bookings');
 

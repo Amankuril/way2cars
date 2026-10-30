@@ -14,6 +14,7 @@ import { notifyLater } from '../notifications/notification.service.js';
 import { getSettings } from '../settings/settings.service.js';
 import { Vendor, companyVendor } from '../vendors/vendor.model.js';
 import { Booking, BLOCKING_STATUSES } from '../bookings/booking.model.js';
+import { Investor } from '../investors/investor.model.js';
 import { Vehicle, VehicleBlock, VehiclePriceOverride, APPROVAL_STATUSES, OPERATIONAL_STATUSES } from './vehicle.model.js';
 import {
   vehicleBaseSchema, validateRefs, toVehicleDoc, touchesSensitive, refreshListing, submissionGaps, getOwnedVehicle,
@@ -59,7 +60,7 @@ vendorVehicleRouter.get('/:id', validate({ params: idParams }), async (req, res)
 vendorVehicleRouter.patch('/:id', validate({ params: idParams, body: vehicleBaseSchema.partial() }), async (req, res) => {
   const body = req.valid.body;
   const v = await getOwnedVehicle(req.auth.id, req.valid.params.id);
-  await validateRefs({ cityId: body.cityId ?? (body.location ? String(v.cityId) : undefined), brandId: body.brandId, categoryId: body.categoryId, location: body.location });
+  await validateRefs({ cityId: body.cityId ?? (body.location ? String(v.cityId) : undefined), brandId: body.brandId ?? (body.modelId ? String(v.brandId) : undefined), categoryId: body.categoryId, location: body.location, modelId: body.modelId });
   const doc = toVehicleDoc(body);
   const resubmit = v.approval.status === 'approved' && touchesSensitive(body);
   Object.assign(v, doc);
@@ -220,7 +221,7 @@ adminVehicleRouter.get('/', requirePermission('vehicles.read'), validate({
 });
 
 adminVehicleRouter.get('/:id', requirePermission('vehicles.read'), validate({ params: idParams }), async (req, res) => {
-  const v = await Vehicle.findById(req.valid.params.id).populate([...POPULATE, { path: 'vendorId', select: 'name businessName phone status rating isCompany' }]).lean();
+  const v = await Vehicle.findById(req.valid.params.id).populate([...POPULATE, { path: 'vendorId', select: 'name businessName phone status rating isCompany commissionBps' }, { path: 'investor.investorId', select: 'name' }]).lean();
   if (!v) throw notFound('Car');
   const [upcoming, { trip }] = await Promise.all([
     Booking.find({ vehicleId: v._id, status: { $in: BLOCKING_STATUSES } }).select('ref status startAt endAt').sort({ startAt: 1 }).limit(20).lean(),
@@ -276,22 +277,57 @@ async function adminVehicle(id) {
   if (!v) throw notFound('Car');
   return v;
 }
-const adminView = async (id) => serializeVehicle(await Vehicle.findById(id).populate(POPULATE).lean(), { audience: 'admin' });
+const ADMIN_POPULATE = [...POPULATE, { path: 'investor.investorId', select: 'name' }];
+const adminView = async (id) => serializeVehicle(await Vehicle.findById(id).populate(ADMIN_POPULATE).lean(), { audience: 'admin' });
 
-/** Adds a car to the company fleet (draft until photos/documents are in and it's published). */
-adminVehicleRouter.post('/', requirePermission('vehicles.manage'), validate({ body: vehicleBaseSchema }), async (req, res) => {
-  await validateRefs(req.valid.body);
-  const company = await companyVendor();
-  const v = await Vehicle.create({ ...toVehicleDoc(req.valid.body), vendorId: company._id, ownership: 'company' }).catch(dup);
-  await audit(req, 'vehicle.created', { type: 'vehicle', id: v._id }, { changes: { ownership: 'company' } });
+/**
+ * Adds a car to the company fleet, or — with `vendorId` — on behalf of an attached host (e.g. the
+ * host handed over the papers at the office). Draft until photos/documents are in and it's published.
+ */
+adminVehicleRouter.post('/', requirePermission('vehicles.manage'), validate({ body: vehicleBaseSchema.extend({ vendorId: objectId.optional() }) }), async (req, res) => {
+  const { vendorId, ...body } = req.valid.body;
+  await validateRefs(body);
+  let owner;
+  if (vendorId) {
+    owner = await Vendor.findOne({ _id: vendorId, isCompany: { $ne: true }, status: { $nin: ['deleted', 'suspended'] } }).select('_id').lean();
+    if (!owner) throw notFound('Host');
+  } else owner = await companyVendor();
+  const ownership = vendorId ? 'host' : 'company';
+  const v = await Vehicle.create({ ...toVehicleDoc(body), vendorId: owner._id, ownership }).catch(dup);
+  await audit(req, 'vehicle.created', { type: 'vehicle', id: v._id }, { changes: { ownership, vendorId } });
   created(res, await adminView(v._id));
+});
+
+/** Money settings of one car: Way2Cars' commission on an attached car, or the investor share of a fleet car. */
+adminVehicleRouter.patch('/:id/commercials', requirePermission('payouts.manage'), validate({
+  params: idParams,
+  body: z.object({
+    commissionBps: z.number().int().min(0).max(9000).nullable().optional(),
+    investor: z.object({ investorId: objectId, shareBps: z.number().int().min(1).max(10000) }).strict().nullable().optional(),
+    reason: z.string().trim().max(300).optional(),
+  }).strict(),
+}), async (req, res) => {
+  const { commissionBps, investor, reason } = req.valid.body;
+  const v = await adminVehicle(req.valid.params.id);
+  if (commissionBps !== undefined) {
+    if (v.ownership === 'company') throw conflict('Fleet cars have no host commission. Set an investor share instead.', 'NOT_HOST_CAR');
+    v.commissionBps = commissionBps;
+  }
+  if (investor !== undefined) {
+    if (v.ownership !== 'company') throw conflict('Investors can only be linked to Way2Cars fleet cars.', 'NOT_COMPANY_FLEET');
+    if (investor && !(await Investor.exists({ _id: investor.investorId, isActive: true }))) throw notFound('Investor');
+    v.investor = investor || undefined;
+  }
+  await v.save();
+  await audit(req, 'vehicle.commercials_updated', { type: 'vehicle', id: v._id }, { changes: { commissionBps, investor }, reason });
+  ok(res, await adminView(v._id));
 });
 
 /** Edits any car. Admin edits never send a car back for review. */
 adminVehicleRouter.patch('/:id', requirePermission('vehicles.manage'), validate({ params: idParams, body: vehicleBaseSchema.partial() }), async (req, res) => {
   const body = req.valid.body;
   const v = await adminVehicle(req.valid.params.id);
-  await validateRefs({ cityId: body.cityId ?? (body.location ? String(v.cityId) : undefined), brandId: body.brandId, categoryId: body.categoryId, location: body.location });
+  await validateRefs({ cityId: body.cityId ?? (body.location ? String(v.cityId) : undefined), brandId: body.brandId ?? (body.modelId ? String(v.brandId) : undefined), categoryId: body.categoryId, location: body.location, modelId: body.modelId });
   Object.assign(v, toVehicleDoc(body));
   await v.save().catch(dup);
   await refreshListing(v._id);
@@ -325,14 +361,19 @@ adminVehicleRouter.patch('/:id/status', requirePermission('vehicles.manage'), va
 /** Puts a company-fleet car live once it has everything a listing needs. */
 adminVehicleRouter.post('/:id/publish', requirePermission('vehicles.manage'), validate({ params: idParams }), async (req, res) => {
   const v = await adminVehicle(req.valid.params.id);
-  if (v.ownership !== 'company') throw conflict('Host cars go through review instead.', 'NOT_COMPANY_FLEET');
+  if (v.ownership !== 'company') {
+    // Host cars can be put live directly by operations once the host is approved (same as approving the review).
+    const owner = await Vendor.findById(v.vendorId).select('status').lean();
+    if (owner?.status !== 'approved') throw conflict('Approve the host first — cars of unapproved hosts cannot go live.', 'VENDOR_NOT_APPROVED');
+  }
   const { trip } = await getSettings();
   const gaps = submissionGaps(v, trip.minPickupPhotos);
   if (gaps.length) throw badRequest('Add the missing details before publishing.', { missing: gaps }, 'VEHICLE_INCOMPLETE');
   v.approval = { status: 'approved', submittedAt: v.approval?.submittedAt || new Date(), reviewedAt: new Date(), reviewedBy: req.auth.id };
   await v.save();
   await refreshListing(v._id);
-  await audit(req, 'vehicle.approved', { type: 'vehicle', id: v._id }, { changes: { ownership: 'company' } });
+  await audit(req, 'vehicle.approved', { type: 'vehicle', id: v._id }, { changes: { ownership: v.ownership, published: true } });
+  if (v.ownership !== 'company') notifyLater('vendor.vehicle_approved', { realm: 'vendor', id: v.vendorId }, { vehicle: v.model, vehicleId: v._id });
   ok(res, await adminView(v._id));
 });
 

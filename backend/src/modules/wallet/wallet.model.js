@@ -11,11 +11,13 @@ export const LEDGER_TYPES = [
   'referral_reward', 'loyalty_reward', 'wallet_redeemed', 'wallet_redeem_reversed', 'admin_adjustment',
   // vendor earnings
   'trip_earning', 'earning_released', 'payout_requested', 'payout_rejected', 'payout_paid', 'earning_reversed',
+  // investor earnings (company-fleet cars)
+  'investor_earning', 'investor_payout',
 ];
 
 const schema = new mongoose.Schema(
   {
-    owner: { realm: { type: String, enum: ['user', 'vendor'], required: true }, id: { type: oid, required: true } },
+    owner: { realm: { type: String, enum: ['user', 'vendor', 'investor'], required: true }, id: { type: oid, required: true } },
     type: { type: String, enum: LEDGER_TYPES, required: true },
     bucket: { type: String, enum: ['wallet', 'pending', 'available', 'locked', 'paid_out'], required: true },
     direction: { type: String, enum: ['credit', 'debit'], required: true },
@@ -26,6 +28,7 @@ const schema = new mongoose.Schema(
     releaseAt: Date, // for pending vendor earnings
     released: Boolean,
     note: { type: String, maxlength: 300 },
+    category: { type: String, enum: ['refund', 'adjustment', 'goodwill'] }, // admin wallet entries
     idempotencyKey: String,
     createdBy: { realm: String, id: oid },
   },

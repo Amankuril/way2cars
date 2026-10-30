@@ -107,10 +107,10 @@ export async function companyVendor(session) {
   }
 }
 
-/** Way2Cars' share for a booking on this host's car (basis points). */
-export function commissionBpsFor(vendor, settings) {
+/** Way2Cars' share for a booking on this host's car (basis points): car override, else host, else platform. */
+export function commissionBpsFor(vendor, settings, vehicle) {
   if (vendor?.isCompany) return 10000;
-  return vendor?.commissionBps ?? settings.commissionBps;
+  return vehicle?.commissionBps ?? vendor?.commissionBps ?? settings.commissionBps;
 }
 
 /** Effective renter/money visibility for an attached host. */

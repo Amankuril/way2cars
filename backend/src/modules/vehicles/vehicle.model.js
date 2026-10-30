@@ -23,6 +23,7 @@ const schema = new mongoose.Schema(
     cityId: { type: oid, ref: 'City', required: true },
     brandId: { type: oid, ref: 'Brand', required: true },
     categoryId: { type: oid, ref: 'Category', required: true },
+    modelId: { type: oid, ref: 'VehicleModel' }, // catalogue model; `model`/`variant` keep the display names
     model: { type: String, required: true, trim: true, maxlength: 60 },
     variant: { type: String, trim: true, maxlength: 60 },
     year: { type: Number, required: true, min: 2005, max: 2100 },
@@ -56,6 +57,15 @@ const schema = new mongoose.Schema(
       securityDepositPaise: { type: Number, required: true, min: 0 },
       includedKmPerDay: { type: Number, required: true, min: 0, max: 2000 },
       extraKmChargePaise: { type: Number, required: true, min: 0 },
+      // Extra charge per 24 hours for an unlimited-km trip. Unset = unlimited km not offered on this car.
+      unlimitedKmDailyPaise: { type: Number, min: 0 },
+    },
+    // Admin overrides: Way2Cars' share on this attached car (else the host's / platform rate).
+    commissionBps: { type: Number, min: 0, max: 9000, default: null },
+    // Company-fleet cars funded by an investor: the investor's share of the car's earnings.
+    investor: {
+      investorId: { type: oid, ref: 'Investor' },
+      shareBps: { type: Number, min: 0, max: 10000 },
     },
     delivery: { enabled: { type: Boolean, default: false }, maxKm: { type: Number, default: 10, min: 0, max: 100 } },
     instantBooking: { type: Boolean, default: false },

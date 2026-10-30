@@ -5,7 +5,7 @@ import { Booking } from './booking.model.js';
 import { Vehicle } from '../vehicles/vehicle.model.js';
 import { isVehicleAvailable } from './availability.service.js';
 import { confirmCoupon, releaseCoupon } from '../coupons/coupon.service.js';
-import { creditUserWallet, creditVendorEarning } from '../wallet/wallet.service.js';
+import { creditUserWallet, creditVendorEarning, creditInvestorEarning } from '../wallet/wallet.service.js';
 import { recordBookingRefund, dispatchRefunds } from '../payments/refund.service.js';
 import { issueInvoice } from '../payments/invoice.service.js';
 import { Payment, Invoice } from '../payments/payment.model.js';
@@ -248,6 +248,7 @@ export async function cancelBooking(booking, { by, reason, full = false, toStatu
     const collected = Math.round((retainedRental * Math.min(q.retainedPaise, q.keepPaise)) / q.keepPaise);
     const earning = collected - pct(collected, p.commissionBps);
     if (earning > 0) await creditVendorEarning(booking.vendorId, earning, { bookingId: booking._id, key: `earning-cancel:${booking._id}` }, session);
+    if (booking.ownership === 'company' && p.investorId) await creditInvestorEarning(p.investorId, pct(collected, p.investorShareBps || 0), { bookingId: booking._id, key: `investor-cancel:${booking._id}`, note: `Late cancellation ${booking.ref}` }, session);
   }
   const v = view(booking);
   if (toStatus === 'rejected') fx.notifications.push(['booking.rejected', { realm: 'user', id: booking.userId }, v]);

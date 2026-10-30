@@ -11,7 +11,7 @@ const MINIMAL = { renterName: false, renterPhone: false, renterKycStatus: false,
  * expected values from the booking snapshot; settled trips use the recorded earning; cancelled ones
  * use `ownerEarnedPaise` (credited on late cancellations) when the caller knows it.
  */
-export function bookingSplit(b, { ownerEarnedPaise } = {}) {
+export function bookingSplit(b, { ownerEarnedPaise, investorEarnedPaise } = {}) {
   const p = b.pricing || {};
   const applied = (b.extensions || []).filter((e) => ['paid', 'approved'].includes(e.status) && e.chargeStatus !== 'waived');
   const extRental = applied.reduce((s, e) => s + e.pricing.rentalPaise, 0);
@@ -24,28 +24,34 @@ export function bookingSplit(b, { ownerEarnedPaise } = {}) {
   const charges = (p.chargesPaise || 0) + extTotal;
 
   let ownerPaise;
+  let investorPaise = 0;
   let gstPaise = fullGst;
   let depositHeldPaise = 0;
   let platformPaise;
   if (settled) {
     ownerPaise = b.settlement.vendorEarningPaise || 0;
-    platformPaise = collectedPaise - ownerPaise - gstPaise;
+    investorPaise = b.settlement.investorEarningPaise || 0;
+    platformPaise = collectedPaise - ownerPaise - investorPaise - gstPaise;
   } else if (closed) {
     ownerPaise = company ? 0 : ownerEarnedPaise || 0;
+    investorPaise = company ? investorEarnedPaise || 0 : 0;
     // Only the share of charges actually kept carries GST.
     gstPaise = charges ? Math.round(fullGst * Math.min(1, collectedPaise / charges)) : 0;
-    platformPaise = collectedPaise - ownerPaise - gstPaise;
+    platformPaise = collectedPaise - ownerPaise - investorPaise - gstPaise;
   } else {
     const base = (p.rentalPaise || 0) + extRental;
     ownerPaise = company ? 0 : base - pct(base, p.commissionBps || 0);
+    investorPaise = company && p.investorId ? pct(base, p.investorShareBps || 0) : 0;
     depositHeldPaise = Math.max(0, Math.min(p.depositPaise || 0, collectedPaise + (p.walletAppliedPaise || 0) - charges));
-    platformPaise = charges - fullGst - ownerPaise; // expected once everything is collected
+    platformPaise = charges - fullGst - ownerPaise - investorPaise; // expected once everything is collected
   }
   return {
     ownership: b.ownership || 'host',
     commissionBps: p.commissionBps,
     collectedPaise,
     ownerPaise,
+    investorPaise,
+    investorShareBps: p.investorShareBps || null,
     platformPaise,
     gstPaise,
     depositHeldPaise,
@@ -101,11 +107,14 @@ export function serializeBooking(b, { audience = 'user', user, vendor, vehicle, 
         ? (show.bookingAmounts
           ? { ...b.settlement, depositRefundPaise: undefined }
           : { kmDriven: b.settlement.kmDriven, extraKm: b.settlement.extraKm, fuelShortEighths: b.settlement.fuelShortEighths, lateHours: b.settlement.lateHours, damageNote: b.settlement.damageNote, vendorEarningPaise: b.settlement.vendorEarningPaise, settledAt: b.settlement.settledAt })
-        : { ...b.settlement, commissionPaise: undefined, vendorEarningPaise: undefined })
+        : { ...b.settlement, commissionPaise: undefined, vendorEarningPaise: undefined, investorEarningPaise: undefined, depositReview: b.settlement.depositReview ? { at: b.settlement.depositReview.at, note: b.settlement.depositReview.note } : undefined })
       : null,
+    deposit: b.deposit?.type ? { type: b.deposit.type, collateral: b.deposit.collateral, status: b.deposit.status, receivedAt: b.deposit.receivedAt, returnedAt: b.deposit.returnedAt } : { type: 'cash', status: 'none' },
+    dropoff: b.dropoff && b.dropoff.type === 'hub' ? { type: 'hub', name: b.dropoff.name, address: b.dropoff.address, point: fromGeoPoint(b.dropoff.point) } : null,
     reviewed: b.reviewed,
     createdAt: b.createdAt,
   };
+  if (b.pickup?.type === 'hub' && base.pickup) base.pickup.name = b.pickup.name;
   if (audience === 'user' && vendor && revealLocation) base.host = { name: vendor.businessName || vendor.name, phone: vendor.phone };
   if (audience === 'vendor' && user) {
     base.renter = {
@@ -129,6 +138,8 @@ export function serializeBooking(b, { audience = 'user', user, vendor, vehicle, 
     base.userId = b.userId;
     base.vendorId = b.vendorId;
     base.statusHistory = b.statusHistory;
+    base.messages = b.messages || [];
+    base.depositDetail = b.deposit;
     if (user) base.renter = { id: user._id, name: user.name, phone: user.phone, kycStatus: user.kyc?.status };
     if (vendor) base.host = { id: vendor._id, name: vendor.businessName || vendor.name, phone: vendor.phone };
   }

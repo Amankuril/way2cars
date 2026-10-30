@@ -3,6 +3,7 @@ import { User } from '../users/user.model.js';
 import { Vendor } from '../vendors/vendor.model.js';
 import { LedgerEntry, Referral } from './wallet.model.js';
 import { getSettings } from '../settings/settings.service.js';
+import { Investor } from '../investors/investor.model.js';
 
 /**
  * Wallet & earnings bookkeeping. All functions require a transaction session so that the
@@ -13,22 +14,22 @@ async function alreadyApplied(key, session) {
   return key ? Boolean(await LedgerEntry.exists({ idempotencyKey: key }).session(session)) : false;
 }
 
-export async function creditUserWallet(userId, amountPaise, type, { bookingId, note, key, by } = {}, session) {
+export async function creditUserWallet(userId, amountPaise, type, { bookingId, note, key, by, category } = {}, session) {
   if (amountPaise <= 0 || (await alreadyApplied(key, session))) return null;
   const user = await User.findOneAndUpdate({ _id: userId }, { $inc: { walletBalancePaise: amountPaise } }, { new: true, session }).select('walletBalancePaise');
-  const [row] = await LedgerEntry.create([{ owner: { realm: 'user', id: userId }, type, bucket: 'wallet', direction: 'credit', amountPaise, balanceAfterPaise: user.walletBalancePaise, bookingId, note, idempotencyKey: key, createdBy: by }], { session });
+  const [row] = await LedgerEntry.create([{ owner: { realm: 'user', id: userId }, type, bucket: 'wallet', direction: 'credit', amountPaise, balanceAfterPaise: user.walletBalancePaise, bookingId, note, category, idempotencyKey: key, createdBy: by }], { session });
   return row;
 }
 
-export async function debitUserWallet(userId, amountPaise, type, { bookingId, note, key, by } = {}, session) {
+export async function debitUserWallet(userId, amountPaise, type, { bookingId, note, key, by, category } = {}, session) {
   if (amountPaise <= 0 || (await alreadyApplied(key, session))) return null;
   const user = await User.findOneAndUpdate(
     { _id: userId, walletBalancePaise: { $gte: amountPaise } },
     { $inc: { walletBalancePaise: -amountPaise } },
     { new: true, session },
   ).select('walletBalancePaise');
-  if (!user) throw conflict('Your wallet balance changed. Please review the price again.', 'WALLET_INSUFFICIENT');
-  const [row] = await LedgerEntry.create([{ owner: { realm: 'user', id: userId }, type, bucket: 'wallet', direction: 'debit', amountPaise, balanceAfterPaise: user.walletBalancePaise, bookingId, note, idempotencyKey: key, createdBy: by }], { session });
+  if (!user) throw conflict(by?.realm === 'admin' ? 'The wallet balance is lower than this amount.' : 'Your wallet balance changed. Please review the price again.', 'WALLET_INSUFFICIENT');
+  const [row] = await LedgerEntry.create([{ owner: { realm: 'user', id: userId }, type, bucket: 'wallet', direction: 'debit', amountPaise, balanceAfterPaise: user.walletBalancePaise, bookingId, note, category, idempotencyKey: key, createdBy: by }], { session });
   return row;
 }
 
@@ -40,6 +41,25 @@ export async function creditVendorEarning(vendorId, amountPaise, { bookingId, ke
   const v = await Vendor.findOneAndUpdate({ _id: vendorId }, { $inc: { 'wallet.pendingPaise': amountPaise, 'wallet.lifetimeEarnedPaise': amountPaise } }, { new: true, session }).select('wallet');
   const [row] = await LedgerEntry.create([{ owner: { realm: 'vendor', id: vendorId }, type: 'trip_earning', bucket: 'pending', direction: 'credit', amountPaise, balanceAfterPaise: v.wallet.pendingPaise, bookingId, releaseAt, released: false, idempotencyKey: key }], { session });
   return row;
+}
+
+/** Investor share of a fleet car's trip: available at once, paid out by finance against a UTR. */
+export async function creditInvestorEarning(investorId, amountPaise, { bookingId, key, note }, session) {
+  if (!investorId || amountPaise <= 0 || (await alreadyApplied(key, session))) return null;
+  const inv = await Investor.findOneAndUpdate({ _id: investorId }, { $inc: { 'wallet.availablePaise': amountPaise, 'wallet.lifetimeEarnedPaise': amountPaise } }, { new: true, session }).select('wallet');
+  if (!inv) return null;
+  const [row] = await LedgerEntry.create([{ owner: { realm: 'investor', id: investorId }, type: 'investor_earning', bucket: 'available', direction: 'credit', amountPaise, balanceAfterPaise: inv.wallet.availablePaise, bookingId, note, idempotencyKey: key }], { session });
+  return row;
+}
+
+export async function payInvestor(investorId, amountPaise, payoutId, by, session) {
+  const inv = await Investor.findOneAndUpdate(
+    { _id: investorId, 'wallet.availablePaise': { $gte: amountPaise } },
+    { $inc: { 'wallet.availablePaise': -amountPaise, 'wallet.lifetimePaidOutPaise': amountPaise } },
+    { new: true, session },
+  ).select('wallet');
+  if (!inv) throw conflict('The amount is more than this investor’s unpaid balance.', 'INSUFFICIENT_BALANCE');
+  await LedgerEntry.create([{ owner: { realm: 'investor', id: investorId }, type: 'investor_payout', bucket: 'paid_out', direction: 'debit', amountPaise, balanceAfterPaise: inv.wallet.availablePaise, idempotencyKey: `investor-payout:${payoutId}`, createdBy: by }], { session });
 }
 
 export async function releaseVendorEarning(entry, session) {
@@ -111,4 +131,4 @@ export async function rewardReferralIfQualified(userId, bookingId, session) {
   return r;
 }
 
-export const serializeLedger = (e) => ({ id: e._id, type: e.type, bucket: e.bucket, direction: e.direction, amountPaise: e.amountPaise, balanceAfterPaise: e.balanceAfterPaise, bookingId: e.bookingId, payoutRequestId: e.payoutRequestId, releaseAt: e.releaseAt, note: e.note, createdAt: e.createdAt });
+export const serializeLedger = (e) => ({ id: e._id, type: e.type, bucket: e.bucket, direction: e.direction, amountPaise: e.amountPaise, balanceAfterPaise: e.balanceAfterPaise, bookingId: e.bookingId, payoutRequestId: e.payoutRequestId, releaseAt: e.releaseAt, note: e.note, category: e.category, createdAt: e.createdAt });

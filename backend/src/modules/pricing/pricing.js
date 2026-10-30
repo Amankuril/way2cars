@@ -53,6 +53,20 @@ export function computeRental({ startAt, endAt, pricing, overrides }) {
   return { hours, lines, rentalPaise, includedKm };
 }
 
+/**
+ * Unlimited-km add-on: the car's per-24h surcharge, pro-rated by billable hours, added to the rental
+ * as its own line (so GST, discounts, commission and cancellation shares treat it like rent).
+ */
+export function addUnlimitedKm(rental, dailyPaise) {
+  const amountPaise = Math.round((dailyPaise * rental.hours) / 24);
+  return {
+    ...rental,
+    lines: [...rental.lines, { kind: 'unlimited_km', hours: rental.hours, ratePaise: dailyPaise, amountPaise, source: 'unlimited_km' }],
+    rentalPaise: rental.rentalPaise + amountPaise,
+    unlimitedKmPaise: amountPaise,
+  };
+}
+
 /** Delivery fee = base + per-km × road distance (km rounded up). */
 export function deliveryFee(distanceMeters, fees) {
   const km = Math.ceil(distanceMeters / 1000);
@@ -110,9 +124,9 @@ export function cancellationRefundBps(tiers, hoursBeforeStart) {
  * Trip settlement on return. Deductions come out of the deposit; anything beyond it is
  * outstanding and must be paid by the renter.
  */
-export function computeSettlement({ startOdometer, endOdometer, includedKm, extraKmChargePaise, startFuelEighths, endFuelEighths, fuelChargePerEighthPaise, scheduledEndAt, actualEndAt, lateGraceMinutes, hourlyPaise, lateFeeMultiplierBps, damagePaise = 0, extensionDuePaise = 0, depositPaise, isElectric = false }) {
+export function computeSettlement({ unlimitedKm = false, startOdometer, endOdometer, includedKm, extraKmChargePaise, startFuelEighths, endFuelEighths, fuelChargePerEighthPaise, scheduledEndAt, actualEndAt, lateGraceMinutes, hourlyPaise, lateFeeMultiplierBps, damagePaise = 0, extensionDuePaise = 0, depositPaise, isElectric = false }) {
   const kmDriven = Math.max(0, endOdometer - startOdometer);
-  const extraKm = Math.max(0, kmDriven - includedKm);
+  const extraKm = unlimitedKm ? 0 : Math.max(0, kmDriven - includedKm);
   const extraKmPaise = extraKm * extraKmChargePaise;
   const fuelShortEighths = isElectric ? 0 : Math.max(0, startFuelEighths - endFuelEighths);
   const fuelPaise = fuelShortEighths * fuelChargePerEighthPaise;

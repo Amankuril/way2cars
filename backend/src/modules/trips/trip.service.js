@@ -13,7 +13,8 @@ import { getPublishedPage } from '../cms/cms.routes.js';
 import { claimFiles, attachFiles, registerFileAccessRule } from '../files/files.service.js';
 import { computeSettlement } from '../pricing/pricing.js';
 import { recordBookingRefund } from '../payments/refund.service.js';
-import { creditVendorEarning, creditUserWallet, rewardReferralIfQualified } from '../wallet/wallet.service.js';
+import { creditVendorEarning, creditUserWallet, creditInvestorEarning, rewardReferralIfQualified } from '../wallet/wallet.service.js';
+import { formatIst } from '../../core/time.js';
 import { transition, newEffects, runEffects } from '../bookings/booking.lifecycle.js';
 import { openPaymentOrder } from '../payments/payment.service.js';
 import { TripInspection, RentalAgreement, DamageClaim, PHOTO_ANGLES, CHECKLIST_ITEMS } from './trip.model.js';
@@ -77,6 +78,9 @@ export async function startTrip(req, bookingId, body) {
     if (!b) throw notFound('Booking');
     if (b.status !== 'confirmed') throw conflict('This trip is not ready to start.', 'NOT_STARTABLE');
     if (b.balance?.status === 'due') throw conflict(`Pay the remaining ₹${(b.balance.duePaise / 100).toFixed(2)} before pickup.`, 'BALANCE_DUE', { duePaise: b.balance.duePaise });
+    if (['bike', 'laptop'].includes(b.deposit?.type) && b.deposit.status !== 'received') {
+      throw conflict(`Hand over your ${b.deposit.type} (security deposit) at pickup. You can start the trip once our team marks it received.`, 'COLLATERAL_PENDING');
+    }
     const now = new Date();
     const opensAt = new Date(b.startAt.getTime() - settings.booking.pickupWindowMinutesBefore * 60_000);
     if (now < opensAt) throw conflict(`Pickup opens ${settings.booking.pickupWindowMinutesBefore} minutes before your start time.`, 'PICKUP_NOT_OPEN');
@@ -162,6 +166,7 @@ export async function previewSettlement(b, damagePaise = 0) {
   const settings = await getSettings();
   const vehicle = await Vehicle.findById(b.vehicleId).select('fuelType').lean();
   return computeSettlement({
+    unlimitedKm: Boolean(b.pricing.unlimitedKm),
     startOdometer: b.trip.startOdometerKm,
     endOdometer: b.trip.endOdometerKm,
     includedKm: b.pricing.includedKm,
@@ -195,20 +200,25 @@ export async function finalizeTrip(bookingId, { damagePaise = 0, damageNote, by 
   const extensionRental = appliedExtensions(b).filter((e) => e.chargeStatus !== 'waived').reduce((sum, e) => sum + e.pricing.rentalPaise, 0);
   const usageCharges = b.pricing.rentalPaise + extensionRental + s.extraKmPaise + s.fuelPaise + s.lateFeePaise;
   const commissionPaise = pct(usageCharges, b.pricing.commissionBps);
-  // Company-fleet cars: everything stays with Way2Cars.
+  // Company-fleet cars: everything stays with Way2Cars, minus the investor's share when the car has one.
   const vendorEarningPaise = b.ownership === 'company' ? 0 : usageCharges - commissionPaise + s.damagePaise;
+  const investorEarningPaise = b.ownership === 'company' && b.pricing.investorId ? pct(usageCharges, b.pricing.investorShareBps || 0) : 0;
+  // Money deposits wait for operations to inspect the car and approve the refund (unless switched off).
+  const reviewDeposit = settings.deposit.requireRefundApproval && s.depositRefundPaise > 0;
+  const depositRefundStatus = s.depositRefundPaise > 0 ? (reviewDeposit ? 'pending_review' : 'refunded') : 'none';
 
   transition(b, 'completed', by, 'Trip settled');
   // Unpaid extension charges were taken from the deposit (or added to the dues) above.
   for (const e of b.extensions) if (e.status === 'approved' && e.chargeStatus === 'due') e.chargeStatus = 'paid';
   b.trip.endedAt = new Date();
-  b.settlement = { ...s, damageNote, outstandingStatus: s.outstandingPaise > 0 ? 'due' : 'none', commissionPaise, vendorEarningPaise, settledAt: new Date(), settledBy: by };
+  b.settlement = { ...s, damageNote, outstandingStatus: s.outstandingPaise > 0 ? 'due' : 'none', commissionPaise, vendorEarningPaise, investorEarningPaise, settledAt: new Date(), settledBy: by, extraCharges: [], depositRefundStatus };
   await b.save({ session });
 
-  if (s.depositRefundPaise > 0) {
+  if (depositRefundStatus === 'refunded') {
     fx.refunds.push(...(await recordBookingRefund(b, s.depositRefundPaise, 'deposit_settlement', { key: `deposit:${b._id}`, by }, session)));
   }
   await creditVendorEarning(b.vendorId, vendorEarningPaise, { bookingId: b._id, key: `earning:${b._id}` }, session);
+  await creditInvestorEarning(b.pricing.investorId, investorEarningPaise, { bookingId: b._id, key: `investor:${b._id}`, note: `Trip ${b.ref}` }, session);
 
   if (settings.loyalty.enabled) {
     const points = pct(b.pricing.rentalPaise + extensionRental - b.pricing.discountPaise, settings.loyalty.earnBps);
@@ -221,8 +231,100 @@ export async function finalizeTrip(bookingId, { damagePaise = 0, damageNote, by 
   }
   await Vehicle.updateOne({ _id: b.vehicleId }, { $inc: { 'stats.trips': 1, 'stats.earningsPaise': vendorEarningPaise }, $max: { lastOdometerKm: b.trip.endOdometerKm } }, { session });
   await User.updateOne({ _id: b.userId }, { $inc: { 'stats.tripsCompleted': 1, 'stats.totalSpentPaise': b.pricing.chargesPaise + s.totalDeductionsPaise } }, { session });
-  fx.notifications.push(['trip.completed', { realm: 'user', id: b.userId }, { bookingId: b._id, ref: b.ref, depositRefundPaise: s.depositRefundPaise }]);
+  fx.notifications.push(['trip.completed', { realm: 'user', id: b.userId }, { bookingId: b._id, ref: b.ref, depositRefundPaise: s.depositRefundPaise, depositUnderReview: reviewDeposit }]);
   return fx;
+}
+
+const sumCharges = (list) => (list || []).reduce((t, c) => t + c.amountPaise, 0);
+
+/**
+ * Operations inspect a returned car: add charges (cleaning, challans, late handover…), then approve
+ * the deposit refund for a date. A date today or earlier refunds at once; later dates are refunded by
+ * the scheduler. Can be redone until the refund is sent. Extra charges stay with Way2Cars.
+ */
+export async function reviewDeposit(req, bookingId, { extraCharges = [], refundAt, note }) {
+  const fx = await withTransaction(async (session) => {
+    const b = await Booking.findById(bookingId).session(session);
+    if (!b) throw notFound('Booking');
+    const st = b.settlement || {};
+    const collateral = ['bike', 'laptop'].includes(b.deposit?.type);
+    const open = ['pending_review', 'scheduled'].includes(st.depositRefundStatus) || (collateral && b.status === 'completed' && !st.depositReview?.at);
+    if (b.status !== 'completed' || !open) throw conflict('This deposit is not awaiting review (already refunded, or nothing to refund).', 'DEPOSIT_NOT_IN_REVIEW');
+    if (['paid', 'waived'].includes(st.outstandingStatus)) throw conflict('Dues on this trip are already closed; charges can no longer change.', 'OUTSTANDING_CLOSED');
+    const baseDeductions = st.totalDeductionsPaise - sumCharges(st.extraCharges);
+    const totalDeductions = baseDeductions + sumCharges(extraCharges);
+    const deposit = b.pricing.depositPaise || 0;
+    const refundPaise = Math.max(0, deposit - totalDeductions);
+    const outstanding = Math.max(0, totalDeductions - deposit);
+    const now = new Date();
+    const when = refundAt ? new Date(refundAt) : now;
+    const by = { realm: 'admin', id: req.auth.id };
+
+    st.extraCharges = extraCharges;
+    st.totalDeductionsPaise = totalDeductions;
+    st.depositRefundPaise = refundPaise;
+    st.outstandingPaise = outstanding;
+    st.outstandingStatus = outstanding > 0 ? 'due' : 'none';
+    st.depositReview = { by, at: now, note };
+    st.depositRefundAt = refundPaise > 0 ? when : undefined;
+    st.depositRefundStatus = refundPaise <= 0 ? 'none' : when <= now ? 'refunded' : 'scheduled';
+    b.markModified('settlement');
+    await b.save({ session });
+
+    const effects = newEffects();
+    if (st.depositRefundStatus === 'refunded') {
+      effects.refunds.push(...(await recordBookingRefund(b, refundPaise, 'deposit_settlement', { key: `deposit:${b._id}`, by }, session)));
+    }
+    await audit(req, 'booking.deposit_reviewed', { type: 'booking', id: b._id }, { reason: note, changes: { extraChargesPaise: sumCharges(extraCharges), refundPaise, refundAt: st.depositRefundAt, outstanding }, session });
+    effects.notifications.push(['deposit.reviewed', { realm: 'user', id: b.userId }, { bookingId: b._id, ref: b.ref, refundPaise, outstandingPaise: outstanding, chargesPaise: totalDeductions, refundOn: st.depositRefundStatus === 'scheduled' ? formatIst(when) : null }]);
+    return effects;
+  });
+  await runEffects(fx);
+}
+
+/** Job: send deposit refunds whose approved date has come. */
+export async function processScheduledDepositRefunds() {
+  const due = await Booking.find({ 'settlement.depositRefundStatus': 'scheduled', 'settlement.depositRefundAt': { $lte: new Date() } }).select('_id').limit(100).lean();
+  for (const { _id } of due) {
+    const fx = await withTransaction(async (session) => {
+      const b = await Booking.findOne({ _id, 'settlement.depositRefundStatus': 'scheduled' }).session(session);
+      if (!b) return null;
+      b.settlement.depositRefundStatus = 'refunded';
+      await b.save({ session });
+      const effects = newEffects();
+      effects.refunds.push(...(await recordBookingRefund(b, b.settlement.depositRefundPaise, 'deposit_settlement', { key: `deposit:${b._id}`, by: { realm: 'system' } }, session)));
+      return effects;
+    }).catch(() => null);
+    await runEffects(fx);
+  }
+  return due.length;
+}
+
+/**
+ * A bike / laptop given as the security deposit: marked received at pickup (by operations or the host),
+ * and returned once the car is handed back (or the booking is called off).
+ */
+export async function markCollateral(req, bookingId, { action, note }) {
+  const asHost = req.auth.realm === 'vendor';
+  const b = await Booking.findOne(asHost ? { _id: bookingId, vendorId: req.auth.id } : { _id: bookingId });
+  if (!b) throw notFound('Booking');
+  if (!['bike', 'laptop'].includes(b.deposit?.type)) throw conflict('This booking has a money deposit, not a bike or laptop.', 'NO_COLLATERAL');
+  const by = { realm: req.auth.realm, id: req.auth.id };
+  const now = new Date();
+  if (action === 'received') {
+    if (b.deposit.status !== 'awaiting') throw conflict(`The ${b.deposit.type} is already marked ${b.deposit.status}.`, 'COLLATERAL_STATE');
+    if (!['confirmed', 'ongoing'].includes(b.status)) throw conflict('Collect the deposit only for confirmed bookings.', 'COLLATERAL_STATE');
+    Object.assign(b.deposit, { status: 'received', receivedAt: now, receivedBy: by, note: note || b.deposit.note });
+  } else {
+    if (b.deposit.status !== 'received') throw conflict(`The ${b.deposit.type} has not been received, so it can't be returned.`, 'COLLATERAL_STATE');
+    if (!['return_pending', 'completed', 'cancelled', 'rejected'].includes(b.status)) throw conflict('Return the deposit after the car has been handed back.', 'COLLATERAL_STATE');
+    Object.assign(b.deposit, { status: 'returned', returnedAt: now, returnedBy: by, note: note || b.deposit.note });
+  }
+  b.statusHistory.push({ status: b.status, at: now, by, note: `${b.deposit.type === 'bike' ? 'Bike' : 'Laptop'} deposit ${action}` });
+  await b.save();
+  await audit(req, `booking.collateral_${action}`, { type: 'booking', id: b._id }, { reason: note });
+  await runEffects({ refunds: [], notifications: [[`deposit.collateral_${action}`, { realm: 'user', id: b.userId }, { bookingId: b._id, ref: b.ref, item: b.deposit.type }]] });
+  return b;
 }
 
 /** Host reviews a returned car: accept as-is, or file a damage claim for admin approval. */

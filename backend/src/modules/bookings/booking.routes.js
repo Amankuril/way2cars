@@ -17,7 +17,7 @@ import { withTransaction } from '../../core/db.js';
 import { runEffects } from './booking.lifecycle.js';
 import { getSettings } from '../settings/settings.service.js';
 import { serializeRefund, markManualRefundProcessed } from '../payments/refund.service.js';
-import { startTrip, submitReturn, agreementFor, pickupSchema, returnSchema, vendorReturnReview, resolveDamageClaim, settlementPaymentOrder, inspectionsFor, previewSettlement, finalizeTrip } from '../trips/trip.service.js';
+import { startTrip, submitReturn, agreementFor, pickupSchema, returnSchema, vendorReturnReview, resolveDamageClaim, settlementPaymentOrder, inspectionsFor, previewSettlement, finalizeTrip, reviewDeposit, markCollateral } from '../trips/trip.service.js';
 import { verifyCheckout, markPaymentFailed, serializePayment } from '../payments/payment.service.js';
 import { Payment, Refund, Invoice } from '../payments/payment.model.js';
 import { renderInvoicePdf } from '../payments/invoice.service.js';
@@ -30,7 +30,22 @@ const objectId = z.string().regex(/^[a-f0-9]{24}$/);
 const idParams = z.object({ id: objectId });
 const tripWindow = { vehicleId: objectId, startAt: z.coerce.date(), endAt: z.coerce.date() };
 const delivery = z.object({ address: z.string().trim().min(5).max(300), lat: z.number().min(-90).max(90), lng: z.number().min(-180).max(180), placeId: z.string().max(300).optional() }).strict().optional();
-const quoteBody = z.object({ ...tripWindow, delivery, couponCode: z.string().trim().toUpperCase().max(20).optional(), useWallet: z.boolean().default(false), paymentPlan: z.enum(['full', 'advance']).default('full') }).strict();
+const collateral = z.object({
+  make: z.string().trim().min(2).max(40),
+  model: z.string().trim().min(1).max(60),
+  year: z.number().int().min(2000).max(2100),
+  registrationNumber: z.string().trim().max(15).optional(),
+  serialNumber: z.string().trim().max(60).optional(),
+  description: z.string().trim().max(200).optional(),
+}).strict();
+const tripOptions = {
+  unlimitedKm: z.boolean().default(false),
+  depositOption: z.enum(['cash', 'bike', 'laptop']).default('cash'),
+  collateral: collateral.optional(),
+  pickupLocationId: objectId.optional(),
+  dropoffLocationId: objectId.optional(),
+};
+const quoteBody = z.object({ ...tripWindow, delivery, couponCode: z.string().trim().toUpperCase().max(20).optional(), useWallet: z.boolean().default(false), paymentPlan: z.enum(['full', 'advance']).default('full'), ...tripOptions }).strict();
 const officeMethod = z.enum(['cash', 'upi', 'card', 'bank_transfer']);
 const officeRef = z.string().trim().max(60).optional();
 const TABS = {
@@ -39,6 +54,7 @@ const TABS = {
   completed: ['completed'],
   cancelled: ['cancelled', 'rejected', 'expired'],
 };
+const collateralBody = z.object({ action: z.enum(['received', 'returned']), note: z.string().trim().max(300).optional() }).strict();
 const listQuery = z.object({ ...paginationQuery, tab: z.enum(Object.keys(TABS)).optional() });
 const checkoutBody = z.object({ razorpayOrderId: z.string().regex(/^order_[A-Za-z0-9]{6,30}$/), razorpayPaymentId: z.string().regex(/^pay_[A-Za-z0-9]{6,30}$/), razorpaySignature: z.string().regex(/^[a-f0-9]{64}$/) }).strict();
 
@@ -191,6 +207,11 @@ vendorBookingRouter.post('/:id/decision', validate({ params: idParams, body: z.o
   ok(res, serializeBooking(await Booking.findById(req.valid.params.id).lean(), { audience: 'vendor', visibility: await visibilityFor(req.auth.id) }));
 });
 
+vendorBookingRouter.post('/:id/collateral', validate({ params: idParams, body: collateralBody }), async (req, res) => {
+  await markCollateral(req, req.valid.params.id, req.valid.body);
+  ok(res, serializeBooking(await Booking.findById(req.valid.params.id).lean(), { audience: 'vendor', visibility: await visibilityFor(req.auth.id) }));
+});
+
 vendorBookingRouter.post('/:id/return-review', validate({
   params: idParams,
   body: z.discriminatedUnion('decision', [
@@ -206,7 +227,7 @@ vendorBookingRouter.post('/:id/return-review', validate({
 export const adminBookingRouter = Router();
 
 adminBookingRouter.get('/', requirePermission('bookings.read'), validate({
-  query: z.object({ ...paginationQuery, status: z.enum(BOOKING_STATUSES).optional(), userId: objectId.optional(), vendorId: objectId.optional(), vehicleId: objectId.optional(), cityId: objectId.optional(), ref: z.string().trim().max(20).optional(), from: z.coerce.date().optional(), to: z.coerce.date().optional(), source: z.enum(['app', 'offline']).optional(), ownership: z.enum(['host', 'company']).optional(), attention: z.enum(['extension_requests', 'balance_due']).optional() }),
+  query: z.object({ ...paginationQuery, status: z.enum(BOOKING_STATUSES).optional(), userId: objectId.optional(), vendorId: objectId.optional(), vehicleId: objectId.optional(), cityId: objectId.optional(), ref: z.string().trim().max(20).optional(), from: z.coerce.date().optional(), to: z.coerce.date().optional(), source: z.enum(['app', 'offline']).optional(), ownership: z.enum(['host', 'company']).optional(), attention: z.enum(['extension_requests', 'balance_due', 'deposit_review', 'collateral']).optional() }),
 }), async (req, res) => {
   const { page, limit, status, userId, vendorId, vehicleId, cityId, ref, from, to, source, ownership, attention } = req.valid.query;
   const filter = {};
@@ -214,6 +235,8 @@ adminBookingRouter.get('/', requirePermission('bookings.read'), validate({
   if (ownership) filter.ownership = ownership === 'host' ? { $ne: 'company' } : 'company';
   if (attention === 'extension_requests') filter['extensions.status'] = 'pending_approval';
   if (attention === 'balance_due') Object.assign(filter, { 'balance.status': 'due', status: { $in: ['pending_vendor_approval', 'confirmed'] } });
+  if (attention === 'deposit_review') filter['settlement.depositRefundStatus'] = 'pending_review';
+  if (attention === 'collateral') filter['deposit.status'] = { $in: ['awaiting', 'received'] };
   if (status) filter.status = status;
   if (userId) filter.userId = userId;
   if (vendorId) filter.vendorId = vendorId;
@@ -243,9 +266,15 @@ adminBookingRouter.get('/:id', requirePermission('bookings.read'), validate({ pa
     Invoice.find({ bookingId: b._id }).lean(),
   ]);
   const out = serializeBooking(b, { audience: 'admin', user, vendor });
-  if (['cancelled', 'rejected'].includes(b.status) && b.ownership !== 'company') {
-    const earned = await LedgerEntry.find({ bookingId: b._id, type: 'trip_earning' }).select('amountPaise').lean();
-    out.split = bookingSplit(b, { ownerEarnedPaise: earned.reduce((t, e) => t + e.amountPaise, 0) });
+  if (['cancelled', 'rejected'].includes(b.status)) {
+    const earned = await LedgerEntry.find({ bookingId: b._id, type: { $in: ['trip_earning', 'investor_earning'] } }).select('type amountPaise').lean();
+    const sum = (type) => earned.filter((e) => e.type === type).reduce((t, e) => t + e.amountPaise, 0);
+    out.split = bookingSplit(b, { ownerEarnedPaise: sum('trip_earning'), investorEarnedPaise: sum('investor_earning') });
+  }
+  if (b.status === 'completed') {
+    const settings = await getSettings();
+    out.lateFeePerHourPaise = Math.round(((b.pricing.hourlyPaise || 0) * settings.trip.lateFeeMultiplierBps) / 10000);
+    out.depositDefaultRefundDays = settings.deposit.defaultRefundDays;
   }
   out.inspections = inspections;
   out.payments = payments.map((p) => ({ ...serializePayment(p), razorpayOrderId: p.razorpayOrderId, failureReason: p.failureReason, verifiedVia: p.verifiedVia }));
@@ -263,6 +292,23 @@ adminBookingRouter.post('/:id/cancel', requirePermission('bookings.manage'), val
 adminBookingRouter.post('/:id/damage-claim', requirePermission('trips.manage'), validate({ params: idParams, body: z.object({ decision: z.enum(['approve', 'reject']), approvedPaise: z.number().int().min(0).max(50_000_000).optional(), note: z.string().trim().max(500).optional() }).strict() }), async (req, res) => {
   await resolveDamageClaim(req, req.valid.params.id, req.valid.body);
   ok(res, serializeBooking(await Booking.findById(req.valid.params.id).lean(), { audience: 'admin' }));
+});
+
+adminBookingRouter.post('/:id/deposit-review', requirePermission('trips.manage'), validate({
+  params: idParams,
+  body: z.object({
+    extraCharges: z.array(z.object({ label: z.string().trim().min(2).max(60), amountPaise: z.number().int().min(100).max(50_000_000), note: z.string().trim().max(200).optional() }).strict()).max(10).default([]),
+    refundAt: z.coerce.date().optional(),
+    note: z.string().trim().max(500).optional(),
+  }).strict(),
+}), async (req, res) => {
+  await reviewDeposit(req, req.valid.params.id, req.valid.body);
+  ok(res, serializeBooking(await Booking.findById(req.valid.params.id).lean(), { audience: 'admin' }));
+});
+
+adminBookingRouter.post('/:id/collateral', requirePermission('trips.manage'), validate({ params: idParams, body: collateralBody }), async (req, res) => {
+  const b = await markCollateral(req, req.valid.params.id, req.valid.body);
+  ok(res, serializeBooking(b.toObject(), { audience: 'admin' }));
 });
 
 adminBookingRouter.post('/:id/waive-outstanding', requirePermission('refunds.manage'), validate({ params: idParams, body: z.object({ reason: z.string().trim().min(5).max(300) }).strict() }), async (req, res) => {
@@ -301,13 +347,14 @@ const officeBooking = z.object({
   ]),
   balanceDueAt: z.coerce.date().optional(),
   note: z.string().trim().max(500).optional(),
+  ...tripOptions,
 }).strict();
 
 /** Price + availability for an office booking before staff confirm it. */
-adminBookingRouter.post('/offline/quote', requirePermission('bookings.manage'), validate({ body: officeBooking.pick({ vehicleId: true, startAt: true, endAt: true, pricing: true }) }), async (req, res) => {
-  const { vehicleId, startAt, endAt, pricing } = req.valid.body;
+adminBookingRouter.post('/offline/quote', requirePermission('bookings.manage'), validate({ body: officeBooking.pick({ vehicleId: true, startAt: true, endAt: true, pricing: true, unlimitedKm: true, depositOption: true, pickupLocationId: true, dropoffLocationId: true }) }), async (req, res) => {
+  const { vehicleId, startAt, endAt, pricing, ...options } = req.valid.body;
   try {
-    const q = await buildQuote({ vehicleId, startAt, endAt }, { office: { ...pricing } });
+    const q = await buildQuote({ vehicleId, startAt, endAt, ...options }, { office: { ...pricing } });
     ok(res, { available: true, ...serializeQuote(q), commissionBps: undefined });
   } catch (err) {
     if (err.code === 'VEHICLE_UNAVAILABLE') return ok(res, { available: false, message: err.message });

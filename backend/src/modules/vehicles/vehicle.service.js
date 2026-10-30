@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { Vehicle, VehicleBlock, VehiclePriceOverride, computeListed, FUEL_TYPES, TRANSMISSIONS, VEHICLE_FEATURES } from './vehicle.model.js';
 import { Vendor } from '../vendors/vendor.model.js';
-import { City, Brand, Category } from '../catalog/catalog.model.js';
+import { City, Brand, Category, VehicleModel } from '../catalog/catalog.model.js';
 import { Booking, overlapFilter, BLOCKING_STATUSES } from '../bookings/booking.model.js';
 import { badRequest, conflict, notFound } from '../../core/errors.js';
 import { fromGeoPoint, haversineMeters, insideGeofence } from '../../integrations/maps.js';
@@ -15,6 +15,7 @@ export const vehicleBaseSchema = z.object({
   cityId: objectId,
   brandId: objectId,
   categoryId: objectId,
+  modelId: objectId.nullable().optional(),
   model: z.string().trim().min(1).max(60),
   variant: z.string().trim().max(60).optional(),
   year: z.number().int().min(2005).max(new Date().getFullYear() + 1),
@@ -42,6 +43,7 @@ export const vehicleBaseSchema = z.object({
     securityDepositPaise: z.number().int().min(0).max(10_000_000),
     includedKmPerDay: z.number().int().min(0).max(2000),
     extraKmChargePaise: z.number().int().min(0).max(100_000),
+    unlimitedKmDailyPaise: z.number().int().min(0).max(10_000_000).optional().nullable(),
   }).strict().refine((p) => p.hourlyPaise <= p.dailyPaise, { message: 'Hourly price cannot exceed the daily price', path: ['hourlyPaise'] }),
   delivery: z.object({ enabled: z.boolean(), maxKm: z.number().int().min(0).max(100) }).strict().default({ enabled: false, maxKm: 10 }),
   instantBooking: z.boolean().default(false),
@@ -50,13 +52,15 @@ export const vehicleBaseSchema = z.object({
 // Changing any of these on an approved car sends it back for review.
 const SENSITIVE = ['brandId', 'model', 'year', 'registrationNumber', 'fuelType', 'transmission', 'seats', 'cityId', 'location'];
 
-export async function validateRefs({ cityId, brandId, categoryId, location }) {
-  const [city, brand, category] = await Promise.all([
+export async function validateRefs({ cityId, brandId, categoryId, location, modelId }) {
+  const [city, brand, category, model] = await Promise.all([
     cityId ? City.findOne({ _id: cityId, isActive: true }).lean() : null,
     brandId ? Brand.exists({ _id: brandId, isActive: true }) : true,
     categoryId ? Category.exists({ _id: categoryId, isActive: true }) : true,
+    modelId ? VehicleModel.findOne({ _id: modelId, isActive: true }).select('brandId').lean() : true,
   ]);
   if (cityId && !city) throw badRequest('Choose a supported city.', undefined, 'CITY_INVALID');
+  if (!model || (modelId && brandId && String(model.brandId) !== String(brandId))) throw badRequest('Choose a model of the selected brand.', undefined, 'MODEL_INVALID');
   if (!brand) throw badRequest('Choose a valid brand.', undefined, 'BRAND_INVALID');
   if (!category) throw badRequest('Choose a valid car type.', undefined, 'CATEGORY_INVALID');
   if (city && location) {
@@ -72,7 +76,11 @@ export function toVehicleDoc(body) {
     const { lat, lng, ...loc } = body.location;
     doc.location = { ...loc, point: { type: 'Point', coordinates: [lng, lat] } };
   }
-  if (body.pricing && body.pricing.weekendDailyPaise === null) doc.pricing = { ...body.pricing, weekendDailyPaise: undefined };
+  if (body.pricing) {
+    doc.pricing = { ...body.pricing };
+    for (const k of ['weekendDailyPaise', 'unlimitedKmDailyPaise']) if (doc.pricing[k] === null) doc.pricing[k] = undefined;
+  }
+  if (body.modelId === null) doc.modelId = undefined;
   return doc;
 }
 
@@ -148,6 +156,7 @@ export function serializeVehicle(v, { audience = 'public', distanceMeters } = {}
     brand: v.brandId?.name ? { id: v.brandId._id, name: v.brandId.name, logoUrl: v.brandId.logoUrl } : { id: v.brandId },
     category: v.categoryId?.name ? { id: v.categoryId._id, name: v.categoryId.name, bodyType: v.categoryId.bodyType } : { id: v.categoryId },
     city: v.cityId?.name ? { id: v.cityId._id, name: v.cityId.name } : { id: v.cityId },
+    modelId: v.modelId,
     model: v.model,
     variant: v.variant,
     year: v.year,
@@ -162,6 +171,7 @@ export function serializeVehicle(v, { audience = 'public', distanceMeters } = {}
     photos: (v.photos || []).map((p) => p.url),
     location: { area: v.location?.area, pincode: v.location?.pincode, point: fromGeoPoint(v.location?.point) },
     pricing: v.pricing,
+    unlimitedKm: v.pricing?.unlimitedKmDailyPaise != null ? { dailyPaise: v.pricing.unlimitedKmDailyPaise } : null,
     delivery: v.delivery,
     instantBooking: v.instantBooking,
     isLuxury: v.isLuxury,
@@ -191,6 +201,7 @@ export function serializeVehicle(v, { audience = 'public', distanceMeters } = {}
     featuredRank: v.featuredRank,
     stats: v.stats,
     lastOdometerKm: v.lastOdometerKm,
+    ...(audience === 'admin' ? { commissionBps: v.commissionBps ?? null, investor: v.investor?.investorId ? { id: v.investor.investorId._id || v.investor.investorId, name: v.investor.investorId.name, shareBps: v.investor.shareBps } : null } : {}),
     createdAt: v.createdAt,
     updatedAt: v.updatedAt,
   };
