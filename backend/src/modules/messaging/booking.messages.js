@@ -83,7 +83,9 @@ export async function sendBookingConfirmation(bookingId, { force = false } = {})
     const paid = Math.max(0, (b.payment?.paidPaise || 0) - (b.payment?.refundedPaise || 0));
     const results = [];
     if (settings.messaging.bookingWhatsapp && (force || !sent.has('whatsapp'))) {
-      const r = await sendWhatsappTemplate(user.phone, [user.name || 'there', b.ref, b.vehicleSnapshot?.title, formatIst(b.startAt), formatIst(b.endAt), placeText(b), rupees(paid), shortTerms(terms), terms.termsUrl]);
+      const hours = Math.round((b.endAt - b.startAt) / 3600_000);
+      const values = { name: user.name || 'Customer', ref: b.ref, car: b.vehicleSnapshot?.title, start: formatIst(b.startAt), end: formatIst(b.endAt), place: placeText(b), paid: rupees(paid), terms: shortTerms(terms), link: terms.termsUrl, hours: String(hours), days: String(Math.max(1, Math.ceil(hours / 24))) };
+      const r = await sendWhatsappTemplate(user.phone, env.WHATSAPP_BOOKING_PARAMS.map((k) => values[k] ?? ''));
       results.push({ channel: 'whatsapp', kind: 'booking_confirmation', ...r, at: new Date() });
     }
     if (settings.messaging.bookingSms && (force || !sent.has('sms'))) {

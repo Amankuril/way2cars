@@ -375,13 +375,13 @@ export async function decideBooking(req, bookingId, { decision, reason }) {
 export const vendorDecision = decideBooking;
 
 /** Admin cancellation: always a full refund unless an explicit refund amount is given. */
-export async function cancelByAdmin(req, bookingId, { reason }) {
+export async function cancelByAdmin(req, bookingId, { reason, refundTo = 'source' }) {
   const fx = await withTransaction(async (session) => {
     const b = await Booking.findById(bookingId).session(session);
     if (!b) throw notFound('Booking');
     if (!['pending_payment', 'pending_vendor_approval', 'confirmed'].includes(b.status)) throw conflict('Only bookings that have not started can be cancelled.', 'NOT_CANCELLABLE');
-    const effects = await cancelBooking(b, { by: { realm: 'admin', id: req.auth.id }, reason, full: true, refundReason: 'admin_cancellation' }, session);
-    await audit(req, 'booking.admin_cancelled', { type: 'booking', id: b._id }, { reason, session });
+    const effects = await cancelBooking(b, { by: { realm: 'admin', id: req.auth.id }, reason, full: true, refundReason: 'admin_cancellation', refundTo }, session);
+    await audit(req, 'booking.admin_cancelled', { type: 'booking', id: b._id }, { reason, changes: { refundTo }, session });
     return effects;
   });
   await runEffects(fx);

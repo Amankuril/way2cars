@@ -242,7 +242,7 @@ const sumCharges = (list) => (list || []).reduce((t, c) => t + c.amountPaise, 0)
  * the deposit refund for a date. A date today or earlier refunds at once; later dates are refunded by
  * the scheduler. Can be redone until the refund is sent. Extra charges stay with Way2Cars.
  */
-export async function reviewDeposit(req, bookingId, { extraCharges = [], refundAt, note }) {
+export async function reviewDeposit(req, bookingId, { extraCharges = [], refundAt, note, refundTo = 'source' }) {
   const fx = await withTransaction(async (session) => {
     const b = await Booking.findById(bookingId).session(session);
     if (!b) throw notFound('Booking');
@@ -267,15 +267,16 @@ export async function reviewDeposit(req, bookingId, { extraCharges = [], refundA
     st.outstandingStatus = outstanding > 0 ? 'due' : 'none';
     st.depositReview = { by, at: now, note };
     st.depositRefundAt = refundPaise > 0 ? when : undefined;
+    st.depositRefundTo = refundTo;
     st.depositRefundStatus = refundPaise <= 0 ? 'none' : when <= now ? 'refunded' : 'scheduled';
     b.markModified('settlement');
     await b.save({ session });
 
     const effects = newEffects();
     if (st.depositRefundStatus === 'refunded') {
-      effects.refunds.push(...(await recordBookingRefund(b, refundPaise, 'deposit_settlement', { key: `deposit:${b._id}`, by }, session)));
+      effects.refunds.push(...(await recordBookingRefund(b, refundPaise, 'deposit_settlement', { key: `deposit:${b._id}`, by, to: refundTo, note: refundTo === 'wallet' ? `Deposit refund for booking ${b.ref}` : undefined }, session)));
     }
-    await audit(req, 'booking.deposit_reviewed', { type: 'booking', id: b._id }, { reason: note, changes: { extraChargesPaise: sumCharges(extraCharges), refundPaise, refundAt: st.depositRefundAt, outstanding }, session });
+    await audit(req, 'booking.deposit_reviewed', { type: 'booking', id: b._id }, { reason: note, changes: { extraChargesPaise: sumCharges(extraCharges), refundPaise, refundAt: st.depositRefundAt, refundTo, outstanding }, session });
     effects.notifications.push(['deposit.reviewed', { realm: 'user', id: b.userId }, { bookingId: b._id, ref: b.ref, refundPaise, outstandingPaise: outstanding, chargesPaise: totalDeductions, refundOn: st.depositRefundStatus === 'scheduled' ? formatIst(when) : null }]);
     return effects;
   });
@@ -292,7 +293,8 @@ export async function processScheduledDepositRefunds() {
       b.settlement.depositRefundStatus = 'refunded';
       await b.save({ session });
       const effects = newEffects();
-      effects.refunds.push(...(await recordBookingRefund(b, b.settlement.depositRefundPaise, 'deposit_settlement', { key: `deposit:${b._id}`, by: { realm: 'system' } }, session)));
+      const to = b.settlement.depositRefundTo || 'source';
+      effects.refunds.push(...(await recordBookingRefund(b, b.settlement.depositRefundPaise, 'deposit_settlement', { key: `deposit:${b._id}`, by: { realm: 'system' }, to, note: to === 'wallet' ? `Deposit refund for booking ${b.ref}` : undefined }, session)));
       return effects;
     }).catch(() => null);
     await runEffects(fx);

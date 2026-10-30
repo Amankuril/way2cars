@@ -47,6 +47,7 @@ const pricing = new mongoose.Schema(
     investorShareBps: Number,
     unlimitedKm: Boolean, // renter chose unlimited km: no extra-km charge at settlement
     unlimitedKmPaise: Number, // included in rentalPaise (as an 'unlimited_km' line)
+    adjustmentPaise: { type: Number, default: 0 }, // total reductions made by staff (see `adjustments`)
     advancePaise: Number, // set when the renter chose to pay an advance to block the dates
     adjustedBy: { id: oid, note: String }, // admin-set price on an offline booking
     couponCode: String,
@@ -137,6 +138,12 @@ const schema = new mongoose.Schema(
       returnedBy: actor,
       note: String,
     },
+    // Staff reductions of what the renter pays (e.g. breakdown caused by Way2Cars). Each records where the
+    // reduction went: less balance to collect, less dues after the trip, and/or a refund (card or wallet).
+    adjustments: [{
+      amountPaise: Number, reason: String, by: actor, at: Date,
+      balancePaise: Number, outstandingPaise: Number, refundPaise: Number, refundTo: { type: String, enum: ['source', 'wallet'] },
+    }],
     // WhatsApp / SMS messages sent about this booking (confirmation with terms).
     messages: [{ _id: false, channel: { type: String, enum: ['whatsapp', 'sms'] }, kind: String, status: String, error: String, providerRef: String, at: Date }],
     cancellation: { by: actor, reason: String, at: Date, hoursBeforeStart: Number, refundBps: Number, refundPaise: Number, walletRefundPaise: Number },
@@ -166,6 +173,7 @@ const schema = new mongoose.Schema(
       // none (nothing to refund) → pending_review (awaiting inspection) → scheduled (refund date set) → refunded
       depositRefundStatus: { type: String, enum: ['none', 'pending_review', 'scheduled', 'refunded'] },
       depositRefundAt: Date,
+      depositRefundTo: { type: String, enum: ['source', 'wallet'] },
       depositReview: { by: actor, at: Date, note: String },
     },
     reviewed: { byUser: { type: Boolean, default: false } },

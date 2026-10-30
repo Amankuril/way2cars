@@ -14,6 +14,7 @@ import { findOrCreate } from '../auth/auth.service.js';
 import { issueInvoice } from '../payments/invoice.service.js';
 import { isVehicleAvailable } from './availability.service.js';
 import { buildQuote, createBookingDoc, bookingSnapshot, validateCollateral } from './booking.service.js';
+import { recordBookingRefund } from '../payments/refund.service.js';
 import { newEffects, runEffects, recordOfflinePayment, onBalancePaid, onExtensionPaid, onSettlementPaid } from './booking.lifecycle.js';
 
 /**
@@ -237,6 +238,67 @@ export async function recordOfficeCollection(req, bookingId, { purpose, extensio
     const handler = { balance: onBalancePaid, extension: onExtensionPaid, settlement: onSettlementPaid }[purpose];
     const effects = await handler(b, payment, session);
     await audit(req, 'booking.office_payment', { type: 'booking', id: b._id }, { changes: { purpose, amountPaise, method, reference }, session });
+    return effects;
+  });
+  await runEffects(fx);
+}
+
+// ------------------------------------------------------------------ price adjustments
+
+/**
+ * Reduces what the renter pays (e.g. a breakdown caused by Way2Cars). The reduction first lowers any
+ * balance still to collect, then any dues after the trip, and the rest is refunded — to the original
+ * payment or to the renter's WAY2CARS wallet. Host / investor earnings are not reduced: Way2Cars
+ * absorbs the adjustment. Every adjustment is kept on the booking with its reason.
+ */
+export async function adjustBookingPrice(req, bookingId, { amountPaise, reason, refundTo = 'source' }) {
+  const fx = await withTransaction(async (session) => {
+    const b = await Booking.findById(bookingId).session(session);
+    if (!b) throw notFound('Booking');
+    if (!['pending_vendor_approval', 'confirmed', 'ongoing', 'return_pending', 'completed'].includes(b.status)) {
+      throw conflict('Only paid, active or completed bookings can be adjusted. Cancel the booking instead.', 'NOT_ADJUSTABLE');
+    }
+    const extTotal = (b.extensions || []).filter((e) => ['paid', 'approved'].includes(e.status) && e.chargeStatus !== 'waived').reduce((t, e) => t + e.pricing.totalPaise, 0);
+    const outstandingCharges = b.settlement?.outstandingStatus === 'due' ? b.settlement.outstandingPaise : 0;
+    const maxPaise = b.pricing.chargesPaise + extTotal + outstandingCharges - (b.pricing.adjustmentPaise || 0);
+    if (amountPaise > maxPaise) throw badRequest(`You can reduce this booking by at most ₹${(Math.max(0, maxPaise) / 100).toFixed(2)}.`, undefined, 'ADJUSTMENT_TOO_LARGE');
+
+    let remaining = amountPaise;
+    const applied = { balancePaise: 0, outstandingPaise: 0, refundPaise: 0 };
+    if (b.balance?.status === 'due' && remaining > 0) {
+      applied.balancePaise = Math.min(remaining, b.balance.duePaise);
+      b.balance.duePaise -= applied.balancePaise;
+      if (b.balance.duePaise <= 0) b.balance.status = 'waived';
+      remaining -= applied.balancePaise;
+    }
+    if (b.settlement?.outstandingStatus === 'due' && remaining > 0) {
+      applied.outstandingPaise = Math.min(remaining, b.settlement.outstandingPaise);
+      b.settlement.outstandingPaise -= applied.outstandingPaise;
+      if (b.settlement.outstandingPaise <= 0) b.settlement.outstandingStatus = 'waived';
+      remaining -= applied.outstandingPaise;
+    }
+    if (remaining > 0) {
+      // The security deposit still held is not refundable here (it is settled after the trip).
+      const settled = Boolean(b.settlement?.settledAt);
+      const depositHeld = !settled ? (b.pricing.depositPaise || 0) : ['pending_review', 'scheduled'].includes(b.settlement.depositRefundStatus) ? b.settlement.depositRefundPaise : 0;
+      const paidNet = Math.max(0, (b.payment?.paidPaise || 0) - (b.payment?.refundedPaise || 0));
+      const refundable = Math.max(0, paidNet - depositHeld);
+      if (remaining > refundable) throw badRequest(`Only ₹${(refundable / 100).toFixed(2)} of what the renter paid can be refunded now.`, undefined, 'ADJUSTMENT_TOO_LARGE');
+      applied.refundPaise = remaining;
+    }
+    const at = new Date();
+    b.adjustments.push({ amountPaise, reason, by: by(req), at, ...applied, refundTo: applied.refundPaise ? refundTo : undefined });
+    b.pricing.adjustmentPaise = (b.pricing.adjustmentPaise || 0) + amountPaise;
+    b.statusHistory.push({ status: b.status, at, by: by(req), note: `Price reduced by ₹${(amountPaise / 100).toFixed(2)}: ${reason}` });
+    b.markModified('settlement');
+    await b.save({ session });
+
+    const effects = newEffects();
+    if (applied.refundPaise) {
+      effects.refunds.push(...(await recordBookingRefund(b, applied.refundPaise, 'price_adjustment', { key: `adjust:${b._id}:${b.adjustments.length}`, by: by(req), note: reason, to: refundTo }, session)));
+    }
+    await audit(req, 'booking.price_adjusted', { type: 'booking', id: b._id }, { reason, changes: { amountPaise, ...applied, refundTo }, session });
+    effects.notifications.push(['booking.price_adjusted', { realm: 'user', id: b.userId }, { ...view(b), amountPaise, reason, ...applied, refundTo }]);
     return effects;
   });
   await runEffects(fx);

@@ -5,18 +5,22 @@ import { notFound, conflict } from '../../core/errors.js';
 import { paginate, paginationQuery, escapeRegex } from '../../core/pagination.js';
 import { validate } from '../../middleware/validate.js';
 import { requirePermission } from '../../middleware/auth.js';
-import { Booking, BOOKING_STATUSES } from './booking.model.js';
+import { Booking, BOOKING_STATUSES, BLOCKING_STATUSES } from './booking.model.js';
+import { Vehicle, VehicleBlock } from '../vehicles/vehicle.model.js';
+import { serializeVehicle } from '../vehicles/vehicle.service.js';
+import { validateTripWindow } from './availability.service.js';
+import { computeRental } from '../pricing/pricing.js';
 import { serializeBooking, bookingSplit } from './booking.serializer.js';
 import { LedgerEntry } from '../wallet/wallet.model.js';
 import {
   buildQuote, serializeQuote, createBooking, bookingPaymentOrder, cancelByUser, cancellationPreview,
   decideBooking, cancelByAdmin, requestExtension, extensionPaymentOrder, balancePaymentOrder,
 } from './booking.service.js';
-import { createOfflineBooking, decideExtension, adminExtend, extensionCheck, recordOfficeCollection } from './booking.admin.service.js';
+import { createOfflineBooking, decideExtension, adminExtend, extensionCheck, recordOfficeCollection, adjustBookingPrice } from './booking.admin.service.js';
 import { withTransaction } from '../../core/db.js';
 import { runEffects } from './booking.lifecycle.js';
 import { getSettings } from '../settings/settings.service.js';
-import { serializeRefund, markManualRefundProcessed } from '../payments/refund.service.js';
+import { serializeRefund, markManualRefundProcessed, refundToWallet } from '../payments/refund.service.js';
 import { startTrip, submitReturn, agreementFor, pickupSchema, returnSchema, vendorReturnReview, resolveDamageClaim, settlementPaymentOrder, inspectionsFor, previewSettlement, finalizeTrip, reviewDeposit, markCollateral } from '../trips/trip.service.js';
 import { verifyCheckout, markPaymentFailed, serializePayment } from '../payments/payment.service.js';
 import { Payment, Refund, Invoice } from '../payments/payment.model.js';
@@ -286,7 +290,8 @@ adminBookingRouter.get('/:id', requirePermission('bookings.read'), validate({ pa
   ok(res, out);
 });
 
-adminBookingRouter.post('/:id/cancel', requirePermission('bookings.manage'), validate({ params: idParams, body: z.object({ reason: z.string().trim().min(5).max(300) }).strict() }), async (req, res) => {
+const refundTo = z.enum(['source', 'wallet']).default('source');
+adminBookingRouter.post('/:id/cancel', requirePermission('bookings.manage'), validate({ params: idParams, body: z.object({ reason: z.string().trim().min(5).max(300), refundTo }).strict() }), async (req, res) => {
   await cancelByAdmin(req, req.valid.params.id, req.valid.body);
   ok(res, serializeBooking(await Booking.findById(req.valid.params.id).lean(), { audience: 'admin' }));
 });
@@ -318,6 +323,7 @@ adminBookingRouter.post('/:id/deposit-review', requirePermission('trips.manage')
     extraCharges: z.array(z.object({ label: z.string().trim().min(2).max(60), amountPaise: z.number().int().min(100).max(50_000_000), note: z.string().trim().max(200).optional() }).strict()).max(10).default([]),
     refundAt: z.coerce.date().optional(),
     note: z.string().trim().max(500).optional(),
+    refundTo,
   }).strict(),
 }), async (req, res) => {
   await reviewDeposit(req, req.valid.params.id, req.valid.body);
@@ -367,6 +373,37 @@ const officeBooking = z.object({
   note: z.string().trim().max(500).optional(),
   ...tripOptions,
 }).strict();
+
+/**
+ * Office booking, step 1: every approved car free for the whole period (bookings with buffer and host
+ * blocks excluded), optionally only 5-seaters or 7+-seaters, with the price for those dates.
+ */
+adminBookingRouter.get('/offline/available-cars', requirePermission('bookings.manage'), validate({
+  query: z.object({ startAt: z.coerce.date(), endAt: z.coerce.date(), seats: z.enum(['5', '7']).optional(), cityId: objectId.optional(), q: z.string().trim().max(40).optional() }),
+}), async (req, res) => {
+  const { startAt, endAt, seats, cityId, q } = req.valid.query;
+  const window = await validateTripWindow(startAt, endAt, { skipLead: true });
+  const filter = { 'approval.status': 'approved', adminSuspended: false, status: 'active' };
+  if (seats === '5') filter.seats = 5;
+  if (seats === '7') filter.seats = { $gte: 7 };
+  if (cityId) filter.cityId = cityId;
+  if (q) filter.$or = [{ registrationNumber: new RegExp(escapeRegex(q.replace(/\s/g, '').toUpperCase())) }, { model: new RegExp(escapeRegex(q), 'i') }];
+  const cars = await Vehicle.find(filter).populate([{ path: 'brandId', select: 'name' }, { path: 'cityId', select: 'name' }]).sort({ 'pricing.dailyPaise': 1 }).limit(300).lean();
+  const { booking: rules } = await getSettings();
+  const buf = rules.bufferMinutes * 60_000;
+  const now = new Date();
+  const ids = cars.map((c) => c._id);
+  const [busy, blocked] = await Promise.all([
+    Booking.distinct('vehicleId', { vehicleId: { $in: ids }, status: { $in: BLOCKING_STATUSES }, startAt: { $lt: new Date(window.endAt.getTime() + buf) }, blockEndAt: { $gt: new Date(window.startAt.getTime() - buf) }, $or: [{ status: { $ne: 'pending_payment' } }, { holdExpiresAt: { $gt: now } }] }),
+    VehicleBlock.distinct('vehicleId', { vehicleId: { $in: ids }, startAt: { $lt: window.endAt }, endAt: { $gt: window.startAt } }),
+  ]);
+  const taken = new Set([...busy, ...blocked].map(String));
+  const free = cars.filter((c) => !taken.has(String(c._id)));
+  ok(res, free.map((c) => ({
+    ...serializeVehicle(c, { audience: 'admin' }),
+    estimate: computeRental({ startAt: window.startAt, endAt: window.endAt, pricing: c.pricing }),
+  })), { total: free.length, unavailable: cars.length - free.length, hours: window.hours });
+});
 
 /** Price + availability for an office booking before staff confirm it. */
 adminBookingRouter.post('/offline/quote', requirePermission('bookings.manage'), validate({ body: officeBooking.pick({ vehicleId: true, startAt: true, endAt: true, pricing: true, unlimitedKm: true, depositOption: true, pickupLocationId: true, dropoffLocationId: true }) }), async (req, res) => {
@@ -432,6 +469,23 @@ adminBookingRouter.post('/:id/office-payments', requirePermission('bookings.mana
 }), async (req, res) => {
   await recordOfficeCollection(req, req.valid.params.id, req.valid.body);
   ok(res, serializeBooking(await Booking.findById(req.valid.params.id).lean(), { audience: 'admin' }));
+});
+
+/** Reduce what the renter pays (e.g. breakdown caused by Way2Cars), with a mandatory reason. */
+adminBookingRouter.post('/:id/adjustments', requirePermission('refunds.manage'), validate({
+  params: idParams,
+  body: z.object({ amountPaise: z.number().int().min(100).max(100_000_000), reason: z.string().trim().min(5, 'Enter a reason (at least 5 characters)').max(300), refundTo }).strict(),
+}), async (req, res) => {
+  await adjustBookingPrice(req, req.valid.params.id, req.valid.body);
+  ok(res, serializeBooking(await Booking.findById(req.valid.params.id).lean(), { audience: 'admin' }));
+});
+
+/** A refund waiting to be returned by hand (or one that failed) is credited to the renter's wallet instead. */
+adminBookingRouter.post('/:id/refunds/:refundId/to-wallet', requirePermission('refunds.manage'), validate({ params: z.object({ id: objectId, refundId: objectId }) }), async (req, res) => {
+  const r = await withTransaction((session) => refundToWallet(req.valid.params.refundId, req.valid.params.id, { realm: 'admin', id: req.auth.id }, session));
+  if (!r) throw conflict('Only refunds waiting to be returned by hand, or failed refunds, can be moved to the wallet.', 'NOT_MOVABLE');
+  await audit(req, 'refund.moved_to_wallet', { type: 'booking', id: req.valid.params.id }, { changes: { refundId: r._id, amountPaise: r.amountPaise } });
+  ok(res, serializeRefund(r.toObject()));
 });
 
 adminBookingRouter.post('/:id/refunds/:refundId/manual-processed', requirePermission('refunds.manage'), validate({ params: z.object({ id: objectId, refundId: objectId }), body: z.object({ reference: z.string().trim().min(3).max(60) }).strict() }), async (req, res) => {

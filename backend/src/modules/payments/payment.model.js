@@ -40,7 +40,9 @@ const refund = new mongoose.Schema(
     paymentId: { type: oid, ref: 'Payment', required: true },
     userId: { type: oid, ref: 'User', required: true },
     amountPaise: { type: Number, required: true, min: 1 },
-    reason: { type: String, enum: ['user_cancellation', 'vendor_rejection', 'approval_timeout', 'admin_cancellation', 'deposit_settlement', 'late_payment', 'admin_adjustment', 'extension_unavailable', 'extension_rejected'], required: true },
+    reason: { type: String, enum: ['user_cancellation', 'vendor_rejection', 'approval_timeout', 'admin_cancellation', 'deposit_settlement', 'late_payment', 'admin_adjustment', 'extension_unavailable', 'extension_rejected', 'price_adjustment'], required: true },
+    // source = back to the card/UPI/bank (or by hand for offline money) · wallet = credited to the renter's WAY2CARS wallet
+    destination: { type: String, enum: ['source', 'wallet'], default: 'source' },
     // pending: recorded, provider call not yet accepted · initiated: accepted by Razorpay · processed · failed
     // manual: the money was collected offline, so finance returns it by hand and records the reference.
     status: { type: String, enum: ['pending', 'initiated', 'processed', 'failed', 'manual'], default: 'pending' },

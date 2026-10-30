@@ -72,12 +72,19 @@ const schema = z.object({
   // Booking confirmation SMS (separate DLT template). Placeholders: {name} {ref} {vehicle} {start} {end} {link}
   SMS_INDIA_HUB_BOOKING_TEMPLATE: optStr,
   SMS_INDIA_HUB_BOOKING_DLT_TEMPLATE_ID: optStr,
-  // WhatsApp Cloud API (Meta) — booking confirmations with terms. Template must be approved in WhatsApp Manager.
+  // WhatsApp booking confirmations. Provider 'textora' (BUZWAP / api.textorasms.com, default) or 'meta' (Cloud API).
   WHATSAPP_ENABLED: bool(false),
-  WHATSAPP_ACCESS_TOKEN: optStr,
-  WHATSAPP_PHONE_NUMBER_ID: optStr,
-  WHATSAPP_BOOKING_TEMPLATE: optStr, // body params: {{1}} name {{2}} ref {{3}} car {{4}} pickup {{5}} return {{6}} place {{7}} paid {{8}} terms summary {{9}} link
+  WHATSAPP_PROVIDER: z.enum(['textora', 'meta']).default('textora'),
+  WHATSAPP_BOOKING_TEMPLATE: optStr, // approved template name, e.g. service_confirmation
+  // Body variables in template order. Keys: name ref car start end place paid terms link hours days
+  WHATSAPP_BOOKING_PARAMS: z.string().optional().transform((v) => (v && v.trim() ? v : 'name,ref,car,start,end,place,paid,terms,link').split(',').map((x) => x.trim()).filter(Boolean)),
   WHATSAPP_TEMPLATE_LANG: z.string().optional().transform((v) => (v && v.trim() ? v.trim() : 'en')),
+  TEXTORA_API_URL: z.string().optional().transform((v) => (v && v.trim() ? v.trim() : 'https://api.textorasms.com/whatsapp/send')),
+  TEXTORA_FROM: optStr, // sender name, e.g. BUZWAP
+  TEXTORA_AUTHKEY: optStr,
+  TEXTORA_BUSINESS_ACCOUNT_ID: optStr,
+  WHATSAPP_ACCESS_TOKEN: optStr, // meta only
+  WHATSAPP_PHONE_NUMBER_ID: optStr, // meta only
   WHATSAPP_API_VERSION: z.string().optional().transform((v) => (v && v.trim() ? v.trim() : 'v21.0')),
 
   RAZORPAY_KEY_ID: optStr,

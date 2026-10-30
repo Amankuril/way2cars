@@ -3,6 +3,7 @@ import { Payment, Refund } from './payment.model.js';
 import { Booking } from '../bookings/booking.model.js';
 import { createRefund } from '../../integrations/razorpay.js';
 import { notify, notifyAdmins } from '../notifications/notification.service.js';
+import { creditUserWallet } from '../wallet/wallet.service.js';
 
 const MAX_ATTEMPTS = 6;
 
@@ -12,7 +13,7 @@ const MAX_ATTEMPTS = 6;
  * provider call happens after commit via dispatchRefunds(). Idempotent per `key`.
  * Returns the created Refund docs.
  */
-export async function recordBookingRefund(booking, amountPaise, reason, { key, by, note }, session) {
+export async function recordBookingRefund(booking, amountPaise, reason, { key, by, note, to = 'source' }, session) {
   if (amountPaise <= 0) return [];
   const existing = await Refund.find({ idempotencyKey: { $regex: `^${key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}:` } }).session(session).lean();
   if (existing.length) return existing;
@@ -26,16 +27,25 @@ export async function recordBookingRefund(booking, amountPaise, reason, { key, b
     if (take <= 0) continue;
     p.refundedPaise += take;
     await p.save({ session });
-    const [r] = await Refund.create([{ bookingId: booking._id, paymentId: p._id, userId: booking.userId, amountPaise: take, reason, idempotencyKey: `${key}:${p._id}`, initiatedBy: by, note, ...(p.mode === 'offline' ? { status: 'manual' } : {}) }], { session });
+    const toWallet = to === 'wallet';
+    const [r] = await Refund.create([{
+      bookingId: booking._id, paymentId: p._id, userId: booking.userId, amountPaise: take, reason, idempotencyKey: `${key}:${p._id}`, initiatedBy: by, note,
+      destination: toWallet ? 'wallet' : 'source',
+      ...(toWallet ? { status: 'processed', processedAt: new Date() } : p.mode === 'offline' ? { status: 'manual' } : {}),
+    }], { session });
     refunds.push(r);
     remaining -= take;
   }
   const refunded = amountPaise - remaining;
+  if (refunded > 0 && to === 'wallet') {
+    await creditUserWallet(booking.userId, refunded, 'booking_refund', { bookingId: booking._id, category: 'refund', note: note || `Refund for booking ${booking.ref}`, key: `wallet-refund:${key}`, by }, session);
+  }
   if (refunded > 0) {
     const b = await Booking.findByIdAndUpdate(booking._id, { $inc: { 'payment.refundedPaise': refunded } }, { new: true, session }).select('payment');
     const status = b.payment.refundedPaise >= b.payment.paidPaise ? 'refunded' : 'partially_refunded';
     await Booking.updateOne({ _id: booking._id }, { $set: { 'payment.status': status } }, { session });
   }
+  if (to === 'wallet' && refunded > 0) setImmediate(() => notify('wallet.credited', { realm: 'user', id: booking.userId }, { amountPaise: refunded, reason: note || `Refund for booking ${booking.ref}` }));
   if (refunds.some((r) => r.status === 'manual')) {
     const manual = refunds.filter((r) => r.status === 'manual').reduce((sum, r) => sum + r.amountPaise, 0);
     setImmediate(() => notifyAdmins('admin.alert', { title: 'Manual refund needed', body: `₹${(manual / 100).toFixed(2)} collected offline for booking ${booking.ref} must be returned by hand.`, link: `/bookings/${booking._id}` }, 'refunds.manage'));
@@ -104,4 +114,16 @@ export async function markManualRefundProcessed(refundId, bookingId, reference) 
   return r;
 }
 
-export const serializeRefund = (r) => ({ id: r._id, amountPaise: r.amountPaise, reason: r.reason, status: r.status, razorpayRefundId: r.razorpayRefundId, manualReference: r.manualReference, createdAt: r.createdAt, processedAt: r.processedAt });
+export const serializeRefund = (r) => ({ id: r._id, amountPaise: r.amountPaise, reason: r.reason, status: r.status, destination: r.destination || 'source', note: r.note, razorpayRefundId: r.razorpayRefundId, manualReference: r.manualReference, createdAt: r.createdAt, processedAt: r.processedAt });
+
+/**
+ * Staff move a refund that is still waiting (offline money to return by hand, or a gateway refund that
+ * failed) into the renter's WAY2CARS wallet instead.
+ */
+export async function refundToWallet(refundId, bookingId, by, session) {
+  const r = await Refund.findOneAndUpdate({ _id: refundId, bookingId, status: { $in: ['manual', 'failed'] } }, { $set: { status: 'processed', destination: 'wallet', processedAt: new Date(), manualReference: 'WALLET' } }, { new: true, session });
+  if (!r) return null;
+  const b = await Booking.findById(bookingId).select('ref userId').session(session).lean();
+  await creditUserWallet(b.userId, r.amountPaise, 'booking_refund', { bookingId, category: 'refund', note: `Refund for booking ${b.ref} (to wallet)`, key: `wallet-refund-move:${r._id}`, by }, session);
+  return r;
+}

@@ -223,7 +223,7 @@ export function cancellationQuote(booking, settings, { full = false, now = new D
  * Cancels a booking before the trip starts and refunds per policy.
  * `full` forces a 100% refund (host rejection, admin goodwill, approval timeout).
  */
-export async function cancelBooking(booking, { by, reason, full = false, toStatus = 'cancelled', refundReason = 'user_cancellation' }, session) {
+export async function cancelBooking(booking, { by, reason, full = false, toStatus = 'cancelled', refundReason = 'user_cancellation', refundTo = 'source' }, session) {
   const fx = newEffects();
   const settings = await getSettings();
   const now = new Date();
@@ -240,7 +240,7 @@ export async function cancelBooking(booking, { by, reason, full = false, toStatu
 
   await releaseHeldValue(booking, session, fx, { walletPaise: q.walletRefund });
   if (gatewayRefund > 0) {
-    fx.refunds.push(...(await recordBookingRefund(booking, gatewayRefund, refundReason, { key: `cancel:${booking._id}`, by }, session)));
+    fx.refunds.push(...(await recordBookingRefund(booking, gatewayRefund, refundReason, { key: `cancel:${booking._id}`, by, to: refundTo, note: refundTo === 'wallet' ? `Booking ${booking.ref} cancelled` : undefined }, session)));
   }
   // Host keeps their share of any retained rental (late cancellations), scaled to what was actually collected.
   if (wasPaid && refundBps < 10000 && q.keepPaise > 0) {

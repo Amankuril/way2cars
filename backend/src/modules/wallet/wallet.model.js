@@ -8,7 +8,7 @@ const oid = mongoose.Schema.Types.ObjectId;
  */
 export const LEDGER_TYPES = [
   // user wallet
-  'referral_reward', 'loyalty_reward', 'wallet_redeemed', 'wallet_redeem_reversed', 'admin_adjustment',
+  'referral_reward', 'loyalty_reward', 'wallet_redeemed', 'wallet_redeem_reversed', 'admin_adjustment', 'booking_refund',
   // vendor earnings
   'trip_earning', 'earning_released', 'payout_requested', 'payout_rejected', 'payout_paid', 'earning_reversed',
   // investor earnings (company-fleet cars)

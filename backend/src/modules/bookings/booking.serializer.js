@@ -43,7 +43,7 @@ export function bookingSplit(b, { ownerEarnedPaise, investorEarnedPaise } = {}) 
     ownerPaise = company ? 0 : base - pct(base, p.commissionBps || 0);
     investorPaise = company && p.investorId ? pct(base, p.investorShareBps || 0) : 0;
     depositHeldPaise = Math.max(0, Math.min(p.depositPaise || 0, collectedPaise + (p.walletAppliedPaise || 0) - charges));
-    platformPaise = charges - fullGst - ownerPaise - investorPaise; // expected once everything is collected
+    platformPaise = charges - fullGst - ownerPaise - investorPaise - (p.adjustmentPaise || 0); // expected once everything is collected
   }
   return {
     ownership: b.ownership || 'host',
@@ -111,6 +111,7 @@ export function serializeBooking(b, { audience = 'user', user, vendor, vehicle, 
       : null,
     deposit: b.deposit?.type ? { type: b.deposit.type, collateral: b.deposit.collateral, status: b.deposit.status, receivedAt: b.deposit.receivedAt, returnedAt: b.deposit.returnedAt } : { type: 'cash', status: 'none' },
     dropoff: b.dropoff && b.dropoff.type === 'hub' ? { type: 'hub', name: b.dropoff.name, address: b.dropoff.address, point: fromGeoPoint(b.dropoff.point) } : null,
+    adjustments: audience === 'vendor' ? [] : (b.adjustments || []).map((a) => ({ amountPaise: a.amountPaise, reason: a.reason, at: a.at, balancePaise: a.balancePaise, outstandingPaise: a.outstandingPaise, refundPaise: a.refundPaise, refundTo: a.refundTo, ...(audience === 'admin' ? { by: a.by } : {}) })),
     reviewed: b.reviewed,
     createdAt: b.createdAt,
   };
