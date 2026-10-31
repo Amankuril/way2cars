@@ -184,7 +184,7 @@ export default function CmsPageEditor() {
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-caption font-semibold text-ink-500">Add block:</span>
             {Object.entries(TYPES).map(([type, t]) => (
-              <Button key={type} size="sm" icon={t.icon} onClick={() => add(type)} disabled={blocks.length >= 200}>{t.label}</Button>
+              <Button key={type} size="sm" icon={t.icon} onClick={() => add(type)} disabled={blocks.length >= 500}>{t.label}</Button>
             ))}
           </div>
         </div>

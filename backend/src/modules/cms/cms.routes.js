@@ -11,7 +11,7 @@ import { FileRecord } from '../files/file.model.js';
 import { publicUrl } from '../../integrations/storage.js';
 
 const id = z.object({ id: z.string().regex(/^[a-f0-9]{24}$/) });
-const blocks = z.array(z.object({ type: z.enum(['heading', 'paragraph', 'list']), text: z.string().max(5000).optional(), items: z.array(z.string().max(1000)).max(50).optional() }).strict()).max(200);
+const blocks = z.array(z.object({ type: z.enum(['heading', 'paragraph', 'list']), text: z.string().max(5000).optional(), items: z.array(z.string().max(1000)).max(50).optional() }).strict()).max(500);
 const serializePage = (p) => ({ slug: p.slug, title: p.title, blocks: p.blocks, version: p.version, updatedAt: p.updatedAt, contentHash: sha256(JSON.stringify(p.blocks)) });
 const serializeBanner = (b) => ({ id: b._id, title: b.title, subtitle: b.subtitle, imageUrl: b.imageUrl, link: b.link, couponCode: b.couponCode, cityIds: b.cityIds, startsAt: b.startsAt, endsAt: b.endsAt, sortOrder: b.sortOrder, isActive: b.isActive });
 

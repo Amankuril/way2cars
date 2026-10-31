@@ -6,6 +6,7 @@
 import { connectDb, disconnectDb } from '../src/core/db.js';
 import { City, Brand, Category } from '../src/modules/catalog/catalog.model.js';
 import { CmsPage, Faq } from '../src/modules/cms/cms.model.js';
+import { LEGAL_PAGES } from './legal-content.js';
 
 const cities = [
   { name: 'Pune', slug: 'pune', state: 'Maharashtra', gstStateCode: '27', lat: 18.5204, lng: 73.8567, serviceRadiusKm: 35, isPopular: true, sortOrder: 1 },
@@ -37,12 +38,8 @@ const pages = {
     { type: 'paragraph', text: 'Extra kilometres beyond the included allowance, fuel shortfall, late return and approved damage charges are deducted from the refundable security deposit. Amounts exceeding the deposit are payable by the renter.' },
     { type: 'heading', text: '4. Damage, accidents and breakdowns' },
     { type: 'paragraph', text: 'Report any accident, damage or breakdown immediately through the app’s roadside assistance. Pickup and return photos form the condition record of the vehicle.' }] },
-  'privacy-policy': { title: 'Privacy Policy', blocks: [DRAFT, { type: 'paragraph', text: 'Describe what personal data WAY2CARS collects (identity documents, phone number, location during trips, payment references), why, how long it is kept, and how users can request access or deletion.' }] },
-  'terms-and-conditions': { title: 'Terms & Conditions', blocks: [DRAFT, { type: 'paragraph', text: 'Platform terms of use for renters and hosts.' }] },
-  'cancellation-policy': { title: 'Cancellation Policy', blocks: [DRAFT, { type: 'list', items: ['Free cancellation up to 24 hours before pickup.', '50% of trip charges refunded between 24 and 6 hours before pickup.', 'No refund of trip charges within 6 hours of pickup.', 'The security deposit is always refunded in full on cancellation.'] }] },
   'host-terms': { title: 'Host Terms', blocks: [DRAFT, { type: 'paragraph', text: 'Terms for listing vehicles, commission, payouts and host responsibilities.' }] },
-  'about-us': { title: 'About WAY2CARS', blocks: [{ type: 'paragraph', text: 'WAY2CARS Technology Pvt Ltd connects travellers with verified car owners for self-drive rentals.' }] },
-  'contact-us': { title: 'Contact Us', blocks: [{ type: 'paragraph', text: 'Use Help & Support in the app to chat with us or raise a ticket. Our team is available 24×7 for trips in progress.' }] },
+  ...LEGAL_PAGES,
 };
 const faqs = [
   { audience: 'user', category: 'Booking', question: 'What documents do I need to book?', answer: 'A valid Indian driving licence and a government ID (Aadhaar, passport or voter ID), plus a selfie for verification. Verification is usually completed within a few hours.' },
