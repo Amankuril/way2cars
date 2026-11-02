@@ -48,6 +48,13 @@
   }
 }
 
+/* Public site only: in-page links glide unless the visitor prefers reduced motion. */
+@media (prefers-reduced-motion: no-preference) {
+  html:has(.w2c-site) {
+    scroll-behavior: smooth;
+  }
+}
+
 /* Thin, unobtrusive scrollbars for panels and tables. */
 .scroll-thin {
   scrollbar-width: thin;

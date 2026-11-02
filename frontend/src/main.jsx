@@ -2,14 +2,18 @@ import { StrictMode, Suspense, lazy } from 'react';
 import { createRoot } from 'react-dom/client';
 import '@fontsource-variable/manrope';
 import './index.css';
+import { legalSlugFromPath } from './landing/routes.js';
 
 /**
  * One build, four apps. The first path segment picks the sub-app, which is lazy-loaded as its own
  * chunk and owns its own router (basename /admin, /user, /vendor). Moving between sub-apps is a
  * full page load (plain <a href>), so each keeps an independent session and query cache.
+ * Opened directly, legal pages get the full-width public layout. Links tapped inside the renter or
+ * host web app stay in the app, because its router handles them without a page load.
  */
 const seg = (p) => window.location.pathname === p || window.location.pathname.startsWith(`${p}/`);
 const SubApp = lazy(() => {
+  if (legalSlugFromPath(window.location.pathname)) return import('./landing/LegalPage.jsx');
   if (seg('/admin')) return import('./admin/main.jsx');
   if (seg('/user')) return import('./user/App.jsx');
   if (seg('/vendor')) return import('./vendor/App.jsx');
