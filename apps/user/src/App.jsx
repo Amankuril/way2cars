@@ -14,6 +14,7 @@ import { TripPlanProvider } from './hooks/useTripPlan';
 import { RootNavigator } from './navigation/RootNavigator';
 import { track } from './services/analytics';
 import { createNavigationContainerRef } from '@react-navigation/native';
+import { TripTrackingKeeper } from './components/TripTrackingKeeper';
 
 const navRef = createNavigationContainerRef();
 let lastScreen = null;
@@ -73,6 +74,7 @@ export function App() {
                   <RootNavigator />
                 </NavigationContainer>
                 <OfflineBanner />
+                <TripTrackingKeeper />
               </TripPlanProvider>
             </AppBridge>
           </AuthProvider>

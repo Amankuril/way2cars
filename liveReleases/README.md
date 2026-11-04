@@ -2,11 +2,13 @@
 
 | File | App | Package |
 |---|---|---|
-| `way2cars-user-v1.2.2.apk` | Renter app (latest) | `in.way2cars.user` |
+| `way2cars-user-v1.2.3.apk` | Renter app (latest) | `in.way2cars.user` |
+| `way2cars-user-v1.2.2.apk` | Previous renter app | `in.way2cars.user` |
 | `way2cars-host-v1.2.1.apk` | Host (vendor) app (latest) | `in.way2cars.host` |
 | `*-v1.1.1.apk` | Previous release | |
 | `*-v1.1.0.apk`, `*-v1.0.0.apk` | Older releases (talk to the old IP address) | |
 
+v1.2.3 renter (versionCode 7): shares the phone's location from pickup to return (needs a backend with `TRACKING_PROVIDER=phone`).
 v1.2.2 renter (versionCode 6) / v1.2.1 host (versionCode 5): WhatsApp on/off switch in notification settings
 (the backend now sends login OTPs and updates on WhatsApp when configured).
 v1.2.1 renter: shows payment adjustments and refunds credited to the WAY2CARS wallet.

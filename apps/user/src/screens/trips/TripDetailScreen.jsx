@@ -14,6 +14,7 @@ import { PriceBreakdown } from '../../components/PriceBreakdown';
 import { spanLabel } from '../../components/TripCard';
 import { payOrder } from '../../services/payments';
 import { downloadPdf } from '../../services/files';
+import { useTripLocationOk } from '../../services/tripTracking';
 
 const roundHalf = (d) => new Date(Math.ceil(d.getTime() / 1800000) * 1800000);
 const CONFIRMED = ['confirmed', 'ongoing', 'return_pending', 'completed'];
@@ -114,6 +115,7 @@ export function TripDetailScreen({ route, navigation }) {
     queryFn: () => api.get(`/api/v1/user/bookings/${id}`),
     refetchInterval: (query) => (['pending_payment', 'pending_vendor_approval', 'return_pending'].includes(query.state.data?.status) ? 15000 : false),
   });
+  const locationOk = useTripLocationOk(q.data?.status === 'ongoing' && Boolean(config.data?.tracking?.phone));
   const preview = useQuery({ queryKey: ['cancel-preview', id], queryFn: () => api.get(`/api/v1/user/bookings/${id}/cancellation-preview`), enabled: sheet === 'cancel' });
   const holdLeft = useCountdown(q.data?.holdExpiresAt);
 
@@ -251,6 +253,12 @@ export function TripDetailScreen({ route, navigation }) {
 
       {/* State-specific guidance */}
       {b.status === 'pending_payment' && holdLeft > 0 ? <FadeInView index={1} className="mx-4 mt-4"><HoldCard b={b} left={holdLeft} /></FadeInView> : null}
+      {!locationOk ? (
+        <Notice tone="warning" title="Location sharing is off" className="mx-4 mt-4">
+          Location is required during your trip. Allow it for WAY2CARS and turn on your phone’s location.
+        </Notice>
+      ) : null}
+      {!locationOk ? <Button title="Open settings" variant="secondary" className="mx-4 mt-2" onPress={() => Linking.openSettings()} /> : null}
       {b.status === 'pending_payment' && holdLeft === 0 ? <Notice tone="neutral" title="Hold expired" className="mx-4 mt-4">This booking will be released shortly. If you paid, it will be confirmed or refunded automatically.</Notice> : null}
       {b.status === 'pending_vendor_approval' ? <Notice tone="info" title="Waiting for the host" className="mx-4 mt-4">The host will confirm by {dateTime(b.vendorDecisionDueAt)}. If they can’t, you get a full refund automatically.</Notice> : null}
       {b.status === 'return_pending' ? <Notice tone="info" title="Return under review" className="mx-4 mt-4">The host is checking the car. Your deposit refund is calculated after their review.</Notice> : null}

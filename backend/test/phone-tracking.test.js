@@ -55,6 +55,7 @@ describe('phone tracking', () => {
     const { user } = await renter();
     const id = await trip(user._id, 'return_pending');
     await send(signTripTrackingToken(id, new Date()), [pos()]).expect(410);
+    await send(signTripTrackingToken(id, new Date()), []).expect(410); // the app asks with an empty batch when it has no fix
     expect(await VehicleLocation.countDocuments({ bookingId: id })).toBe(0);
   });
 

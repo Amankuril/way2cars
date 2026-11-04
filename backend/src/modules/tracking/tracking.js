@@ -65,7 +65,7 @@ const phonePositions = z.object({
     headingDeg: z.number().min(0).max(360).optional(),
     accuracyM: z.number().min(0).optional(),
     recordedAt: z.coerce.date(),
-  }).strict()).min(1).max(200),
+  }).strict()).max(200), // empty: no new positions, the app is asking whether the trip is still on
 }).strict();
 
 /** POST /trip-tracking/positions from the app's background service. 410 means stop reporting: the trip is over. */

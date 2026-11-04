@@ -11,6 +11,7 @@ import { useUploader } from '@shared/native';
 import { currentPosition } from '@shared/native/app/location';
 import { InspectionForm, validateInspection, inspectionPayload, emptyInspection, inspectionProgress, StepHeader } from '../../components/InspectionForm';
 import { TripScene, VehicleStrip } from '../../components/TripScene';
+import { stopTripTracking } from '../../services/tripTracking';
 
 const STEPS = ['Photos', 'Readings', 'Checklist', 'Damage'];
 const SEVERITY = [{ value: 'minor', label: 'Minor' }, { value: 'major', label: 'Major' }];
@@ -130,6 +131,7 @@ export function ReturnScreen({ route, navigation }) {
       });
       qc.invalidateQueries({ queryKey: ['trip', id] });
       qc.invalidateQueries({ queryKey: ['trips'] });
+      stopTripTracking();
       toast('Return submitted. The host will review the car.', 'success');
       navigation.goBack();
     } catch (err) {

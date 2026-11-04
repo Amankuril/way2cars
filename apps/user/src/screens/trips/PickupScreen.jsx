@@ -12,6 +12,7 @@ import { currentPosition } from '@shared/native/app/location';
 import { usePublicConfig } from '../../hooks/queries';
 import { InspectionForm, validateInspection, inspectionPayload, emptyInspection, inspectionProgress, StepHeader } from '../../components/InspectionForm';
 import { TripScene, VehicleStrip } from '../../components/TripScene';
+import { requestTrackingConsent, syncTripTracking } from '../../services/tripTracking';
 
 const STEPS = ['Photos', 'Readings', 'Checklist', 'Sign'];
 
@@ -96,20 +97,28 @@ export function PickupScreen({ route, navigation }) {
     if (!agree || fullName.trim().length < 2) e.agreement = 'Type your full name and accept the agreement.';
     setErrors(e);
     if (Object.keys(e).length) return toast('Some details are missing', 'danger');
+    const trackingRequired = Boolean(config.data?.tracking?.phone);
+    if (trackingRequired) {
+      const consent = await requestTrackingConsent();
+      if (!consent.ok) return toast(consent.message, 'danger');
+    }
     setSubmitting(true);
     try {
       const pos = await currentPosition({ timeout: 4000 }).catch(() => null);
       await api.post(`/api/v1/user/bookings/${id}/pickup`, {
         ...inspectionPayload(form, uploader, isElectric),
         ...(pos ? { lat: pos.lat, lng: pos.lng } : {}),
+        ...(trackingRequired ? { trackingConsent: true } : {}),
         agreement: { accept: true, fullName: fullName.trim(), contentHash: a.contentHash },
       });
       qc.invalidateQueries({ queryKey: ['trip', id] });
       qc.invalidateQueries({ queryKey: ['trips'] });
+      if (trackingRequired) syncTripTracking().catch(() => null); // retried when the app next comes to the screen
       toast('Trip started. Drive safe!', 'success');
       navigation.goBack();
     } catch (err) {
       if (err.code === 'AGREEMENT_CHANGED') agreement.refetch();
+      if (err.code === 'TRACKING_REQUIRED') config.refetch();
       toast(err.message, 'danger');
     } finally {
       setSubmitting(false);
