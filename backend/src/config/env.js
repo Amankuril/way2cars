@@ -1,5 +1,6 @@
 import path from 'node:path';
 import { z } from 'zod';
+import './load-env.js'; // applies backend/.env under PM2 before load() runs
 
 /**
  * Single source of runtime configuration. Parsed once at startup; the process exits

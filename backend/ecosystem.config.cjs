@@ -1,6 +1,7 @@
 /**
  * PM2 process file for the API.  From backend/:  pm2 start ecosystem.config.cjs && pm2 save
  * The API does not read .env on its own, so Node loads it here (--env-file).
+ * To change a setting: nano .env, then pm2 restart all --update-env. Under PM2, .env beats shell variables (src/config/load-env.js).
  */
 const path = require('path');
 
