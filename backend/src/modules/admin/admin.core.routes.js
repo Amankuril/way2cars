@@ -145,7 +145,7 @@ adminCoreRouter.get('/system/integrations', requirePermission('settings.manage')
     firebase: { configured: pushConfigured() },
     email: { configured: emailConfigured() },
     maps: { configured: mapsConfigured(), usageSinceRestart: mapsUsage() },
-    tracking: { configured: trackingEnabled() },
+    tracking: { configured: trackingEnabled(), provider: env.TRACKING_PROVIDER },
   });
 });
 

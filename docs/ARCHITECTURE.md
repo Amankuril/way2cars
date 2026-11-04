@@ -222,7 +222,7 @@ RazorpayX payout confirms) — a request is never presented as a completed payou
 | Firebase (FCM) | `integrations/firebase` | firebase-admin; invalid tokens pruned; disabled cleanly if not configured |
 | Google Maps | `integrations/maps` | Places Autocomplete/Details (New), Geocoding, Routes (distance/ETA); server key; LRU cache; geo maths for proximity/geofence |
 | Email | `integrations/email` | SMTP via nodemailer (provider-agnostic) |
-| Tracking | `integrations/tracking` | Provider boundary + signed ingest endpoint. **No provider is configured yet → live tracking shows "no device"**; nothing is simulated |
+| Tracking | `modules/tracking` | `TRACKING_PROVIDER=phone`: the renter app's foreground service posts positions with a one-trip token (`/trip-tracking/positions`) from pickup to return; location sharing is required at pickup, admins only can view. `generic-webhook`: signed ingest for a GPS device provider. Nothing is simulated |
 
 `notifications` service is the single dispatcher: an event (`booking.confirmed`, …) fans out to
 in-app inbox, push and email according to templates and user preferences. `booking.confirmed` additionally

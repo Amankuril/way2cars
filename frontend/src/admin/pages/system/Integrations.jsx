@@ -78,7 +78,7 @@ export default function Integrations() {
             </dl>
           </Card>
           <Card icon={Satellite} title="GPS tracking" description="Live vehicle location during trips." status={on(d.tracking.configured)}>
-            {d.tracking.configured ? 'Trip tracking data is shown on booking pages.' : 'No tracking provider — booking pages say so and never show estimated positions.'}
+            {d.tracking.configured ? (d.tracking.provider === 'phone' ? 'The renter’s phone reports the location during each trip. Shown on booking pages.' : 'Trip tracking data is shown on booking pages.') : 'Set TRACKING_PROVIDER=phone on the server to track trips with the renter’s phone. Needs the renter app with location sharing.'}
           </Card>
         </div>
       )}

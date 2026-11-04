@@ -134,7 +134,9 @@ const schema = z.object({
   RATE_LIMIT_AUTH_MAX: int(20, { min: 3 }),
 
   JOBS_ENABLED: bool(true),
-  TRACKING_PROVIDER: z.enum(['none', 'generic-webhook']).default('none'),
+  // 'phone': the renter app reports the location during a trip. 'generic-webhook': a GPS device provider posts signed positions.
+  TRACKING_PROVIDER: z.enum(['none', 'generic-webhook', 'phone']).default('none'),
+  TRACKING_PHONE_INTERVAL_SECONDS: int(30, { min: 10, max: 300 }),
   TRACKING_WEBHOOK_SECRET: optStr,
 });
 
@@ -187,8 +189,8 @@ function load() {
   if (e.SMS_ENABLED && (!e.TEXTORA_SMS_AUTHKEY || !e.TEXTORA_SMS_FROM || !e.TEXTORA_SMS_PE_ID || !e.TEXTORA_SMS_OTP_TEMPLATE_ID))
     problems.push('SMS_ENABLED=true requires TEXTORA_SMS_AUTHKEY, TEXTORA_SMS_FROM, TEXTORA_SMS_PE_ID and TEXTORA_SMS_OTP_TEMPLATE_ID');
   if (!e.TEXTORA_SMS_OTP_TEMPLATE.includes('{otp}')) problems.push('TEXTORA_SMS_OTP_TEMPLATE must contain {otp}');
-  if (e.TRACKING_PROVIDER !== 'none' && !e.TRACKING_WEBHOOK_SECRET)
-    problems.push('TRACKING_WEBHOOK_SECRET is required when TRACKING_PROVIDER is set');
+  if (e.TRACKING_PROVIDER === 'generic-webhook' && !e.TRACKING_WEBHOOK_SECRET)
+    problems.push('TRACKING_WEBHOOK_SECRET is required when TRACKING_PROVIDER=generic-webhook');
 
   if (problems.length) throw new Error(`Invalid environment configuration:\n  - ${problems.join('\n  - ')}`);
 

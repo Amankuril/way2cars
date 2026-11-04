@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { env } from '../../config/env.js';
 import { withTransaction } from '../../core/db.js';
 import { badRequest, conflict, notFound } from '../../core/errors.js';
 import { sha256 } from '../../core/crypto.js';
@@ -35,6 +36,7 @@ export const pickupSchema = z.object({
   ...reading,
   checklist,
   notes: z.string().trim().max(1000).optional(),
+  trackingConsent: z.literal(true).optional(), // renter accepted location sharing and allowed it on the phone
   agreement: z.object({ accept: z.literal(true), fullName: z.string().trim().min(2).max(100), contentHash: z.string().length(64) }).strict(),
 }).strict();
 
@@ -85,6 +87,7 @@ export async function startTrip(req, bookingId, body) {
     const opensAt = new Date(b.startAt.getTime() - settings.booking.pickupWindowMinutesBefore * 60_000);
     if (now < opensAt) throw conflict(`Pickup opens ${settings.booking.pickupWindowMinutesBefore} minutes before your start time.`, 'PICKUP_NOT_OPEN');
     if (now > b.endAt) throw conflict('This booking window has ended.', 'PICKUP_CLOSED');
+    if (env.TRACKING_PROVIDER === 'phone' && !body.trackingConsent) throw conflict('Location sharing is required during the trip. Please start it from the latest WAY2CARS Android app and allow location.', 'TRACKING_REQUIRED');
     if (body.photos.length < settings.trip.minPickupPhotos) throw badRequest(`Take at least ${settings.trip.minPickupPhotos} photos of the car.`, undefined, 'PHOTOS_REQUIRED');
 
     const vehicle = await Vehicle.findById(b.vehicleId).select('fuelType lastOdometerKm').session(session).lean();
@@ -115,6 +118,7 @@ export async function startTrip(req, bookingId, body) {
     b.trip.pickupInspectionId = insp._id;
     b.trip.agreementId = agr._id;
     b.trip.startedAt = now;
+    if (body.trackingConsent) b.trip.trackingConsentAt = now;
     b.trip.startOdometerKm = body.odometerKm;
     b.trip.startFuelEighths = vehicle.fuelType === 'electric' ? Math.round((body.batteryPercent / 100) * 8) : body.fuelEighths;
     await b.save({ session });

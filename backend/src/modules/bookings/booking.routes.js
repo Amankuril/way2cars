@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { ok, created, noContent } from '../../core/http.js';
+import { phoneTrackingSession } from '../tracking/tracking.js';
 import { notFound, conflict } from '../../core/errors.js';
 import { paginate, paginationQuery, escapeRegex } from '../../core/pagination.js';
 import { validate } from '../../middleware/validate.js';
@@ -147,6 +148,7 @@ userBookingRouter.post('/:id/extensions/:extensionId/payment-order', validate({ 
   ok(res, await extensionPaymentOrder(req.auth.id, req.valid.params.id, req.valid.params.extensionId));
 });
 
+userBookingRouter.post('/tracking-session', async (req, res) => ok(res, await phoneTrackingSession(req.auth.id)));
 userBookingRouter.get('/:id/agreement', validate({ params: idParams }), async (req, res) => ok(res, await agreementFor(req.auth.id, req.valid.params.id)));
 userBookingRouter.post('/:id/pickup', validate({ params: idParams, body: pickupSchema }), async (req, res) => {
   await startTrip(req, req.valid.params.id, req.valid.body);

@@ -31,6 +31,21 @@ export function verifyAccessToken(token, realm) {
 /** Short-lived token proving password success while MFA is pending. */
 export const signMfaToken = (adminId) =>
   jwt.sign({ purpose: 'mfa' }, env.JWT_ACCESS_SECRET, { subject: String(adminId), expiresIn: 300, issuer: ISSUER, audience: 'admin-mfa' });
+/** Lets the renter app's background service report positions for ONE trip. The trip's status is checked on every report. */
+export const signTripTrackingToken = (bookingId, endAt) =>
+  jwt.sign({ purpose: 'trip_tracking' }, env.JWT_ACCESS_SECRET, {
+    subject: String(bookingId),
+    expiresIn: Math.ceil((Math.max(new Date(endAt).getTime(), Date.now()) - Date.now()) / 1000) + 7 * 86400,
+    issuer: ISSUER,
+    audience: 'trip-tracking',
+  });
+export function verifyTripTrackingToken(token) {
+  try {
+    return jwt.verify(token, env.JWT_ACCESS_SECRET, { issuer: ISSUER, audience: 'trip-tracking', algorithms: ['HS256'] }).sub;
+  } catch {
+    return null;
+  }
+}
 export function verifyMfaToken(token) {
   try {
     return jwt.verify(token, env.JWT_ACCESS_SECRET, { issuer: ISSUER, audience: 'admin-mfa', algorithms: ['HS256'] }).sub;

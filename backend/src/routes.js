@@ -17,7 +17,7 @@ import { requesterSupportRouter, adminSupportRouter } from './modules/support/su
 import { vendorEarningsRouter, adminPayoutRouter } from './modules/payouts/payout.routes.js';
 import { userOffersRouter, adminCouponRouter } from './modules/coupons/coupon.routes.js';
 import { mapsRouter } from './modules/maps/maps.routes.js';
-import { adminTrackingRouter, ingestTracking } from './modules/tracking/tracking.js';
+import { adminTrackingRouter, ingestTracking, ingestPhonePositions, phoneTrackingEnabled } from './modules/tracking/tracking.js';
 import { adminUsersRouter, adminVendorsRouter, adminKycRouter, adminWalletRouter } from './modules/admin/admin.users.routes.js';
 import { adminCoreRouter } from './modules/admin/admin.core.routes.js';
 import { adminReportsRouter } from './modules/reports/report.routes.js';
@@ -43,7 +43,7 @@ const v1 = Router();
 v1.use('/auth', authRouter);
 v1.get('/public/config', async (_req, res) => {
   const s = await getSettings();
-  ok(res, { ...publicSettings(s), razorpayKeyId: publicKeyId(), mapsBrowserKey: env.GOOGLE_MAPS_BROWSER_KEY || null, apiVersion: 1 });
+  ok(res, { ...publicSettings(s), tracking: { phone: phoneTrackingEnabled() }, razorpayKeyId: publicKeyId(), mapsBrowserKey: env.GOOGLE_MAPS_BROWSER_KEY || null, apiVersion: 1 });
 });
 v1.use('/public', publicCatalogRouter, publicCmsRouter, searchRouter, publicAnalyticsRouter);
 
@@ -54,6 +54,12 @@ v1.post('/webhooks/razorpay', async (req, res) => {
 });
 v1.post('/webhooks/tracking', async (req, res) => {
   const r = await ingestTracking(req.body, req.get('x-signature'));
+  res.status(r.httpStatus).json(r.body);
+});
+
+// ---- renter app background service: authenticated by a token for one trip, not a login session
+v1.post('/trip-tracking/positions', async (req, res) => {
+  const r = await ingestPhonePositions(req.get('authorization')?.replace(/^Bearer /, ''), req.body);
   res.status(r.httpStatus).json(r.body);
 });
 

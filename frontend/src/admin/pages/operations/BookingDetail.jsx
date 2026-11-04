@@ -136,12 +136,14 @@ function TrackingPanel({ bookingId }) {
       ) : !data.trackingAvailable ? (
         <div className="flex items-start gap-2.5">
           <CircleSlash className="mt-0.5 h-4 w-4 shrink-0 text-ink-400" aria-hidden="true" />
-          <p className="text-caption text-ink-600">{data.reason || 'No GPS tracking provider is configured.'} Positions are never estimated or simulated.</p>
+          <p className="text-caption text-ink-600">{data.reason || 'GPS tracking is not turned on.'} Positions are never estimated or simulated.</p>
         </div>
       ) : !data.latest ? (
-        <p className="text-caption text-ink-600">The tracking provider has not reported any position for this trip yet.</p>
+        <p className="text-caption text-ink-600">{data.source === 'phone' ? 'The renter’s phone has not reported a position for this trip yet.' : 'The tracking provider has not reported any position for this trip yet.'}</p>
       ) : (
         <div className="space-y-3">
+          {data.signalLost ? <StatusPill tone="danger">Signal lost: no update for over 5 minutes</StatusPill> : null}
+          {data.source === 'phone' ? <p className="text-caption text-ink-600">Location of the renter’s phone, which may not be with the car.</p> : null}
           <KeyValue
             columns={1}
             items={[

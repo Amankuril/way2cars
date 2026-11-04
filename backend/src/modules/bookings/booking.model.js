@@ -153,6 +153,7 @@ const schema = new mongoose.Schema(
       returnInspectionId: { type: oid, ref: 'TripInspection' },
       agreementId: { type: oid, ref: 'RentalAgreement' },
       startedAt: Date,
+      trackingConsentAt: Date,
       returnSubmittedAt: Date,
       returnReviewDueAt: Date,
       endedAt: Date,
