@@ -14,7 +14,7 @@ import { publicAdmin, verifyTotp } from '../auth/auth.service.js';
 import { revokeAllSessions } from '../auth/token.service.js';
 import { getSettings, updateSettings } from '../settings/settings.service.js';
 import { bypassStatus } from '../auth/otp.service.js';
-import { smsConfigured, bookingSmsConfigured } from '../../integrations/sms.js';
+import { smsConfigured } from '../../integrations/sms.js';
 import { whatsappConfigured, whatsappOtpConfigured, whatsappUpdatesConfigured } from '../../integrations/whatsapp.js';
 import { env } from '../../config/env.js';
 import { pushConfigured } from '../../integrations/firebase.js';
@@ -115,7 +115,7 @@ const settingsPatch = z.object({
   advance: z.object({ enabled: z.boolean(), percentBps: z.number().int().min(1000).max(9000), companyPercentBps: z.number().int().min(1000).max(9000), balanceDueHoursBeforeStart: z.number().int().min(0).max(168), autoCancelUnpaid: z.boolean() }).partial().strict(),
   deposit: z.object({ minCashPaise: paise, allowBike: z.boolean(), bikeMinYear: z.number().int().min(2000).max(2100), allowLaptop: z.boolean(), laptopMinYear: z.number().int().min(2000).max(2100), requireRefundApproval: z.boolean(), defaultRefundDays: z.number().int().min(0).max(60) }).partial().strict(),
   bookingTerms: z.object({ speedLimitKmph: z.number().int().min(20).max(200), rules: z.array(z.string().trim().min(3).max(200)).max(20) }).partial().strict(),
-  messaging: z.object({ bookingWhatsapp: z.boolean(), bookingSms: z.boolean() }).partial().strict(),
+  messaging: z.object({ bookingWhatsapp: z.boolean() }).partial().strict(),
   extension: z.object({ minHoursBeforeEnd: z.number().int().min(0).max(72), requireApproval: z.boolean() }).partial().strict(),
   hostVisibility: z.object({ renterName: z.boolean(), renterPhone: z.boolean(), renterKycStatus: z.boolean(), bookingAmounts: z.boolean(), paymentStatus: z.boolean() }).partial().strict(),
   payouts: z.object({ holdDays: z.number().int().min(0).max(60), minWithdrawalPaise: paise }).partial().strict(),
@@ -137,7 +137,7 @@ adminCoreRouter.patch('/settings', requirePermission('settings.manage'), validat
 adminCoreRouter.get('/system/integrations', requirePermission('settings.manage'), async (_req, res) => {
   const otp = bypassStatus();
   ok(res, {
-    sms: { configured: smsConfigured(), bookingTemplate: bookingSmsConfigured() },
+    sms: { configured: smsConfigured() },
     whatsapp: { configured: whatsappConfigured(), provider: env.WHATSAPP_PROVIDER, template: env.WHATSAPP_BOOKING_TEMPLATE || null, params: env.WHATSAPP_BOOKING_PARAMS, otp: whatsappOtpConfigured(), otpTemplate: env.WHATSAPP_OTP_TEMPLATE || null, updates: whatsappUpdatesConfigured(), updateTemplate: env.WHATSAPP_UPDATE_TEMPLATE || null },
     otpChannels: env.OTP_CHANNELS,
     otp: { globalBypass: otp.globalBypass, dummyNumbersConfigured: otp.dummyNumberCount > 0 },

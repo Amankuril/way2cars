@@ -59,7 +59,7 @@ const schema = z.object({
   ADMIN_LOCKOUT_MINUTES: int(15, { min: 1, max: 1440 }),
   ADMIN_REQUIRE_MFA: bool(false),
 
-  // Textora SMS (DLT): login OTPs and the booking confirmation. Separate authkey from Textora WhatsApp.
+  // Textora SMS (DLT): login OTPs only. Separate authkey from Textora WhatsApp.
   SMS_ENABLED: bool(false),
   TEXTORA_SMS_API_URL: z.string().optional().transform((v) => (v && v.trim() ? v.trim() : 'https://api.textorasms.com/sms/india/send')),
   TEXTORA_SMS_AUTHKEY: optStr,
@@ -69,9 +69,6 @@ const schema = z.object({
   // Must match the DLT-approved text character for character; {otp} is replaced with the code.
   TEXTORA_SMS_OTP_TEMPLATE: z.string().optional().transform((v) => (v && v.trim() ? v.trim() : 'Your OTP is {otp}. Do not share it. - BITMISRI TECHNOLOGIES PRIVATE LIMITED')),
   TEXTORA_SMS_TIMEOUT_MS: int(15000, { min: 1000, max: 30000 }),
-  // Booking confirmation SMS (separate DLT template). Placeholders: {name} {ref} {vehicle} {start} {end} {link}
-  TEXTORA_SMS_BOOKING_TEMPLATE: optStr,
-  TEXTORA_SMS_BOOKING_TEMPLATE_ID: optStr,
   // WhatsApp booking confirmations. Provider 'textora' (BUZWAP / api.textorasms.com, default) or 'meta' (Cloud API).
   WHATSAPP_ENABLED: bool(false),
   WHATSAPP_PROVIDER: z.enum(['textora', 'meta']).default('textora'),

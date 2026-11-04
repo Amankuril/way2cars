@@ -76,11 +76,10 @@ const SECTIONS = [
     ],
   },
   {
-    key: 'bookingTerms', title: 'Trip rules sent to renters', description: 'Sent with every booking confirmation on WhatsApp/SMS and shown on the trip page, together with the car’s km allowance and extra-km, late-return and fuel charges.',
+    key: 'bookingTerms', title: 'Trip rules sent to renters', description: 'Sent with every booking confirmation on WhatsApp and shown on the trip page, together with the car’s km allowance and extra-km, late-return and fuel charges.',
     fields: [
       { path: 'bookingTerms.speedLimitKmph', label: 'Speed limit', unit: 'int', suffix: 'km/h', min: 20, max: 200 },
-      { path: 'messaging.bookingWhatsapp', label: 'Send booking confirmation on WhatsApp', unit: 'bool', hint: 'Needs the WhatsApp Cloud API keys (System → Integrations).' },
-      { path: 'messaging.bookingSms', label: 'Send booking confirmation by SMS', unit: 'bool', hint: 'Needs the booking DLT template (System → Integrations).' },
+      { path: 'messaging.bookingWhatsapp', label: 'Send booking confirmation on WhatsApp', unit: 'bool', hint: 'Needs the Textora WhatsApp setup (System → Integrations).' },
       { path: 'bookingTerms.rules', label: 'Rules (one per line)', unit: 'lines', wide: true, maxLines: 20 },
     ],
   },

@@ -48,7 +48,7 @@ const schema = new mongoose.Schema(
       requireRefundApproval: { type: Boolean, default: true },
       defaultRefundDays: { type: Number, default: 7, min: 0, max: 60 },
     },
-    // Rules sent with every booking confirmation (WhatsApp/SMS) and shown on the trip page.
+    // Rules sent with every booking confirmation (WhatsApp) and shown on the trip page.
     bookingTerms: {
       speedLimitKmph: { type: Number, default: 80, min: 20, max: 200 },
       rules: {
@@ -64,7 +64,6 @@ const schema = new mongoose.Schema(
     },
     messaging: {
       bookingWhatsapp: { type: Boolean, default: true },
-      bookingSms: { type: Boolean, default: true },
     },
     extension: {
       minHoursBeforeEnd: { type: Number, default: 12, min: 0, max: 72 },

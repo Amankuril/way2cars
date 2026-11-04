@@ -4,9 +4,9 @@ import { maskPhone } from '../core/phone.js';
 
 /**
  * Textora SMS (POST /sms/india/send) — the ONLY place that talks to the SMS provider. Used for login
- * OTPs and for the booking confirmation (its own DLT template); everything else goes out by push,
- * email, WhatsApp and in-app. Indian DLT rules: the text must match the registered template exactly,
- * and the sender ID must be the DLT header linked to that template.
+ * OTPs only; booking and trip messages go out on WhatsApp, push, email and in-app. Indian DLT rules:
+ * the text must match the registered template exactly, and the sender ID must be the DLT header
+ * linked to that template.
  */
 
 export const smsConfigured = () => Boolean(env.SMS_ENABLED && env.TEXTORA_SMS_AUTHKEY && env.TEXTORA_SMS_FROM && env.TEXTORA_SMS_PE_ID);
@@ -68,17 +68,4 @@ export async function sendOtpSms(phone10, otp) {
     return { status: 'skipped' };
   }
   return send(phone10, buildOtpMessage(otp), env.TEXTORA_SMS_OTP_TEMPLATE_ID, 'otp');
-}
-
-export const bookingSmsConfigured = () => smsConfigured() && Boolean(env.TEXTORA_SMS_BOOKING_TEMPLATE && env.TEXTORA_SMS_BOOKING_TEMPLATE_ID);
-
-/** Fills the booking DLT template. Values are trimmed so the text stays within the registered variable lengths. */
-export function buildBookingSms(vars) {
-  return Object.entries(vars).reduce((text, [k, v]) => text.split(`{${k}}`).join(String(v ?? '').slice(0, 30)), env.TEXTORA_SMS_BOOKING_TEMPLATE || '');
-}
-
-/** Booking confirmation SMS. Same result shape as sendOtpSms; never throws. */
-export async function sendBookingSms(phone10, vars) {
-  if (!bookingSmsConfigured()) return { status: 'skipped' };
-  return send(phone10, buildBookingSms(vars), env.TEXTORA_SMS_BOOKING_TEMPLATE_ID, 'booking');
 }

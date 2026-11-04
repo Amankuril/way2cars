@@ -255,14 +255,14 @@ describe('4 + 12. security deposit options, inspection and refunds', () => {
   });
 });
 
-describe('5. booking confirmation on WhatsApp / SMS with terms', () => {
+describe('5. booking confirmation on WhatsApp with terms', () => {
   it('logs the confirmation attempt, gives staff the message and a WhatsApp link, and shows terms to the renter', async () => {
     const { token } = await renter('Message Renter');
     const start = slot(200 * 60);
     const b = await book(token, { vehicleId: String(ctx.car._id), startAt: start, endAt: new Date(start.getTime() + 24 * H) });
     await new Promise((r) => setTimeout(r, 300));
     const logged = await Booking.findById(b._id).lean();
-    expect(logged.messages.map((m) => m.channel).sort()).toEqual(['sms', 'whatsapp']);
+    expect(logged.messages.map((m) => m.channel)).toEqual(['whatsapp']); // SMS is for login OTPs only
     expect(logged.messages.every((m) => m.status === 'skipped')).toBe(true); // providers not configured in tests
     const preview = await api().get(`/api/v1/admin/bookings/${b._id}/confirmation-message`).set(auth(ctx.admin)).expect(200);
     expect(preview.body.data.text).toMatch(/Speed limit: 80 km\/h/);

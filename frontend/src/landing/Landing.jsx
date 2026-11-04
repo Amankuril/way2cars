@@ -13,7 +13,7 @@ const STEPS = [
   { title: 'Verify', body: 'Sign in with your mobile number, then upload your driving licence and ID and take a selfie. Verification is usually done within a few hours.' },
   { title: 'Book and pay', body: 'Choose hours or days and a kilometre package. You see the rental, taxes, security deposit and extra-km rate before you confirm.' },
   { title: 'Pick up', body: 'Go round the car with us and photograph it. Odometer and fuel are recorded, so existing damage is on file from the start.' },
-  { title: 'Drive', body: 'Booking details and updates reach you on WhatsApp, SMS and in the app. Need more time? Ask us for an extension before your return time.' },
+  { title: 'Drive', body: 'Booking details and updates reach you on WhatsApp and in the app. Need more time? Ask us for an extension before your return time.' },
   { title: 'Return', body: 'Bring the car back to the agreed spot on time. After the return inspection, your deposit is refunded less anything properly owed.' },
 ];
 
@@ -287,7 +287,7 @@ function OnTheRoad() {
         </ol>
         <p className="mt-6 flex items-start gap-2.5 text-bodySm leading-[22px] text-ink-300">
           <MessageCircle size={17} aria-hidden className="mt-0.5 shrink-0 text-accent-300" />
-          Trip and booking updates reach you on WhatsApp, SMS and in the app. You can turn WhatsApp updates off in the app’s notification settings.
+          Trip and booking updates reach you on WhatsApp and in the app. You can turn WhatsApp updates off in the app’s notification settings.
         </p>
       </div>
     </section>

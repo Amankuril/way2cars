@@ -144,7 +144,7 @@ const schema = new mongoose.Schema(
       amountPaise: Number, reason: String, by: actor, at: Date,
       balancePaise: Number, outstandingPaise: Number, refundPaise: Number, refundTo: { type: String, enum: ['source', 'wallet'] },
     }],
-    // WhatsApp / SMS messages sent about this booking (confirmation with terms).
+    // WhatsApp messages sent about this booking (older bookings may also log SMS) (confirmation with terms).
     messages: [{ _id: false, channel: { type: String, enum: ['whatsapp', 'sms'] }, kind: String, status: String, error: String, providerRef: String, at: Date }],
     cancellation: { by: actor, reason: String, at: Date, hoursBeforeStart: Number, refundBps: Number, refundPaise: Number, walletRefundPaise: Number },
     extensions: [extension],

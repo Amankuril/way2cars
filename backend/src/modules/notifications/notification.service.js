@@ -133,7 +133,7 @@ export async function notify(event, to, data = {}, { dedupeKey } = {}) {
       channels.whatsapp = (await sendWhatsappTemplate(account.phone, env.WHATSAPP_UPDATE_PARAMS.map((k) => values[k] ?? ''), { template: env.WHATSAPP_UPDATE_TEMPLATE })).status;
     }
     if (Object.keys(channels).length) await Notification.updateOne({ _id: doc._id }, { $set: { channels } });
-    // Confirmed bookings also get the details + trip rules on WhatsApp / SMS.
+    // Confirmed bookings also get the details + trip rules on WhatsApp.
     if (event === 'booking.confirmed' && data.bookingId) {
       const { sendBookingConfirmation } = await import('../messaging/booking.messages.js');
       setImmediate(() => sendBookingConfirmation(data.bookingId));

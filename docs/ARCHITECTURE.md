@@ -217,7 +217,7 @@ RazorpayX payout confirms) — a request is never presented as a completed payou
 | Service | Module | Notes |
 |---|---|---|
 | WhatsApp Cloud API | `integrations/whatsapp` | Booking confirmation template (details + key rules + terms link); off until `WHATSAPP_*` is set. Staff always get a wa.me click-to-send fallback |
-| Textora SMS | `integrations/sms` | Login OTPs, and the booking confirmation (second DLT template `TEXTORA_SMS_BOOKING_TEMPLATE`). `POST /sms/india/send` (authkey, to, content, from, PE_ID, Template_ID); text from `TEXTORA_SMS_OTP_TEMPLATE` must match the DLT template exactly; never retried (no double codes); OTP never logged |
+| Textora SMS | `integrations/sms` | Login OTPs only. `POST /sms/india/send` (authkey, to, content, from, PE_ID, Template_ID); text from `TEXTORA_SMS_OTP_TEMPLATE` must match the DLT template exactly; never retried (no double codes); OTP never logged |
 | Razorpay | `integrations/razorpay` | Orders, signature + webhook HMAC verification, fetch/reconcile, refunds |
 | Firebase (FCM) | `integrations/firebase` | firebase-admin; invalid tokens pruned; disabled cleanly if not configured |
 | Google Maps | `integrations/maps` | Places Autocomplete/Details (New), Geocoding, Routes (distance/ETA); server key; LRU cache; geo maths for proximity/geofence |
@@ -226,7 +226,7 @@ RazorpayX payout confirms) — a request is never presented as a completed payou
 
 `notifications` service is the single dispatcher: an event (`booking.confirmed`, …) fans out to
 in-app inbox, push and email according to templates and user preferences. `booking.confirmed` additionally
-sends the WhatsApp/SMS confirmation (`modules/messaging`), logged on `booking.messages`.
+sends the WhatsApp confirmation (`modules/messaging`), logged on `booking.messages`.
 
 ## 9. Scheduled jobs (in-process, Mongo lease lock)
 Expire unpaid holds · reconcile pending payments with Razorpay · auto-reject vendor approvals past

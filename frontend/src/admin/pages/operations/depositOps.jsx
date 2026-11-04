@@ -17,7 +17,7 @@ import { RefundDestination } from './adjustOps.jsx';
 
 /**
  * Booking-page panels for the security deposit (money or a bike / laptop handed over), the deposit
- * inspection and refund approval after the trip, and the WhatsApp / SMS booking confirmation.
+ * inspection and refund approval after the trip, and the WhatsApp booking confirmation.
  */
 
 const collateralText = (c) => (c ? [c.make, c.model, c.year].filter(Boolean).join(' ') : '');
@@ -160,7 +160,7 @@ export function DepositReviewPanel({ b }) {
   );
 }
 
-/** Booking confirmation on WhatsApp / SMS: send log, the message itself, click-to-send and resend. */
+/** Booking confirmation on WhatsApp: send log, the message itself, click-to-send and resend. */
 export function ConfirmationPanel({ b }) {
   const { can } = useAuth();
   const toast = useToast();

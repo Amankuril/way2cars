@@ -6,10 +6,9 @@ import { Booking } from '../bookings/booking.model.js';
 import { User } from '../users/user.model.js';
 import { getSettings } from '../settings/settings.service.js';
 import { sendWhatsappTemplate, whatsappLink } from '../../integrations/whatsapp.js';
-import { sendBookingSms } from '../../integrations/sms.js';
 
 /**
- * Booking confirmation sent on WhatsApp and SMS: trip details plus the rules that apply (speed limit,
+ * Booking confirmation sent on WhatsApp: trip details plus the rules that apply (speed limit,
  * extra-km / late / fuel charges, deposit, conduct rules). The same content is shown in the apps and
  * offered to staff as a pre-filled WhatsApp message when no provider is configured.
  */
@@ -69,8 +68,8 @@ export function bookingConfirmationText(b, user, settings) {
 const shortTerms = (terms) => [`Speed limit ${terms.speedLimitKmph} km/h`, terms.kmAllowance, terms.extraKmCharge, `Late return ${terms.lateReturn.split(' after')[0]}`].filter(Boolean).join('; ');
 
 /**
- * Sends the confirmation on every enabled channel and logs the outcome on the booking. Channels that
- * already succeeded are skipped unless `force` (staff resend). Never throws.
+ * Sends the WhatsApp confirmation and logs the outcome on the booking. Skipped if already sent, unless
+ * `force` (staff resend). Never throws.
  */
 export async function sendBookingConfirmation(bookingId, { force = false } = {}) {
   try {
@@ -87,10 +86,6 @@ export async function sendBookingConfirmation(bookingId, { force = false } = {})
       const values = { name: user.name || 'Customer', ref: b.ref, car: b.vehicleSnapshot?.title, start: formatIst(b.startAt), end: formatIst(b.endAt), place: placeText(b), paid: rupees(paid), terms: shortTerms(terms), link: terms.termsUrl, hours: String(hours), days: String(Math.max(1, Math.ceil(hours / 24))) };
       const r = await sendWhatsappTemplate(user.phone, env.WHATSAPP_BOOKING_PARAMS.map((k) => values[k] ?? ''));
       results.push({ channel: 'whatsapp', kind: 'booking_confirmation', ...r, at: new Date() });
-    }
-    if (settings.messaging.bookingSms && (force || !sent.has('sms'))) {
-      const r = await sendBookingSms(user.phone, { name: user.name || 'Customer', ref: b.ref, vehicle: b.vehicleSnapshot?.title, start: formatIst(b.startAt), end: formatIst(b.endAt), link: terms.termsUrl });
-      results.push({ channel: 'sms', kind: 'booking_confirmation', ...r, at: new Date() });
     }
     if (results.length) await Booking.updateOne({ _id: b._id }, { $push: { messages: { $each: results.map(({ channel, kind, status, error, providerRef, at }) => ({ channel, kind, status, error, providerRef, at })), $slice: -20 } } });
     return results;
