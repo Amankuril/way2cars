@@ -48,7 +48,7 @@ export default function Integrations() {
             {d.sms.configured ? 'OTP messages are delivered by the SMS provider.' : 'OTP messages cannot be delivered to real phones until a provider is configured.'}
           </Card>
           <Card icon={MessageSquare} title="Booking confirmation SMS" description="Booking details and the terms link, sent when a booking is confirmed." status={on(d.sms.configured && d.sms.bookingTemplate)}>
-            {d.sms.bookingTemplate ? 'Sent through the booking DLT template.' : 'Set SMS_INDIA_HUB_BOOKING_TEMPLATE and SMS_INDIA_HUB_BOOKING_DLT_TEMPLATE_ID on the server (the text must match the DLT template).'}
+            {d.sms.bookingTemplate ? 'Sent through the booking DLT template.' : 'Set TEXTORA_SMS_BOOKING_TEMPLATE and TEXTORA_SMS_BOOKING_TEMPLATE_ID on the server (the text must match the DLT template).'}
           </Card>
           <Card icon={MessageSquare} title="WhatsApp login OTP" description={`Sign-in codes on WhatsApp. Channel order: ${(d.otpChannels || []).join(' → ') || 'sms'} (falls back to the next if one fails).`} status={on(d.whatsapp?.otp)}>
             {d.whatsapp?.otp ? `Authentication template “${d.whatsapp.otpTemplate}”.` : 'Set WHATSAPP_OTP_TEMPLATE (an approved authentication template) and OTP_CHANNELS=whatsapp,sms on the server.'}

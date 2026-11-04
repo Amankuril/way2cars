@@ -34,7 +34,7 @@ export function bypassStatus() {
  * Decides how an OTP is produced for a number:
  *  - number in OTP_DUMMY_NUMBERS → static 123456, in every environment
  *  - OTP_BYPASS_ENABLED=true     → static 123456 for everyone
- *  - otherwise                    → random code delivered over OTP_CHANNELS (WhatsApp and/or SMS India Hub)
+ *  - otherwise                    → random code delivered over OTP_CHANNELS (WhatsApp and/or SMS, both Textora)
  */
 export function decideOtpMode(phone, { bypassEnabled, dummyNumbers: dummies }) {
   if (dummies.has(phone)) return 'static'; // deliberately independent of NODE_ENV

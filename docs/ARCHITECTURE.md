@@ -18,7 +18,7 @@ document supersede the SOW's stack section.
                        backend (Express 5, ESM JavaScript)
                                          │
               MongoDB replica set (transactions)   +  provider services:
-              Razorpay · SMS India Hub · FCM · Google Maps Platform · SMTP
+              Razorpay · Textora (SMS, WhatsApp) · FCM · Google Maps Platform · SMTP
 ```
 
 ### Frontend delivery decision (current)
@@ -90,7 +90,7 @@ service is called by user, vendor, admin and webhook handlers — never re-imple
   Responses are identical whether or not the number exists (no enumeration).
 * **OTP rules** (backend only): number normalised to 10-digit Indian mobile; if it is in
   `OTP_DUMMY_NUMBERS` → static `123456` in every environment; else if `OTP_BYPASS_ENABLED=true` →
-  `123456`; else a random 6-digit OTP sent through SMS India Hub. OTPs are stored hashed (HMAC),
+  `123456`; else a random 6-digit OTP sent through Textora. OTPs are stored hashed (HMAC),
   expire (`OTP_TTL_SECONDS`), are single-use, allow `OTP_MAX_ATTEMPTS` tries, have resend cooldown
   and per-phone/per-IP hourly caps. Bypass paths still go through every limit and are audit-logged.
   A startup warning is logged when bypass is active (list never logged or exposed).
@@ -217,7 +217,7 @@ RazorpayX payout confirms) — a request is never presented as a completed payou
 | Service | Module | Notes |
 |---|---|---|
 | WhatsApp Cloud API | `integrations/whatsapp` | Booking confirmation template (details + key rules + terms link); off until `WHATSAPP_*` is set. Staff always get a wa.me click-to-send fallback |
-| SMS India Hub | `integrations/sms` | Login OTPs, and the booking confirmation (second DLT template `SMS_INDIA_HUB_BOOKING_TEMPLATE`). `vendorsms/pushsms.aspx` (APIKey, sid, DLT_TE_ID, uname); text from `SMS_INDIA_HUB_OTP_TEMPLATE` must match the DLT template exactly; never retried (no double codes); OTP never logged |
+| Textora SMS | `integrations/sms` | Login OTPs, and the booking confirmation (second DLT template `TEXTORA_SMS_BOOKING_TEMPLATE`). `POST /sms/india/send` (authkey, to, content, from, PE_ID, Template_ID); text from `TEXTORA_SMS_OTP_TEMPLATE` must match the DLT template exactly; never retried (no double codes); OTP never logged |
 | Razorpay | `integrations/razorpay` | Orders, signature + webhook HMAC verification, fetch/reconcile, refunds |
 | Firebase (FCM) | `integrations/firebase` | firebase-admin; invalid tokens pruned; disabled cleanly if not configured |
 | Google Maps | `integrations/maps` | Places Autocomplete/Details (New), Geocoding, Routes (distance/ETA); server key; LRU cache; geo maths for proximity/geofence |
@@ -233,7 +233,7 @@ Expire unpaid holds · reconcile pending payments with Razorpay · auto-reject v
 SLA · pickup/return reminders · auto-confirm unreviewed returns · release vendor pending earnings.
 
 ## 10. External dependencies still required
-Credentials for Razorpay, SMS India Hub (+ DLT sender/templates), Firebase project, Google Maps
+Credentials for Razorpay, Textora (+ DLT sender/templates), Firebase project, Google Maps
 keys, SMTP; GPS/telematics provider for live tracking; legal text for the rental agreement, privacy
 policy and terms (editable in CMS); production MongoDB replica set; TLS certificates.
 

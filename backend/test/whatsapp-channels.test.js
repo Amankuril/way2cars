@@ -5,7 +5,7 @@ vi.hoisted(() => {
   Object.assign(process.env, {
     WHATSAPP_ENABLED: 'true', WHATSAPP_PROVIDER: 'textora', TEXTORA_FROM: 'BUZWAP', TEXTORA_AUTHKEY: 'k', TEXTORA_BUSINESS_ACCOUNT_ID: '9180',
     WHATSAPP_OTP_TEMPLATE: 'login_otp', OTP_CHANNELS: 'whatsapp,sms', WHATSAPP_UPDATE_TEMPLATE: 'booking_update', WHATSAPP_UPDATE_PARAMS: 'name,message',
-    SMS_ENABLED: 'true', SMS_INDIA_HUB_API_KEY: 'smskey', SMS_INDIA_HUB_SENDER_ID: 'WAYCAR',
+    SMS_ENABLED: 'true', TEXTORA_SMS_AUTHKEY: 'smskey', TEXTORA_SMS_FROM: 'BTMSJM', TEXTORA_SMS_PE_ID: 'pe1', TEXTORA_SMS_OTP_TEMPLATE_ID: 'tpl1',
   });
 });
 
@@ -23,16 +23,16 @@ const realFetch = globalThis.fetch;
 beforeAll(() => {
   globalThis.fetch = vi.fn(async (url, opts) => {
     const u = String(url);
-    if (u.includes('textorasms')) {
+    if (u.includes('textorasms.com/sms/')) {
+      calls.push({ kind: 'sms', body: JSON.parse(opts.body) });
+      return new Response(JSON.stringify({ message: 'SMS sent successfully.', message_id: 'sms1', statusCode: 200, success: true }), { status: 200 });
+    }
+    if (u.includes('textorasms.com/whatsapp/')) {
       const body = JSON.parse(opts.body);
       calls.push({ kind: 'whatsapp', body });
       return whatsappFails
         ? new Response(JSON.stringify({ message: 'WhatsApp Configuration is inactive.', success: false }), { status: 401 })
         : new Response(JSON.stringify({ success: true, message_id: 'wa1' }), { status: 200 });
-    }
-    if (u.includes('smsindiahub')) {
-      calls.push({ kind: 'sms', url: u });
-      return new Response(JSON.stringify({ ErrorCode: '000', JobId: 'sms1' }), { status: 200 });
     }
     return realFetch(url, opts);
   });
@@ -61,6 +61,9 @@ describe('login OTP over WhatsApp', () => {
     await api().post('/api/v1/auth/vendor/otp/request').send({ phone: '9811122244' }).expect(200);
     whatsappFails = false;
     expect(calls.map((c) => c.kind)).toEqual(['whatsapp', 'sms']);
+    const sms = calls[1].body;
+    expect(sms).toMatchObject({ authkey: 'smskey', to: '9811122244', from: 'BTMSJM', PE_ID: 'pe1', Template_ID: 'tpl1' });
+    expect(sms.content).toMatch(/^Your OTP is \d{6}\. Do not share it\. - BITMISRI TECHNOLOGIES PRIVATE LIMITED$/);
     expect((await OtpChallenge.findOne({ phone: '9811122244' }).lean()).channel).toBe('sms');
   });
 });

@@ -1,22 +1,20 @@
 import { describe, it, expect } from 'vitest';
 import { parseResponse, buildOtpMessage } from '../src/integrations/sms.js';
 
-describe('SMS India Hub response parsing', () => {
-  it('accepts ErrorCode 000 and keeps the job id', () => {
-    expect(parseResponse(200, '{"ErrorCode":"000","ErrorMessage":"Done","JobId":"123"}')).toEqual({ ok: true, providerRef: '123' });
+describe('Textora SMS response parsing', () => {
+  it('accepts success:true and keeps the message id', () => {
+    expect(parseResponse(200, '{"message":"SMS sent successfully.","message_id":"abc-1","statusCode":200,"success":true}')).toEqual({ ok: true, providerRef: 'abc-1' });
   });
-  it('rejects other error codes even with HTTP 200', () => {
-    expect(parseResponse(200, '{"ErrorCode":"006","ErrorMessage":"Invalid template text"}')).toMatchObject({ ok: false, code: '006' });
+  it('rejects provider errors', () => {
+    expect(parseResponse(401, '{"message":"Invalid API key","message_id":"","statusCode":401,"success":false}')).toEqual({ ok: false, code: '401', reason: 'Invalid API key' });
   });
-  it('rejects plain-text failures', () => {
-    expect(parseResponse(200, 'Failed#Parameter Missing')).toMatchObject({ ok: false, code: 'TEXT' });
-    expect(parseResponse(200, '')).toMatchObject({ ok: false });
+  it('rejects success:false even with HTTP 200', () => {
+    expect(parseResponse(200, '{"message":"Template mismatch","statusCode":400,"success":false}')).toMatchObject({ ok: false, code: '400', reason: 'Template mismatch' });
   });
-  it('rejects HTTP errors', () => {
-    expect(parseResponse(500, 'Server error')).toMatchObject({ ok: false, code: 'HTTP_500' });
-  });
-  it('does not block on an unrecognised success body', () => {
-    expect(parseResponse(200, 'Message Submitted')).toEqual({ ok: true, unverified: true });
+  it('rejects bodies that do not confirm success', () => {
+    expect(parseResponse(200, 'Message Submitted')).toMatchObject({ ok: false, code: 'HTTP_200' });
+    expect(parseResponse(200, '')).toMatchObject({ ok: false, reason: 'empty response' });
+    expect(parseResponse(502, '<html>Bad gateway</html>')).toMatchObject({ ok: false, code: 'HTTP_502' });
   });
 });
 

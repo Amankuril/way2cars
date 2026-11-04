@@ -59,19 +59,19 @@ const schema = z.object({
   ADMIN_LOCKOUT_MINUTES: int(15, { min: 1, max: 1440 }),
   ADMIN_REQUIRE_MFA: bool(false),
 
-  // SMS India Hub — used ONLY for login OTPs. SMS_HUB_ENABLED is accepted as an alias of SMS_ENABLED.
+  // Textora SMS (DLT): login OTPs and the booking confirmation. Separate authkey from Textora WhatsApp.
   SMS_ENABLED: bool(false),
-  SMS_HUB_ENABLED: optStr,
-  SMS_INDIA_HUB_USERNAME: optStr,
-  SMS_INDIA_HUB_API_KEY: optStr,
-  SMS_INDIA_HUB_SENDER_ID: optStr, // DLT header linked to the OTP template
-  SMS_INDIA_HUB_DLT_TEMPLATE_ID: optStr,
+  TEXTORA_SMS_API_URL: z.string().optional().transform((v) => (v && v.trim() ? v.trim() : 'https://api.textorasms.com/sms/india/send')),
+  TEXTORA_SMS_AUTHKEY: optStr,
+  TEXTORA_SMS_FROM: optStr, // DLT header linked to the templates, e.g. BTMSJM
+  TEXTORA_SMS_PE_ID: optStr, // DLT principal entity id
+  TEXTORA_SMS_OTP_TEMPLATE_ID: optStr, // DLT template id of TEXTORA_SMS_OTP_TEMPLATE
   // Must match the DLT-approved text character for character; {otp} is replaced with the code.
-  SMS_INDIA_HUB_OTP_TEMPLATE: z.string().optional().transform((v) => (v && v.trim() ? v.trim() : '{otp} is your WAY2CARS verification code. Do not share it with anyone.')),
-  SMS_INDIA_HUB_TIMEOUT_MS: int(15000, { min: 1000, max: 30000 }),
+  TEXTORA_SMS_OTP_TEMPLATE: z.string().optional().transform((v) => (v && v.trim() ? v.trim() : 'Your OTP is {otp}. Do not share it. - BITMISRI TECHNOLOGIES PRIVATE LIMITED')),
+  TEXTORA_SMS_TIMEOUT_MS: int(15000, { min: 1000, max: 30000 }),
   // Booking confirmation SMS (separate DLT template). Placeholders: {name} {ref} {vehicle} {start} {end} {link}
-  SMS_INDIA_HUB_BOOKING_TEMPLATE: optStr,
-  SMS_INDIA_HUB_BOOKING_DLT_TEMPLATE_ID: optStr,
+  TEXTORA_SMS_BOOKING_TEMPLATE: optStr,
+  TEXTORA_SMS_BOOKING_TEMPLATE_ID: optStr,
   // WhatsApp booking confirmations. Provider 'textora' (BUZWAP / api.textorasms.com, default) or 'meta' (Cloud API).
   WHATSAPP_ENABLED: bool(false),
   WHATSAPP_PROVIDER: z.enum(['textora', 'meta']).default('textora'),
@@ -148,7 +148,6 @@ function load() {
   }
   const e = parsed.data;
   // Aliases (same names as other Appzeto projects' .env files).
-  if (e.SMS_HUB_ENABLED && /^(true|1|yes)$/i.test(e.SMS_HUB_ENABLED.trim())) e.SMS_ENABLED = true;
   e.FIREBASE_SERVICE_ACCOUNT_FILE ||= e.FIREBASE_SERVICE_ACCOUNT_PATH;
   const isProd = e.NODE_ENV === 'production' || e.NODE_ENV === 'staging';
   const problems = [];
@@ -177,19 +176,19 @@ function load() {
     if (!e.COOKIE_SECURE) problems.push('COOKIE_SECURE must be true in production');
     if (!e.RAZORPAY_KEY_ID || !e.RAZORPAY_KEY_SECRET || !e.RAZORPAY_WEBHOOK_SECRET)
       problems.push('RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET and RAZORPAY_WEBHOOK_SECRET are required in production');
-    const smsReady = e.SMS_ENABLED && e.SMS_INDIA_HUB_API_KEY && e.SMS_INDIA_HUB_SENDER_ID;
+    const smsReady = e.SMS_ENABLED && e.TEXTORA_SMS_AUTHKEY && e.TEXTORA_SMS_FROM && e.TEXTORA_SMS_PE_ID && e.TEXTORA_SMS_OTP_TEMPLATE_ID;
     const waOtpReady = e.OTP_CHANNELS.includes('whatsapp') && e.WHATSAPP_ENABLED && e.WHATSAPP_OTP_TEMPLATE
       && (e.WHATSAPP_PROVIDER === 'meta' ? e.WHATSAPP_ACCESS_TOKEN && e.WHATSAPP_PHONE_NUMBER_ID : e.TEXTORA_AUTHKEY && e.TEXTORA_BUSINESS_ACCOUNT_ID && e.TEXTORA_FROM);
     if (!e.OTP_BYPASS_ENABLED && !((e.OTP_CHANNELS.includes('sms') && smsReady) || waOtpReady))
-      problems.push('Live OTP delivery needs SMS (SMS_ENABLED, SMS_INDIA_HUB_API_KEY, SMS_INDIA_HUB_SENDER_ID) or WhatsApp (OTP_CHANNELS with whatsapp, WHATSAPP_ENABLED, WHATSAPP_OTP_TEMPLATE and provider keys)');
+      problems.push('Live OTP delivery needs SMS (SMS_ENABLED, TEXTORA_SMS_AUTHKEY, TEXTORA_SMS_FROM, TEXTORA_SMS_PE_ID, TEXTORA_SMS_OTP_TEMPLATE_ID) or WhatsApp (OTP_CHANNELS with whatsapp, WHATSAPP_ENABLED, WHATSAPP_OTP_TEMPLATE and provider keys)');
     const pub = path.resolve(e.PUBLIC_UPLOAD_DIR);
     const priv = path.resolve(e.PRIVATE_UPLOAD_DIR);
     if (priv.startsWith(pub + path.sep) || priv === pub)
       problems.push('PRIVATE_UPLOAD_DIR must not be inside PUBLIC_UPLOAD_DIR');
   }
-  if (e.SMS_ENABLED && (!e.SMS_INDIA_HUB_API_KEY || !e.SMS_INDIA_HUB_SENDER_ID))
-    problems.push('SMS_ENABLED=true requires SMS_INDIA_HUB_API_KEY and SMS_INDIA_HUB_SENDER_ID');
-  if (!e.SMS_INDIA_HUB_OTP_TEMPLATE.includes('{otp}')) problems.push('SMS_INDIA_HUB_OTP_TEMPLATE must contain {otp}');
+  if (e.SMS_ENABLED && (!e.TEXTORA_SMS_AUTHKEY || !e.TEXTORA_SMS_FROM || !e.TEXTORA_SMS_PE_ID || !e.TEXTORA_SMS_OTP_TEMPLATE_ID))
+    problems.push('SMS_ENABLED=true requires TEXTORA_SMS_AUTHKEY, TEXTORA_SMS_FROM, TEXTORA_SMS_PE_ID and TEXTORA_SMS_OTP_TEMPLATE_ID');
+  if (!e.TEXTORA_SMS_OTP_TEMPLATE.includes('{otp}')) problems.push('TEXTORA_SMS_OTP_TEMPLATE must contain {otp}');
   if (e.TRACKING_PROVIDER !== 'none' && !e.TRACKING_WEBHOOK_SECRET)
     problems.push('TRACKING_WEBHOOK_SECRET is required when TRACKING_PROVIDER is set');
 
