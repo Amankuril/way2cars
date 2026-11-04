@@ -8,6 +8,7 @@ import { notFound } from '../../core/errors.js';
 import { validate } from '../../middleware/validate.js';
 import { requirePermission } from '../../middleware/auth.js';
 import { insideGeofence, fromGeoPoint } from '../../integrations/maps.js';
+import { escapeRegex } from '../../core/pagination.js';
 import { signTripTrackingToken, verifyTripTrackingToken } from '../auth/token.service.js';
 import { Vehicle } from '../vehicles/vehicle.model.js';
 import { City } from '../catalog/catalog.model.js';
@@ -130,5 +131,61 @@ adminTrackingRouter.get('/bookings/:id', requirePermission('trips.manage'), vali
     latest: points.at(-1) ? { ...fromGeoPoint(points.at(-1).point), recordedAt: points.at(-1).recordedAt, speedKmh: points.at(-1).speedKmh, insideServiceArea: points.at(-1).insideServiceArea } : null,
     route: points.map((p) => [p.point.coordinates[1], p.point.coordinates[0]]),
     geofenceExits: points.filter((p) => p.insideServiceArea === false).length,
+  });
+});
+
+const vehicleTitle = (v) => [v.brandId?.name, v.model, v.variant].filter(Boolean).join(' ') || v.registrationNumber;
+const position = (p) => (p ? { ...fromGeoPoint(p.point), recordedAt: p.recordedAt, speedKmh: p.speedKmh } : null);
+const isSignalLost = (last) => !last || Date.now() - new Date(last.recordedAt).getTime() > SIGNAL_LOST_MS;
+const OFF = { trackingAvailable: false, reason: 'GPS tracking is not turned on.' };
+
+/** Every car with its latest known position; cars on a trip come first. */
+adminTrackingRouter.get('/vehicles', requirePermission('trips.manage'), validate({ query: z.object({ q: z.string().trim().max(60).optional() }) }), async (req, res) => {
+  if (!trackingEnabled()) return ok(res, { ...OFF, vehicles: [] });
+  const { q } = req.valid.query;
+  const filter = {};
+  if (q) filter.$or = [{ registrationNumber: new RegExp(escapeRegex(q.replace(/\s/g, '').toUpperCase())) }, { model: new RegExp(escapeRegex(q), 'i') }];
+  const trips = await Booking.find({ status: 'ongoing' }).select('vehicleId ref').lean();
+  const tripByVehicle = new Map(trips.map((t) => [String(t.vehicleId), t]));
+  const select = 'registrationNumber model variant brandId';
+  const [onTrip, others] = await Promise.all([
+    Vehicle.find({ ...filter, _id: { $in: trips.map((t) => t.vehicleId) } }).select(select).populate('brandId', 'name').lean(),
+    Vehicle.find({ ...filter, _id: { $nin: trips.map((t) => t.vehicleId) } }).select(select).populate('brandId', 'name').sort({ createdAt: -1 }).limit(100).lean(),
+  ]);
+  const vehicles = [...onTrip, ...others];
+  const latest = await VehicleLocation.aggregate([
+    { $match: { vehicleId: { $in: vehicles.map((v) => v._id) } } },
+    { $sort: { vehicleId: 1, recordedAt: -1 } },
+    { $group: { _id: '$vehicleId', point: { $first: '$point' }, recordedAt: { $first: '$recordedAt' }, speedKmh: { $first: '$speedKmh' } } },
+  ]);
+  const latestByVehicle = new Map(latest.map((l) => [String(l._id), l]));
+  ok(res, {
+    trackingAvailable: true,
+    vehicles: vehicles.map((v) => {
+      const last = position(latestByVehicle.get(String(v._id)));
+      const trip = tripByVehicle.get(String(v._id));
+      return { id: v._id, title: vehicleTitle(v), registrationNumber: v.registrationNumber, onTrip: Boolean(trip), bookingRef: trip?.ref, latest: last, signalLost: Boolean(trip) && isSignalLost(last) };
+    }),
+  });
+});
+
+/** One car: latest position, plus the renter and route when it is on a trip. */
+adminTrackingRouter.get('/vehicles/:id', requirePermission('trips.manage'), validate({ params: z.object({ id: z.string().regex(/^[a-f0-9]{24}$/) }) }), async (req, res) => {
+  if (!trackingEnabled()) return ok(res, OFF);
+  const v = await Vehicle.findById(req.valid.params.id).select('registrationNumber model variant brandId').populate('brandId', 'name').lean();
+  if (!v) throw notFound('Car');
+  const trip = await Booking.findOne({ vehicleId: v._id, status: 'ongoing' }).select('ref userId trip startAt endAt').populate('userId', 'name phone').sort({ 'trip.startedAt': -1 }).lean();
+  const last = await VehicleLocation.findOne({ vehicleId: v._id }).sort({ recordedAt: -1 }).lean();
+  const points = trip
+    ? (await VehicleLocation.find({ vehicleId: v._id, recordedAt: { $gte: trip.trip?.startedAt || trip.startAt } }).sort({ recordedAt: -1 }).select('point').limit(2000).lean()).reverse()
+    : [];
+  ok(res, {
+    trackingAvailable: true,
+    source: phoneTrackingEnabled() ? 'phone' : 'device',
+    vehicle: { id: v._id, title: vehicleTitle(v), registrationNumber: v.registrationNumber },
+    trip: trip ? { bookingId: trip._id, ref: trip.ref, renterName: trip.userId?.name, renterPhone: trip.userId?.phone, startedAt: trip.trip?.startedAt, endAt: trip.endAt } : null,
+    latest: position(last),
+    signalLost: Boolean(trip) && isSignalLost(last),
+    route: points.map((p) => ({ lat: p.point.coordinates[1], lng: p.point.coordinates[0] })),
   });
 });

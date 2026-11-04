@@ -86,6 +86,42 @@ describe('phone tracking', () => {
     expect(data.latest.lat).toBe(22.9);
   });
 
+  it('lets admins pick any car and see the renter phone location', async () => {
+    const { Vehicle } = await import('../src/modules/vehicles/vehicle.model.js');
+    const { user } = await renter();
+    const admin = await AdminUser.create({ email: `pick-${oid()}@test.in`, name: 'Asha', role: 'super_admin', passwordHash: 'x' });
+    const adminToken = await tokenFor('admin', admin);
+    const vehicleId = oid();
+    const idleId = oid();
+    await Vehicle.collection.insertMany([
+      { _id: idleId, registrationNumber: 'MP09IDLE1', model: 'Idle', createdAt: new Date() },
+      { _id: vehicleId, registrationNumber: 'MP09TRIP1', model: 'Swift', createdAt: new Date(Date.now() - 86400_000) },
+    ]);
+    const id = oid();
+    await Booking.collection.insertOne({ _id: id, ref: `T${id}`, userId: user._id, vehicleId, status: 'ongoing', startAt: new Date(Date.now() - 3600_000), endAt: new Date(Date.now() + 3600_000), trip: { startedAt: new Date(Date.now() - 3600_000) } });
+    await send(signTripTrackingToken(id, new Date()), [pos({ lat: 22.5 })]).expect(200);
+
+    const list = (await api().get('/api/v1/admin/tracking/vehicles').set(auth(adminToken)).expect(200)).body.data;
+    expect(list.trackingAvailable).toBe(true);
+    const onTrip = list.vehicles.find((v) => v.registrationNumber === 'MP09TRIP1');
+    expect(onTrip).toMatchObject({ onTrip: true, signalLost: false });
+    expect(onTrip.latest.lat).toBe(22.5);
+    expect(list.vehicles.findIndex((v) => v.onTrip)).toBeLessThan(list.vehicles.findIndex((v) => v.registrationNumber === 'MP09IDLE1'));
+    expect(list.vehicles.find((v) => v.registrationNumber === 'MP09IDLE1')).toMatchObject({ onTrip: false, latest: null, signalLost: false });
+
+    const found = (await api().get('/api/v1/admin/tracking/vehicles?q=swift').set(auth(adminToken)).expect(200)).body.data.vehicles;
+    expect(found.map((v) => v.registrationNumber)).toEqual(['MP09TRIP1']);
+
+    const one = (await api().get(`/api/v1/admin/tracking/vehicles/${vehicleId}`).set(auth(adminToken)).expect(200)).body.data;
+    expect(one.trip).toMatchObject({ renterName: 'Renter', renterPhone: user.phone });
+    expect(one.latest.lat).toBe(22.5);
+    expect(one.route).toEqual([{ lat: 22.5, lng: 75.85 }]);
+
+    const idle = (await api().get(`/api/v1/admin/tracking/vehicles/${idleId}`).set(auth(adminToken)).expect(200)).body.data;
+    expect(idle).toMatchObject({ trip: null, latest: null, route: [], signalLost: false });
+    await api().get('/api/v1/admin/tracking/vehicles').expect(401);
+  });
+
   it('refuses to start a trip without location consent', async () => {
     const { user } = await renter();
     const id = await trip(user._id, 'confirmed', new Date());

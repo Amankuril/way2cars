@@ -15,7 +15,7 @@ const BRAND = '#1875B9';
 let mapsPromise;
 
 /** Loads the Maps JavaScript API once, with the browser key from the public config. */
-function loadMaps() {
+export function loadMaps() {
   if (window.google?.maps?.Polygon) return Promise.resolve(window.google.maps);
   mapsPromise ||= api.get('/api/v1/public/config').then(
     (cfg) =>

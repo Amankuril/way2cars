@@ -20,6 +20,7 @@ const InvestorDetail = page(() => import('@/admin/pages/finance/Investors.jsx').
 const WalletTransactions = page(() => import('@/admin/pages/finance/WalletTransactions.jsx'));
 const Analytics = page(() => import('@/admin/pages/Analytics.jsx'));
 const VehicleEdit = page(() => import('@/admin/pages/fleet/VehicleEdit.jsx'));
+const LiveTracking = page(() => import('@/admin/pages/operations/LiveTracking.jsx'));
 const TicketsList = page(() => import('@/admin/pages/operations/TicketsList.jsx'));
 const TicketDetail = page(() => import('@/admin/pages/operations/TicketDetail.jsx'));
 const KycQueue = page(() => import('@/admin/pages/verification/KycQueue.jsx'));
@@ -95,6 +96,7 @@ const router = createBrowserRouter(
         { path: 'bookings', element: guard('bookings.read', BookingsList) },
         { path: 'bookings/new', element: guard('bookings.manage', OfficeBooking) },
         { path: 'bookings/:id', element: guard('bookings.read', BookingDetail) },
+        { path: 'tracking', element: guard('trips.manage', LiveTracking) },
         { path: 'support', element: guard('support.manage', TicketsList) },
         { path: 'support/:id', element: guard('support.manage', TicketDetail) },
         { path: 'renter-kyc', element: guard('kyc.review', KycQueue) },

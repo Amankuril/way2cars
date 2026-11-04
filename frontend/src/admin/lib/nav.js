@@ -1,7 +1,7 @@
 import {
   LayoutDashboard, CalendarRange, LifeBuoy, ShieldCheck, Car, Building2, Users, Wallet, BarChart3,
   TicketPercent, Image, Megaphone, FileText, HelpCircle, Tags, Star, Settings, UserCog, ScrollText,
-  PlugZap, KeyRound, UserCheck, ClipboardCheck, Scale, HandCoins, WalletCards, Activity,
+  PlugZap, KeyRound, UserCheck, ClipboardCheck, Scale, HandCoins, WalletCards, Activity, MapPinned,
 } from 'lucide-react';
 
 /**
@@ -20,6 +20,7 @@ export const NAV = [
     label: 'Operations',
     items: [
       { label: 'Bookings', to: '/bookings', icon: CalendarRange, perm: 'bookings.read' },
+      { label: 'Live tracking', to: '/tracking', icon: MapPinned, perm: 'trips.manage' },
       { label: 'Support', to: '/support', icon: LifeBuoy, perm: 'support.manage' },
     ],
   },
@@ -103,6 +104,7 @@ export const ROLE_LABEL = {
   operations: 'Operations',
   kyc_reviewer: 'KYC reviewer',
   finance: 'Finance',
+  tracking: 'Live tracking',
   support: 'Support',
   content: 'Content',
 };
