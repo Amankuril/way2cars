@@ -24,7 +24,7 @@ async function renter() {
 /** Only the fields tracking reads; a full booking is covered by booking-flow.test.js. */
 async function trip(userId, status = 'ongoing', startedAt = new Date(Date.now() - 3600_000)) {
   const _id = oid();
-  await Booking.collection.insertOne({ _id, ref: `T${_id}`, userId, vehicleId: oid(), status, startAt: startedAt, endAt: new Date(Date.now() + 3600_000), trip: { startedAt } });
+  await Booking.collection.insertOne({ _id, ref: `T${_id}`, userId, vehicleId: oid(), status, startAt: startedAt, endAt: new Date(Date.now() + 3600_000), trip: { startedAt }, dlCheck: { status: 'verified' } });
   return _id;
 }
 const pos = (over = {}) => ({ lat: 22.71, lng: 75.85, speedKmh: 40, accuracyM: 8, recordedAt: new Date().toISOString(), ...over });

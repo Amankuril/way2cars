@@ -57,6 +57,7 @@ export function publicSettings(s) {
       maxAdvanceDays: s.booking.maxAdvanceDays,
       holdMinutes: s.booking.holdMinutes,
       kycRequired: s.booking.kycRequired,
+      dlCheckAtPickup: s.booking.dlCheckAtPickup,
     },
     cancellation: s.cancellation,
     tax: { rentalGstBps: s.tax.rentalGstBps },

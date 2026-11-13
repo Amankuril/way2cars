@@ -110,6 +110,7 @@ export function serializeBooking(b, { audience = 'user', user, vendor, vehicle, 
         : { ...b.settlement, commissionPaise: undefined, vendorEarningPaise: undefined, investorEarningPaise: undefined, depositReview: b.settlement.depositReview ? { at: b.settlement.depositReview.at, note: b.settlement.depositReview.note } : undefined })
       : null,
     deposit: b.deposit?.type ? { type: b.deposit.type, collateral: b.deposit.collateral, status: b.deposit.status, receivedAt: b.deposit.receivedAt, returnedAt: b.deposit.returnedAt } : { type: 'cash', status: 'none' },
+    dlCheck: { status: b.dlCheck?.status === 'verified' ? 'verified' : 'pending', verifiedAt: b.dlCheck?.verifiedAt || null },
     dropoff: b.dropoff && b.dropoff.type === 'hub' ? { type: 'hub', name: b.dropoff.name, address: b.dropoff.address, point: fromGeoPoint(b.dropoff.point) } : null,
     adjustments: audience === 'vendor' ? [] : (b.adjustments || []).map((a) => ({ amountPaise: a.amountPaise, reason: a.reason, at: a.at, balancePaise: a.balancePaise, outstandingPaise: a.outstandingPaise, refundPaise: a.refundPaise, refundTo: a.refundTo, ...(audience === 'admin' ? { by: a.by } : {}) })),
     reviewed: b.reviewed,
@@ -135,6 +136,7 @@ export function serializeBooking(b, { audience = 'user', user, vendor, vehicle, 
     base.ownership = b.ownership || 'host';
     base.createdBy = b.createdBy;
     base.officeNote = b.officeNote;
+    if (b.dlCheck?.status === 'verified') base.dlCheck = { status: 'verified', verifiedAt: b.dlCheck.verifiedAt, verifiedBy: b.dlCheck.verifiedBy, numberMasked: b.dlCheck.numberMasked, expiry: b.dlCheck.expiry, photoFileId: b.dlCheck.photoFileId, note: b.dlCheck.note };
     base.split = bookingSplit(b);
     base.userId = b.userId;
     base.vendorId = b.vendorId;

@@ -25,6 +25,7 @@ import { OwnerActionsPanel, ExtensionsPanel, BalancePanel, SplitPanel, ManualRef
 import { OWNERSHIP, BOOKING_SOURCE, OFFICE_METHOD, DEPOSIT_REFUND_STATUS } from '@/admin/lib/labels.js';
 import { DepositPanel, DepositReviewPanel, ConfirmationPanel } from './depositOps.jsx';
 import { AdjustmentsPanel, RefundToWalletAction, RefundDestination } from './adjustOps.jsx';
+import { DlCheckPanel } from './dlCheckOps.jsx';
 
 const CANCELLABLE = ['pending_payment', 'pending_vendor_approval', 'confirmed'];
 
@@ -223,6 +224,29 @@ function DamageDecision({ booking, claim }) {
   );
 }
 
+/** Admin cancel: refund everything paid, or apply the renter cancellation policy (e.g. DL check failed at pickup). */
+function RefundAmountChoice({ value, onChange, preview }) {
+  const amount = (k) => (preview ? money(preview[k].refundPaise) : '…');
+  const opts = [
+    { v: 'full', title: `Full refund · ${amount('full')}`, sub: 'Everything paid, including the deposit' },
+    { v: 'policy', title: `Cancellation policy · ${amount('policy')}`, sub: preview ? `${preview.policy.refundBps / 100}% of charges${preview.policy.feePaise ? ` minus ${money(preview.policy.feePaise)} fee` : ''}, ${Math.max(0, Math.round(preview.hoursBeforeStart))} h before start` : 'Same rules as a renter cancelling now' },
+  ];
+  return (
+    <fieldset>
+      <legend className="mb-1.5 text-label text-ink-800">Refund amount</legend>
+      <div className="grid gap-2 sm:grid-cols-2" role="radiogroup">
+        {opts.map((o) => (
+          <button key={o.v} type="button" role="radio" aria-checked={value === o.v} onClick={() => onChange(o.v)}
+            className={cn('rounded-md border p-3 text-left', value === o.v ? 'border-brand-500 bg-brand-50' : 'border-line hover:bg-ink-50')}>
+            <span className="block text-label text-ink-900">{o.title}</span>
+            <span className="block text-caption text-ink-500">{o.sub}</span>
+          </button>
+        ))}
+      </div>
+    </fieldset>
+  );
+}
+
 export default function BookingDetail() {
   const { id } = useParams();
   const { can } = useAuth();
@@ -231,10 +255,13 @@ export default function BookingDetail() {
   const [downloading, setDownloading] = useState(null);
   const [duesOpen, setDuesOpen] = useState(false);
   const [cancelTo, setCancelTo] = useState('source');
+  const [refundPolicy, setRefundPolicy] = useState('full');
   const { data: b, isLoading, error, refetch } = useQuery({ queryKey: ['booking', id], queryFn: () => api.get(`${ADMIN}/bookings/${id}`) });
 
   const invalidate = [['booking', id], ['bookings'], ['dashboard']];
-  const cancel = useAction((reason) => api.post(`${ADMIN}/bookings/${id}/cancel`, { reason, refundTo: cancelTo }), { success: cancelTo === 'wallet' ? 'Booking cancelled — refund credited to the wallet' : 'Booking cancelled — full refund initiated', invalidate, toastError: false });
+  const cancelPreview = useQuery({ queryKey: ['booking', id, 'cancel-preview'], queryFn: () => api.get(`${ADMIN}/bookings/${id}/cancellation-preview`), enabled: confirm === 'cancel', staleTime: 0 });
+  const cancel = useAction((reason) => api.post(`${ADMIN}/bookings/${id}/cancel`, { reason, refundTo: cancelTo, refundPolicy }), { success: refundPolicy === 'policy' ? 'Booking cancelled — refund per cancellation policy' : cancelTo === 'wallet' ? 'Booking cancelled — refund credited to the wallet' : 'Booking cancelled — full refund initiated', invalidate, toastError: false });
+  const openCancel = (policy = 'full') => { setRefundPolicy(policy); setConfirm('cancel'); };
   const waive = useAction((reason) => api.post(`${ADMIN}/bookings/${id}/waive-outstanding`, { reason }), { success: 'Outstanding amount waived', invalidate, toastError: false });
 
   if (isLoading) return <DetailSkeleton />;
@@ -276,7 +303,7 @@ export default function BookingDetail() {
         description={`Created ${dateTime(b.createdAt)} IST${b.source === 'offline' ? ' at the office' : ''}${b.officeNote ? ` · ${b.officeNote}` : ''}`}
         actions={
           can('bookings.manage') && CANCELLABLE.includes(b.status) ? (
-            <Button variant="danger-outline" icon={Ban} onClick={() => setConfirm('cancel')}>
+            <Button variant="danger-outline" icon={Ban} onClick={() => openCancel('full')}>
               Cancel booking
             </Button>
           ) : null
@@ -464,6 +491,7 @@ export default function BookingDetail() {
         </div>
 
         <div className="min-w-0 space-y-5">
+          <DlCheckPanel b={b} onFail={() => openCancel('policy')} />
           <BalancePanel b={b} />
           <DepositPanel b={b} />
           <ConfirmationPanel b={b} />
@@ -582,13 +610,18 @@ export default function BookingDetail() {
         open={confirm === 'cancel'}
         onClose={() => setConfirm(null)}
         title={`Cancel booking ${b.ref}?`}
-        description={`The renter gets a full refund of everything paid (including the deposit), the car is released and both parties are notified. This cannot be undone.${b.source === 'offline' ? ' Money collected at the office is listed as a manual refund for finance to return.' : ''}`}
+        description={`The car is released and both parties are notified. This cannot be undone.${b.source === 'offline' ? ' Money collected at the office is listed as a manual refund for finance to return.' : ''}`}
         confirmLabel="Cancel booking"
         tone="danger"
         reason={{ label: 'Reason (shared with renter and host)', minLength: 5, placeholder: 'e.g. Car unavailable due to breakdown' }}
         onConfirm={(reason) => cancel.mutateAsync(reason)}
       >
-        {b.payment?.paidPaise ? <RefundDestination value={cancelTo} onChange={setCancelTo} offline={b.source === 'offline'} /> : null}
+        {b.payment?.paidPaise ? (
+          <div className="space-y-4">
+            <RefundAmountChoice value={refundPolicy} onChange={setRefundPolicy} preview={cancelPreview.data} />
+            <RefundDestination value={cancelTo} onChange={setCancelTo} offline={b.source === 'offline'} />
+          </div>
+        ) : null}
       </ConfirmDialog>
       <ConfirmDialog
         open={confirm === 'waive'}

@@ -312,7 +312,22 @@ describe('trip lifecycle and settlement', () => {
     const now = Date.now();
     await Booking.updateOne({ _id: ctx.booking.id }, { $set: { startAt: new Date(now - 10 * 60_000), endAt: new Date(now + 23 * 3600_000), blockEndAt: new Date(now + 23 * 3600_000) } });
     const bad = await api().post(`/api/v1/user/bookings/${ctx.booking.id}/pickup`).set(auth(ctx.bookingToken)).send({ ...(await inspection(ctx.bookingToken, { agreement: true })), agreement: { accept: true, fullName: 'Renter Name', contentHash: '0'.repeat(64) } });
-    expect(bad.body.error.code).toBe('AGREEMENT_CHANGED');
+    expect(bad.body.error.code).toBe('DL_CHECK_PENDING');
+
+    // Staff check the original driving licence at the office: number + expiry + photo.
+    const dlUrl = `/api/v1/admin/bookings/${ctx.booking.id}/dl-check`;
+    const expiry = new Date(Date.now() + 2 * 365 * 86400_000).toISOString();
+    const badNum = await api().post(dlUrl).set(auth(ctx.adminToken)).send({ licenceNumber: '12345', licenceExpiry: expiry, photoFileId: await upload('admin', ctx.adminToken, 'kyc_document') });
+    expect(badNum.status).toBe(422);
+    const expiring = await api().post(dlUrl).set(auth(ctx.adminToken)).send({ licenceNumber: 'MP09 2011 0012345', licenceExpiry: new Date(Date.now() + 3600_000).toISOString(), photoFileId: await upload('admin', ctx.adminToken, 'kyc_document') });
+    expect(expiring.body.error.code).toBe('LICENCE_EXPIRES');
+    const verified = await api().post(dlUrl).set(auth(ctx.adminToken)).send({ licenceNumber: 'MP09 2011 0012345', licenceExpiry: expiry, photoFileId: await upload('admin', ctx.adminToken, 'kyc_document'), note: 'Original seen' }).expect(200);
+    expect(verified.body.data.dlCheck).toMatchObject({ status: 'verified', numberMasked: '•••••••••••2345' });
+    const renterView = await api().get(`/api/v1/user/bookings/${ctx.booking.id}`).set(auth(ctx.bookingToken)).expect(200);
+    expect(renterView.body.data.dlCheck).toEqual({ status: 'verified', verifiedAt: expect.any(String) });
+
+    const changed = await api().post(`/api/v1/user/bookings/${ctx.booking.id}/pickup`).set(auth(ctx.bookingToken)).send({ ...(await inspection(ctx.bookingToken, { agreement: true })), agreement: { accept: true, fullName: 'Renter Name', contentHash: '0'.repeat(64) } });
+    expect(changed.body.error.code).toBe('AGREEMENT_CHANGED');
     const res = await api().post(`/api/v1/user/bookings/${ctx.booking.id}/pickup`).set(auth(ctx.bookingToken)).send(await inspection(ctx.bookingToken, { agreement: true }));
     expect(res.status).toBe(200);
     expect(res.body.data.status).toBe('ongoing');

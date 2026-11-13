@@ -108,7 +108,9 @@ export function CheckoutScreen({ route, navigation }) {
     }
   }, [quote.error]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const kycOk = account?.kyc?.status === 'approved';
+  // Pay first: when online DL approval is off, the original licence is checked by staff at pickup.
+  const kycApproved = account?.kyc?.status === 'approved';
+  const kycOk = kycApproved || config.data?.booking?.kycRequired === false;
   const book = useMutation({
     mutationFn: () => api.post('/api/v1/user/bookings', { ...body, ...(depositOption !== 'cash' ? { collateral: collateralBody() } : {}) }, { headers: { 'Idempotency-Key': idempotencyKey.current } }),
   });
@@ -251,6 +253,11 @@ export function CheckoutScreen({ route, navigation }) {
       {!kycOk ? (
         <Notice tone="warning" title="Verify your licence to book" className="mx-4 mt-4" action={<Button title="Verify now" size="sm" variant="tonal" icon={ShieldCheck} onPress={() => navigation.navigate('Kyc')} />}>
           {account?.kyc?.status === 'pending' ? 'Your documents are under review. You can pay as soon as they’re approved.' : 'Upload your driving licence, ID and a selfie. It takes about 2 minutes.'}
+        </Notice>
+      ) : null}
+      {kycOk && !kycApproved ? (
+        <Notice tone="info" title="Bring your original driving licence" className="mx-4 mt-4">
+          Pay now to confirm the car. Our team checks your licence at pickup before handing over the keys.
         </Notice>
       ) : null}
       {unavailable ? <Notice tone="danger" title="BOOKED for these times" className="mx-4 mt-4">{quote.error.message}</Notice> : null}

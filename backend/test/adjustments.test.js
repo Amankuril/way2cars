@@ -162,6 +162,28 @@ describe('payment adjustments', () => {
   });
 });
 
+describe('pay first, driving licence checked at the office', () => {
+  it('a renter without an approved DL can book and pay; staff cancel with the policy refund when the DL check fails', async () => {
+    const c = await car();
+    const phone = `98444${String(seq++).padStart(5, '0')}`;
+    const u = await User.create({ phone, name: 'No DL yet', referralCode: `W2CAD${phone.slice(-5)}`, profileCompleted: true });
+    const token = await tokenFor('user', u);
+    const start = slot(3 * 60); // under 6 h away: the policy keeps the rental
+    const b = await book(token, { vehicleId: String(c._id), startAt: start, endAt: new Date(start.getTime() + 24 * H) });
+    expect(b.status).toBe('confirmed');
+    expect(b.dlCheck.status).toBe('pending');
+
+    const preview = (await api().get(`/api/v1/admin/bookings/${b._id}/cancellation-preview`).set(auth(ctx.admin)).expect(200)).body.data;
+    expect(preview.full.refundPaise).toBe(b.payment.paidPaise);
+    expect(preview.policy.refundPaise).toBeLessThan(preview.full.refundPaise);
+
+    await api().post(`/api/v1/admin/bookings/${b._id}/cancel`).set(auth(ctx.admin)).send({ reason: 'Driving licence check failed at pickup', refundPolicy: 'policy' }).expect(200);
+    const after = await Booking.findById(b._id).lean();
+    expect(after.status).toBe('cancelled');
+    expect(after.cancellation.refundPaise).toBe(preview.policy.refundPaise);
+  });
+});
+
 describe('refunds to the WAY2CARS wallet', () => {
   it('admin cancellation can refund to the wallet', async () => {
     const c = await car();

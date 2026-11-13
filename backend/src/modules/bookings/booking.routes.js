@@ -19,10 +19,10 @@ import {
 } from './booking.service.js';
 import { createOfflineBooking, decideExtension, adminExtend, extensionCheck, recordOfficeCollection, adjustBookingPrice } from './booking.admin.service.js';
 import { withTransaction } from '../../core/db.js';
-import { runEffects } from './booking.lifecycle.js';
+import { runEffects, cancellationQuote } from './booking.lifecycle.js';
 import { getSettings } from '../settings/settings.service.js';
 import { serializeRefund, markManualRefundProcessed, refundToWallet } from '../payments/refund.service.js';
-import { startTrip, submitReturn, agreementFor, pickupSchema, returnSchema, vendorReturnReview, resolveDamageClaim, settlementPaymentOrder, inspectionsFor, previewSettlement, finalizeTrip, reviewDeposit, markCollateral } from '../trips/trip.service.js';
+import { startTrip, submitReturn, agreementFor, pickupSchema, returnSchema, vendorReturnReview, resolveDamageClaim, settlementPaymentOrder, inspectionsFor, previewSettlement, finalizeTrip, reviewDeposit, markCollateral, verifyDlAtPickup, dlCheckSchema } from '../trips/trip.service.js';
 import { verifyCheckout, markPaymentFailed, serializePayment } from '../payments/payment.service.js';
 import { Payment, Refund, Invoice } from '../payments/payment.model.js';
 import { renderInvoicePdf } from '../payments/invoice.service.js';
@@ -293,7 +293,17 @@ adminBookingRouter.get('/:id', requirePermission('bookings.read'), validate({ pa
 });
 
 const refundTo = z.enum(['source', 'wallet']).default('source');
-adminBookingRouter.post('/:id/cancel', requirePermission('bookings.manage'), validate({ params: idParams, body: z.object({ reason: z.string().trim().min(5).max(300), refundTo }).strict() }), async (req, res) => {
+/** What each admin cancel option would refund right now: full, or per the renter cancellation policy. */
+adminBookingRouter.get('/:id/cancellation-preview', requirePermission('bookings.read'), validate({ params: idParams }), async (req, res) => {
+  const b = await Booking.findById(req.valid.params.id).lean();
+  if (!b) throw notFound('Booking');
+  const settings = await getSettings();
+  const view = (q) => ({ refundPaise: q.gatewayRefund, walletReturnPaise: q.walletRefund, refundBps: q.refundBps, feePaise: q.feePaise });
+  ok(res, { full: view(cancellationQuote(b, settings, { full: true })), policy: view(cancellationQuote(b, settings)), hoursBeforeStart: Math.round(((b.startAt - Date.now()) / 3600_000) * 10) / 10 });
+});
+
+// refundPolicy: 'full' refunds everything paid; 'policy' applies the renter cancellation tiers (e.g. DL check failed at pickup).
+adminBookingRouter.post('/:id/cancel', requirePermission('bookings.manage'), validate({ params: idParams, body: z.object({ reason: z.string().trim().min(5).max(300), refundTo, refundPolicy: z.enum(['full', 'policy']).default('full') }).strict() }), async (req, res) => {
   await cancelByAdmin(req, req.valid.params.id, req.valid.body);
   ok(res, serializeBooking(await Booking.findById(req.valid.params.id).lean(), { audience: 'admin' }));
 });
@@ -330,6 +340,12 @@ adminBookingRouter.post('/:id/deposit-review', requirePermission('trips.manage')
 }), async (req, res) => {
   await reviewDeposit(req, req.valid.params.id, req.valid.body);
   ok(res, serializeBooking(await Booking.findById(req.valid.params.id).lean(), { audience: 'admin' }));
+});
+
+/** Staff checked the renter's original driving licence at pickup (number, expiry, photo) → trip can start. */
+adminBookingRouter.post('/:id/dl-check', requirePermission('trips.manage'), validate({ params: idParams, body: dlCheckSchema }), async (req, res) => {
+  const b = await verifyDlAtPickup(req, req.valid.params.id, req.valid.body);
+  ok(res, serializeBooking(b.toObject(), { audience: 'admin' }));
 });
 
 adminBookingRouter.post('/:id/collateral', requirePermission('trips.manage'), validate({ params: idParams, body: collateralBody }), async (req, res) => {

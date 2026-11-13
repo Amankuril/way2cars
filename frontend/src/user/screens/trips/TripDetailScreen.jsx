@@ -112,7 +112,8 @@ export function TripDetailScreen({ route, navigation }) {
   const q = useQuery({
     queryKey: ['trip', id],
     queryFn: () => api.get(`/api/v1/user/bookings/${id}`),
-    refetchInterval: (query) => (['pending_payment', 'pending_vendor_approval', 'return_pending'].includes(query.state.data?.status) ? 15000 : false),
+    // Also poll while staff still have to verify the driving licence, so "Start trip" unlocks by itself.
+    refetchInterval: (query) => (['pending_payment', 'pending_vendor_approval', 'return_pending'].includes(query.state.data?.status) || (query.state.data?.status === 'confirmed' && query.state.data?.dlCheck?.status === 'pending') ? 15000 : false),
   });
   const preview = useQuery({ queryKey: ['cancel-preview', id], queryFn: () => api.get(`/api/v1/user/bookings/${id}/cancellation-preview`), enabled: sheet === 'cancel' });
   const holdLeft = useCountdown(q.data?.holdExpiresAt);
@@ -174,6 +175,7 @@ export function TripDetailScreen({ route, navigation }) {
   const now = Date.now();
   const pickupOpensAt = new Date(new Date(b.startAt).getTime() - (config.data?.booking?.pickupWindowMinutesBefore ?? 30) * 60000);
   const canStart = b.status === 'confirmed' && now >= pickupOpensAt.getTime();
+  const dlPending = b.status === 'confirmed' && config.data?.booking?.dlCheckAtPickup === true && b.dlCheck?.status !== 'verified';
   const pendingExt = b.extensions?.find((e) => e.status === 'pending_payment' && new Date(e.holdExpiresAt) > new Date());
   const requestedExt = b.extensions?.find((e) => e.status === 'pending_approval');
   const dueExt = b.extensions?.find((e) => e.status === 'approved' && e.chargeStatus === 'due');
@@ -192,6 +194,7 @@ export function TripDetailScreen({ route, navigation }) {
   let primary = null;
   if (b.status === 'pending_payment' && holdLeft > 0) primary = <Button title={`Complete payment · ${mmss(holdLeft)}`} size="lg" block loading={busy} onPress={() => runPayment(() => api.post(`/api/v1/user/bookings/${id}/payment-order`))} />;
   else if (balanceDue) primary = <Button title={`Pay balance ${money(balanceDue.duePaise)}`} icon={Wallet} size="lg" block loading={busy} onPress={() => runPayment(() => api.post(`/api/v1/user/bookings/${id}/balance-payment-order`))} />;
+  else if (b.status === 'confirmed' && canStart && dlPending) primary = <Button title="Waiting for licence check" icon={ShieldCheck} size="lg" block disabled />;
   else if (b.status === 'confirmed') primary = <Button title={canStart ? 'Start trip' : `Pickup opens ${timeLabel(pickupOpensAt)}`} icon={KeyRound} size="lg" block disabled={!canStart} onPress={() => navigation.navigate('Pickup', { id })} />;
   else if (b.status === 'ongoing') primary = <Button title="End trip & return car" size="lg" block onPress={() => navigation.navigate('Return', { id })} />;
   else if (b.status === 'completed' && st?.outstandingStatus === 'due') primary = <Button title={`Pay dues ${money(st.outstandingPaise)}`} size="lg" block loading={busy} onPress={() => runPayment(() => api.post(`/api/v1/user/bookings/${id}/settlement-payment-order`))} />;
@@ -255,6 +258,7 @@ export function TripDetailScreen({ route, navigation }) {
       {b.status === 'pending_vendor_approval' ? <Notice tone="info" title="Waiting for the host" className="mx-4 mt-4">The host will confirm by {dateTime(b.vendorDecisionDueAt)}. If they can’t, you get a full refund automatically.</Notice> : null}
       {b.status === 'return_pending' ? <Notice tone="info" title="Return under review" className="mx-4 mt-4">The host is checking the car. Your deposit refund is calculated after their review.</Notice> : null}
       {['cancelled', 'rejected'].includes(b.status) && b.cancellation ? <Notice tone="neutral" title={b.status === 'rejected' ? 'Declined by host' : 'Cancelled'} className="mx-4 mt-4">{b.cancellation.reason}{b.cancellation.refundPaise ? ` · Refund of ${money(b.cancellation.refundPaise)} to your payment method.` : ''}{b.cancellation.walletRefundPaise ? ` ${money(b.cancellation.walletRefundPaise)} returned to wallet.` : ''}</Notice> : null}
+      {dlPending ? <Notice tone="info" title="Bring your original driving licence" className="mx-4 mt-4">Our team checks it at pickup before handing over the car. “Start trip” unlocks as soon as it’s verified.</Notice> : null}
       {balanceDue ? <Notice tone="warning" title={`Balance ${money(balanceDue.duePaise)} due by ${dateTime(balanceDue.dueAt)}`} className="mx-4 mt-4">{b.source === 'offline' ? 'Pay it here or at the WAY2CARS office.' : 'Your dates are blocked. Pay the balance before the deadline — pickup opens once it’s paid.'}</Notice> : null}
       {requestedExt ? <Notice tone="info" title="Extension requested" className="mx-4 mt-4">We’re checking the car is free until {dateTime(requestedExt.requestedEndAt)}. You’ll be notified, and pay {money(requestedExt.pricing.totalPaise)} once it’s approved.</Notice> : null}
       {dueExt ? <Notice tone="warning" title="Extension approved — payment due" className="mx-4 mt-4" action={<Button title={`Pay ${money(dueExt.pricing.totalPaise)}`} size="sm" loading={busy} onPress={() => runPayment(() => api.post(`/api/v1/user/bookings/${id}/extensions/${dueExt.id}/payment-order`))} />}>Your trip now ends {dateTime(dueExt.requestedEndAt)}. Unpaid extension charges are taken from your deposit at the end of the trip.</Notice> : null}

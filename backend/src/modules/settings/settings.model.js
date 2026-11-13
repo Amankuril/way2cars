@@ -86,7 +86,8 @@ const schema = new mongoose.Schema(
       bufferMinutes: { type: Number, default: 60, min: 0, max: 720 },
       vendorApprovalSlaMinutes: { type: Number, default: 120, min: 10 },
       pickupWindowMinutesBefore: { type: Number, default: 30, min: 0 },
-      kycRequired: { type: Boolean, default: true },
+      kycRequired: { type: Boolean, default: false }, // online DL approval before payment; off = pay first, DL checked at pickup
+      dlCheckAtPickup: { type: Boolean, default: true }, // staff verify the original DL before the trip can start
       requireUserApproval: { type: Boolean, default: false },
     },
     cancellation: {

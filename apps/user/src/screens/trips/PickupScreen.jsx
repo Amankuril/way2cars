@@ -119,6 +119,7 @@ export function PickupScreen({ route, navigation }) {
     } catch (err) {
       if (err.code === 'AGREEMENT_CHANGED') agreement.refetch();
       if (err.code === 'TRACKING_REQUIRED') config.refetch();
+      if (err.code === 'DL_CHECK_PENDING') navigation.goBack();
       toast(err.message, 'danger');
     } finally {
       setSubmitting(false);

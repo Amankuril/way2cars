@@ -138,6 +138,18 @@ const schema = new mongoose.Schema(
       returnedBy: actor,
       note: String,
     },
+    // Original driving licence checked by staff at pickup. The renter can pay without an approved DL;
+    // the trip cannot start until this is verified (settings.booking.dlCheckAtPickup).
+    dlCheck: {
+      status: { type: String, enum: ['pending', 'verified'], default: 'pending' },
+      numberEnc: String,
+      numberMasked: String,
+      expiry: Date,
+      photoFileId: { type: mongoose.Schema.Types.ObjectId, ref: 'File' },
+      verifiedAt: Date,
+      verifiedBy: actor,
+      note: String,
+    },
     // Staff reductions of what the renter pays (e.g. breakdown caused by Way2Cars). Each records where the
     // reduction went: less balance to collect, less dues after the trip, and/or a refund (card or wallet).
     adjustments: [{

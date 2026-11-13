@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { env } from '../../config/env.js';
 import { withTransaction } from '../../core/db.js';
 import { badRequest, conflict, notFound } from '../../core/errors.js';
-import { sha256 } from '../../core/crypto.js';
+import { sha256, encrypt } from '../../core/crypto.js';
 import { pct } from '../../core/money.js';
 import { audit } from '../../core/audit.js';
 import { Booking, appliedExtensions, unpaidExtensionPaise } from '../bookings/booking.model.js';
@@ -87,6 +87,9 @@ export async function startTrip(req, bookingId, body) {
     const opensAt = new Date(b.startAt.getTime() - settings.booking.pickupWindowMinutesBefore * 60_000);
     if (now < opensAt) throw conflict(`Pickup opens ${settings.booking.pickupWindowMinutesBefore} minutes before your start time.`, 'PICKUP_NOT_OPEN');
     if (now > b.endAt) throw conflict('This booking window has ended.', 'PICKUP_CLOSED');
+    if (settings.booking.dlCheckAtPickup && b.dlCheck?.status !== 'verified') {
+      throw conflict('Show your original driving licence to our team at pickup. You can start the trip once they verify it.', 'DL_CHECK_PENDING');
+    }
     if (env.TRACKING_PROVIDER === 'phone' && !body.trackingConsent) throw conflict('Location sharing is required during the trip. Please start it from the latest WAY2CARS Android app and allow location.', 'TRACKING_REQUIRED');
     if (body.photos.length < settings.trip.minPickupPhotos) throw badRequest(`Take at least ${settings.trip.minPickupPhotos} photos of the car.`, undefined, 'PHOTOS_REQUIRED');
 
@@ -111,7 +114,7 @@ export async function startTrip(req, bookingId, body) {
     const [agr] = await RentalAgreement.create([{
       bookingId: b._id, userId: b.userId, documentVersion: page.version, contentHash: hash, title: page.title,
       acceptedName: body.agreement.fullName, acceptedAt: now, ip: req.ip, userAgent: req.get('user-agent')?.slice(0, 300),
-      snapshot: { renter: user.name, phone: user.phone, licenceMasked: kyc?.licence?.numberMasked, vehicle: b.vehicleSnapshot.title, registrationNumber: b.vehicleSnapshot.registrationNumber, startAt: b.startAt, endAt: b.endAt, depositPaise: b.pricing.depositPaise },
+      snapshot: { renter: user.name, phone: user.phone, licenceMasked: b.dlCheck?.numberMasked || kyc?.licence?.numberMasked, vehicle: b.vehicleSnapshot.title, registrationNumber: b.vehicleSnapshot.registrationNumber, startAt: b.startAt, endAt: b.endAt, depositPaise: b.pricing.depositPaise },
     }], { session });
 
     transition(b, 'ongoing', { realm: 'user', id: req.auth.id }, 'Pickup inspection completed');
@@ -331,6 +334,35 @@ export async function markCollateral(req, bookingId, { action, note }) {
   await audit(req, `booking.collateral_${action}`, { type: 'booking', id: b._id }, { reason: note });
   await runEffects({ refunds: [], notifications: [[`deposit.collateral_${action}`, { realm: 'user', id: b.userId }, { bookingId: b._id, ref: b.ref, item: b.deposit.type }]] });
   return b;
+}
+
+export const dlCheckSchema = z.object({
+  licenceNumber: z.string().trim().toUpperCase().transform((v) => v.replace(/[ -]/g, '')).pipe(z.string().regex(/^[A-Z]{2}[0-9]{2}[0-9]{4}[0-9]{7}$/, 'Enter a valid driving licence number, e.g. MP0920110012345')),
+  licenceExpiry: z.coerce.date(),
+  photoFileId: objectId,
+  note: z.string().trim().max(300).optional(),
+}).strict();
+
+/**
+ * Staff checked the renter's original driving licence at pickup: records the number (encrypted),
+ * expiry and a photo, and unlocks the trip start. Re-verifying replaces the earlier record.
+ */
+export async function verifyDlAtPickup(req, bookingId, { licenceNumber, licenceExpiry, photoFileId, note }) {
+  return withTransaction(async (session) => {
+    const b = await Booking.findById(bookingId).session(session);
+    if (!b) throw notFound('Booking');
+    if (b.status !== 'confirmed') throw conflict('The licence is checked for confirmed bookings, before the trip starts.', 'DL_CHECK_STATE');
+    if (licenceExpiry < b.endAt) throw conflict(`This licence expires on ${formatIst(licenceExpiry).split(',')[0]}, before the trip ends. The car cannot be handed over.`, 'LICENCE_EXPIRES');
+    await claimFiles(req.auth, [photoFileId], ['kyc_document'], { session, allowAttachedTo: { type: 'booking', id: b._id } });
+    await attachFiles([photoFileId], { type: 'booking', id: b._id }, session);
+    const by = { realm: req.auth.realm, id: req.auth.id };
+    const now = new Date();
+    b.dlCheck = { status: 'verified', numberEnc: encrypt(licenceNumber), numberMasked: `${'•'.repeat(licenceNumber.length - 4)}${licenceNumber.slice(-4)}`, expiry: licenceExpiry, photoFileId, verifiedAt: now, verifiedBy: by, note };
+    b.statusHistory.push({ status: b.status, at: now, by, note: 'Driving licence verified at pickup' });
+    await b.save({ session });
+    await audit(req, 'booking.dl_verified', { type: 'booking', id: b._id }, { reason: note, session });
+    return b;
+  });
 }
 
 /** Host reviews a returned car: accept as-is, or file a damage claim for admin approval. */
