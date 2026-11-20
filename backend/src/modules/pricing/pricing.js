@@ -81,15 +81,24 @@ export function couponDiscount(coupon, rentalPaise) {
   return Math.max(0, Math.min(d, rentalPaise));
 }
 
+/** Splits a GST-inclusive price into its taxable value and the GST inside it. */
+export function splitInclusiveGst(amountPaise, gstBps) {
+  const basePaise = Math.round((amountPaise * 10000) / (10000 + gstBps));
+  return { basePaise, gstPaise: amountPaise - basePaise };
+}
+
 /**
  * Assembles the full price. GST applies to rental (after discount) + delivery + convenience fee.
- * The refundable security deposit is not taxed. Wallet credit reduces the amount charged to the
- * gateway, capped at maxRedeemBps of the rental.
+ * The car wash is priced GST-inclusive: its taxable value and GST are folded into the totals so the
+ * renter pays exactly the wash price. The refundable security deposit is not taxed (and is 0 here when
+ * it is paid at the office). Wallet credit reduces the amount charged to the gateway, capped at
+ * maxRedeemBps of the rental.
  */
-export function assembleQuote({ rental, deliveryFeePaise = 0, convenienceFeePaise = 0, discountPaise = 0, gstBps, depositPaise, walletBalancePaise = 0, useWallet = false, maxRedeemBps = 0 }) {
+export function assembleQuote({ rental, deliveryFeePaise = 0, convenienceFeePaise = 0, discountPaise = 0, gstBps, depositPaise, walletBalancePaise = 0, useWallet = false, maxRedeemBps = 0, washPaise = 0, washGstBps = gstBps }) {
   const rentalAfterDiscount = rental.rentalPaise - discountPaise;
-  const taxablePaise = rentalAfterDiscount + deliveryFeePaise + convenienceFeePaise;
-  const gstPaise = pct(taxablePaise, gstBps);
+  const wash = splitInclusiveGst(washPaise, washGstBps);
+  const taxablePaise = rentalAfterDiscount + deliveryFeePaise + convenienceFeePaise + wash.basePaise;
+  const gstPaise = pct(rentalAfterDiscount + deliveryFeePaise + convenienceFeePaise, gstBps) + wash.gstPaise;
   const chargesPaise = taxablePaise + gstPaise; // non-refundable portion before policy
   const totalPaise = chargesPaise + depositPaise;
   const walletCap = pct(rental.rentalPaise, maxRedeemBps);
@@ -101,6 +110,8 @@ export function assembleQuote({ rental, deliveryFeePaise = 0, convenienceFeePais
     discountPaise,
     deliveryFeePaise,
     convenienceFeePaise,
+    washPaise,
+    washGstPaise: wash.gstPaise,
     taxablePaise,
     gstBps,
     gstPaise,

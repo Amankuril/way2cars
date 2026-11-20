@@ -88,7 +88,7 @@ export function serializeBooking(b, { audience = 'user', user, vendor, vehicle, 
     } : null,
     pricing: audience === 'vendor'
       ? (show.bookingAmounts
-        ? { hours: b.pricing.hours, rentalPaise: b.pricing.rentalPaise, depositPaise: b.pricing.depositPaise, includedKm: b.pricing.includedKm, extraKmChargePaise: b.pricing.extraKmChargePaise, commissionBps: b.pricing.commissionBps, deliveryFeePaise: b.pricing.deliveryFeePaise, unlimitedKm: b.pricing.unlimitedKm }
+        ? { hours: b.pricing.hours, rentalPaise: b.pricing.rentalPaise, depositPaise: (b.pricing.depositPaise || 0) + (b.pricing.depositAtPickupPaise || 0), includedKm: b.pricing.includedKm, extraKmChargePaise: b.pricing.extraKmChargePaise, commissionBps: b.pricing.commissionBps, deliveryFeePaise: b.pricing.deliveryFeePaise, unlimitedKm: b.pricing.unlimitedKm }
         : { hours: b.pricing.hours, includedKm: b.pricing.includedKm, extraKmChargePaise: b.pricing.extraKmChargePaise, unlimitedKm: b.pricing.unlimitedKm })
       : b.pricing,
     payment: audience === 'vendor' ? (show.paymentStatus ? { status: b.payment.status } : null) : b.payment,
@@ -109,7 +109,7 @@ export function serializeBooking(b, { audience = 'user', user, vendor, vehicle, 
           : { kmDriven: b.settlement.kmDriven, extraKm: b.settlement.extraKm, fuelShortEighths: b.settlement.fuelShortEighths, lateHours: b.settlement.lateHours, damageNote: b.settlement.damageNote, vendorEarningPaise: b.settlement.vendorEarningPaise, settledAt: b.settlement.settledAt })
         : { ...b.settlement, commissionPaise: undefined, vendorEarningPaise: undefined, investorEarningPaise: undefined, depositReview: b.settlement.depositReview ? { at: b.settlement.depositReview.at, note: b.settlement.depositReview.note } : undefined })
       : null,
-    deposit: b.deposit?.type ? { type: b.deposit.type, collateral: b.deposit.collateral, status: b.deposit.status, receivedAt: b.deposit.receivedAt, returnedAt: b.deposit.returnedAt } : { type: 'cash', status: 'none' },
+    deposit: b.deposit?.type ? { type: b.deposit.type, payAt: b.deposit.payAt || (b.deposit.type === 'cash' ? 'online' : undefined), collateral: b.deposit.collateral, status: b.deposit.status, receivedAt: b.deposit.receivedAt, returnedAt: b.deposit.returnedAt, method: b.deposit.method } : { type: 'cash', payAt: 'online', status: 'none' },
     dlCheck: { status: b.dlCheck?.status === 'verified' ? 'verified' : 'pending', verifiedAt: b.dlCheck?.verifiedAt || null },
     dropoff: b.dropoff && b.dropoff.type === 'hub' ? { type: 'hub', name: b.dropoff.name, address: b.dropoff.address, point: fromGeoPoint(b.dropoff.point) } : null,
     adjustments: audience === 'vendor' ? [] : (b.adjustments || []).map((a) => ({ amountPaise: a.amountPaise, reason: a.reason, at: a.at, balancePaise: a.balancePaise, outstandingPaise: a.outstandingPaise, refundPaise: a.refundPaise, refundTo: a.refundTo, ...(audience === 'admin' ? { by: a.by } : {}) })),

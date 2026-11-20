@@ -110,7 +110,7 @@ export function PickupScreen({ route, navigation }) {
       navigation.goBack();
     } catch (err) {
       if (err.code === 'AGREEMENT_CHANGED') agreement.refetch();
-      if (err.code === 'DL_CHECK_PENDING') navigation.goBack();
+      if (['DL_CHECK_PENDING', 'DEPOSIT_PENDING', 'COLLATERAL_PENDING'].includes(err.code)) navigation.goBack();
       toast(err.message, 'danger');
     } finally {
       setSubmitting(false);

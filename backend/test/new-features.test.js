@@ -255,6 +255,97 @@ describe('4 + 12. security deposit options, inspection and refunds', () => {
   });
 });
 
+describe('deposit paid at the office and car wash', () => {
+  const pickupBody = (name, photo) => ({ photos: [{ fileId: photo, angle: 'front' }], odometerKm: 100, fuelEighths: 8, checklist: [], agreement: { accept: true, fullName: name, contentHash: 'a'.repeat(64) } });
+
+  it('older apps (no depositPayAt) keep paying the deposit online', async () => {
+    const { token } = await renter('Old App');
+    const start = slot(200 * 60);
+    const q = await api().post('/api/v1/user/bookings/quote').set(auth(token)).send({ vehicleId: String(ctx.car._id), startAt: start, endAt: new Date(start.getTime() + 24 * H) }).expect(200);
+    expect(q.body.data).toMatchObject({ depositPaise: 1500000, depositAtPickupPaise: 0, washPaise: 0, washType: 'none' });
+    expect(q.body.data.depositOptions).toMatchObject({ payAtOffice: true, payAt: 'online' });
+    expect(q.body.data.washOptions).toMatchObject({ selected: 'none', waterPaise: 19900, foamPaise: 39900 });
+  });
+
+  it('charges the trip online only; staff collect the deposit at pickup, then hand back the rest at the counter', async () => {
+    const { token } = await renter('Office Deposit');
+    const start = slot(220 * 60);
+    const body = { vehicleId: String(ctx.car._id), startAt: start, endAt: new Date(start.getTime() + 24 * H), depositPayAt: 'office', washType: 'foam' };
+    const online = await api().post('/api/v1/user/bookings/quote').set(auth(token)).send({ ...body, depositPayAt: 'online', washType: 'none' }).expect(200);
+    const q = await api().post('/api/v1/user/bookings/quote').set(auth(token)).send(body).expect(200);
+    expect(q.body.data).toMatchObject({ depositPaise: 0, depositAtPickupPaise: 1500000, washType: 'foam', washPaise: 39900 });
+    expect(q.body.data.payablePaise).toBe(online.body.data.payablePaise - 1500000 + 39900);
+
+    const b = await book(token, body);
+    expect(b.deposit).toMatchObject({ type: 'cash', payAt: 'office', status: 'awaiting' });
+    expect(b.payment.paidPaise).toBe(q.body.data.payablePaise);
+
+    // The trip can't start before the deposit is received; hosts can't collect it.
+    await Booking.updateOne({ _id: b._id }, { $set: { startAt: new Date(Date.now() + 10 * 60_000) } });
+    const photo = await upload('user', token, 'inspection_photo');
+    const blocked = await api().post(`/api/v1/user/bookings/${b._id}/pickup`).set(auth(token)).send(pickupBody('Office Deposit', photo));
+    expect(blocked.body.error.code).toBe('DEPOSIT_PENDING');
+    const host = await api().post(`/api/v1/vendor/bookings/${b._id}/collateral`).set(auth(ctx.hostToken)).send({ action: 'received' });
+    expect(host.status).toBe(403);
+    const noMethod = await api().post(`/api/v1/admin/bookings/${b._id}/collateral`).set(auth(ctx.admin)).send({ action: 'received' });
+    expect(noMethod.body.error.code).toBe('METHOD_REQUIRED');
+    const rec = await api().post(`/api/v1/admin/bookings/${b._id}/collateral`).set(auth(ctx.admin)).send({ action: 'received', method: 'upi' }).expect(200);
+    expect(rec.body.data.deposit).toMatchObject({ status: 'received', method: 'upi', payAt: 'office' });
+
+    // Settlement takes charges out of the office deposit; nothing goes back through the gateway.
+    const before = rzp.refunds.length;
+    const done = await completeTrip(await Booking.findById(b._id), { km: 250 });
+    expect(done.settlement).toMatchObject({ depositRefundStatus: 'pending_review', depositRefundPaise: 1500000 - 12000 });
+    const bad = await api().post(`/api/v1/admin/bookings/${b._id}/deposit-review`).set(auth(ctx.admin)).send({ refundTo: 'source' });
+    expect(bad.body.error.code).toBe('REFUND_DESTINATION_INVALID');
+    await api().post(`/api/v1/admin/bookings/${b._id}/deposit-review`).set(auth(ctx.admin)).send({ refundTo: 'counter', refundAt: new Date(Date.now() + 86400_000) }).expect(200);
+    const after = await Booking.findById(b._id).lean();
+    expect(after.settlement).toMatchObject({ depositRefundStatus: 'refunded', depositRefundTo: 'counter', depositRefundPaise: 1488000 });
+    expect(after.deposit.status).toBe('returned');
+    expect(after.payment.refundedPaise).toBe(0);
+    expect(rzp.refunds.length).toBe(before);
+    expect(await Refund.exists({ bookingId: b._id })).toBeFalsy();
+  });
+
+  it('can credit an office deposit to the wallet instead', async () => {
+    const { token, user } = await renter('Office Wallet');
+    const start = slot(240 * 60);
+    const b = await book(token, { vehicleId: String(ctx.car._id), startAt: start, endAt: new Date(start.getTime() + 24 * H), depositPayAt: 'office' });
+    await api().post(`/api/v1/admin/bookings/${b._id}/collateral`).set(auth(ctx.admin)).send({ action: 'received', method: 'cash' }).expect(200);
+    await completeTrip(await Booking.findById(b._id));
+    await api().post(`/api/v1/admin/bookings/${b._id}/deposit-review`).set(auth(ctx.admin)).send({ refundTo: 'wallet' }).expect(200);
+    const credit = await LedgerEntry.findOne({ 'owner.id': user._id, type: 'booking_refund', bookingId: b._id }).lean();
+    expect(credit.amountPaise).toBe(1500000);
+    expect((await Booking.findById(b._id).lean()).deposit.status).toBe('returned');
+  });
+
+  it('cancelling before pickup never refunds an office deposit that was not paid', async () => {
+    const { token } = await renter('Office Cancel');
+    const start = slot(260 * 60);
+    const b = await book(token, { vehicleId: String(ctx.car._id), startAt: start, endAt: new Date(start.getTime() + 24 * H), depositPayAt: 'office' });
+    const res = await api().post(`/api/v1/user/bookings/${b._id}/cancel`).set(auth(token)).send({ reason: 'Plans changed' }).expect(200);
+    const after = await Booking.findById(b._id).lean();
+    expect(res.status).toBe(200);
+    expect(after.pricing.depositPaise).toBe(0);
+    expect(after.cancellation.refundPaise).toBeLessThanOrEqual(after.payment.paidPaise); // only what was paid online
+  });
+
+  it('turns off pay-at-office and wash from settings', async () => {
+    await api().patch('/api/v1/admin/settings').set(auth(ctx.admin)).send({ deposit: { allowPayAtOffice: false }, wash: { enabled: false } }).expect(200);
+    const { token } = await renter('Settings Off');
+    const start = slot(280 * 60);
+    const base = { vehicleId: String(ctx.car._id), startAt: start, endAt: new Date(start.getTime() + 24 * H) };
+    const a = await api().post('/api/v1/user/bookings/quote').set(auth(token)).send({ ...base, depositPayAt: 'office' });
+    expect(a.body.error.code).toBe('DEPOSIT_OPTION_UNAVAILABLE');
+    const w = await api().post('/api/v1/user/bookings/quote').set(auth(token)).send({ ...base, washType: 'water' });
+    expect(w.body.error.code).toBe('WASH_UNAVAILABLE');
+    const q = await api().post('/api/v1/user/bookings/quote').set(auth(token)).send(base).expect(200);
+    expect(q.body.data.washOptions).toBeNull();
+    expect(q.body.data.depositOptions.payAtOffice).toBe(false);
+    await api().patch('/api/v1/admin/settings').set(auth(ctx.admin)).send({ deposit: { allowPayAtOffice: true }, wash: { enabled: true } }).expect(200);
+  });
+});
+
 describe('5. booking confirmation on WhatsApp with terms', () => {
   it('logs the confirmation attempt, gives staff the message and a WhatsApp link, and shows terms to the renter', async () => {
     const { token } = await renter('Message Renter');

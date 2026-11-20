@@ -74,6 +74,16 @@ const SECTIONS = [
       { path: 'deposit.allowLaptop', label: 'Accept a laptop as deposit', unit: 'bool' },
       { path: 'deposit.laptopMinYear', label: 'Laptop — oldest model year', unit: 'int', min: 2000, max: 2100 },
       { path: 'deposit.requireRefundApproval', label: 'Inspect the car before refunding the deposit', unit: 'bool', hint: 'On: settled deposits wait in Bookings → “Deposit review” until operations approve the refund and its date.' },
+      { path: 'deposit.allowPayAtOffice', label: 'Let renters pay the money deposit at the office', unit: 'bool', hint: 'Renters choose at checkout: pay at pickup (default) or online. Staff mark it received on the booking before the trip can start, and hand it back at the counter or to the wallet after inspection.' },
+    ],
+  },
+  {
+    key: 'wash', title: 'Car wash', description: 'Optional wash renters can add at checkout. Prices include GST and the charge stays with WAY2CARS (not shared with hosts or investors).',
+    fields: [
+      { path: 'wash.enabled', label: 'Offer car wash at checkout', unit: 'bool' },
+      { path: 'wash.waterPaise', label: 'Water wash price (incl. GST)', unit: 'rupees' },
+      { path: 'wash.foamPaise', label: 'Foam wash price (incl. GST)', unit: 'rupees' },
+      { path: 'wash.gstBps', label: 'GST inside the wash price', unit: 'pct', min: 0, max: 50 },
     ],
   },
   {

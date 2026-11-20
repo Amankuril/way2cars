@@ -47,6 +47,10 @@ const pricing = new mongoose.Schema(
     investorShareBps: Number,
     unlimitedKm: Boolean, // renter chose unlimited km: no extra-km charge at settlement
     unlimitedKmPaise: Number, // included in rentalPaise (as an 'unlimited_km' line)
+    washType: { type: String, enum: ['none', 'water', 'foam'] }, // car wash chosen at checkout
+    washPaise: { type: Number, default: 0 }, // GST-inclusive; its taxable value and GST are in taxablePaise / gstPaise
+    washGstPaise: { type: Number, default: 0 },
+    depositAtPickupPaise: { type: Number, default: 0 }, // money deposit paid at the office (not in depositPaise / totalPaise)
     adjustmentPaise: { type: Number, default: 0 }, // total reductions made by staff (see `adjustments`)
     advancePaise: Number, // set when the renter chose to pay an advance to block the dates
     adjustedBy: { id: oid, note: String }, // admin-set price on an offline booking
@@ -127,9 +131,12 @@ const schema = new mongoose.Schema(
       autoCancel: Boolean, // cancel per policy at pickup time if still due (app advance bookings)
       reminderSent: Boolean,
     },
-    // Security deposit: money (in pricing.depositPaise) or a bike / laptop handed over at pickup and returned after the trip.
+    // Security deposit: money paid online (pricing.depositPaise), money paid at the office at pickup
+    // (payAt 'office', pricing.depositAtPickupPaise), or a bike / laptop handed over at pickup and returned after the trip.
     deposit: {
       type: { type: String, enum: ['cash', 'bike', 'laptop'], default: 'cash' },
+      payAt: { type: String, enum: ['online', 'office'] },
+      method: { type: String, enum: ['cash', 'upi', 'card', 'bank_transfer'] }, // how an office deposit was paid
       collateral: { make: String, model: String, year: Number, registrationNumber: String, serialNumber: String, description: String },
       status: { type: String, enum: ['none', 'awaiting', 'received', 'returned'], default: 'none' },
       receivedAt: Date,
@@ -186,7 +193,7 @@ const schema = new mongoose.Schema(
       // none (nothing to refund) → pending_review (awaiting inspection) → scheduled (refund date set) → refunded
       depositRefundStatus: { type: String, enum: ['none', 'pending_review', 'scheduled', 'refunded'] },
       depositRefundAt: Date,
-      depositRefundTo: { type: String, enum: ['source', 'wallet'] },
+      depositRefundTo: { type: String, enum: ['source', 'wallet', 'counter'] }, // counter = handed back at the office
       depositReview: { by: actor, at: Date, note: String },
     },
     reviewed: { byUser: { type: Boolean, default: false } },
@@ -227,6 +234,12 @@ export function overlapFilter(vehicleId, startAt, endAt, bufferMinutes, { exclud
   if (excludeBookingId) filter._id = { $ne: excludeBookingId };
   return filter;
 }
+
+/** Money deposit paid at the office at pickup (instead of online). */
+export const depositAtOffice = (b) => b.deposit?.type === 'cash' && b.deposit?.payAt === 'office';
+/** Money deposit actually held for this booking: paid online, plus an office deposit once received. */
+export const heldDepositPaise = (b) => (b.pricing?.depositPaise || 0)
+  + (depositAtOffice(b) && ['received', 'returned'].includes(b.deposit.status) ? b.pricing.depositAtPickupPaise || 0 : 0);
 
 /** Extension charges approved but still unpaid (settled from the deposit at trip end). */
 export const unpaidExtensionPaise = (b) => (b.extensions || []).filter((e) => e.status === 'approved' && e.chargeStatus === 'due').reduce((sum, e) => sum + e.pricing.totalPaise, 0);

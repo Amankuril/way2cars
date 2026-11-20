@@ -47,7 +47,7 @@ async function assertUserCanBook(user, endAt, settings) {
  * Computes the full server-side price. Never trusts client totals: callers pass only the
  * vehicle, window, delivery address, coupon code and whether to use wallet credit.
  */
-export async function buildQuote({ userId, vehicleId, startAt, endAt, delivery, couponCode, useWallet, paymentPlan = 'full', unlimitedKm = false, depositOption = 'cash', pickupLocationId, dropoffLocationId }, { session, skipAvailability = false, office = null } = {}) {
+export async function buildQuote({ userId, vehicleId, startAt, endAt, delivery, couponCode, useWallet, paymentPlan = 'full', unlimitedKm = false, depositOption = 'cash', depositPayAt = 'online', washType = 'none', pickupLocationId, dropoffLocationId }, { session, skipAvailability = false, office = null } = {}) {
   const settings = await getSettings();
   // Office (offline) bookings may start right away and may use approved cars that are not listed.
   const window = await validateTripWindow(startAt, endAt, { skipLead: Boolean(office) });
@@ -69,7 +69,8 @@ export async function buildQuote({ userId, vehicleId, startAt, endAt, delivery, 
     rental = addUnlimitedKm(rental, vehicle.pricing.unlimitedKmDailyPaise);
   }
   const hubs = await resolveHubs(vehicle, { pickupLocationId, dropoffLocationId, delivery }, session);
-  const deposit = depositFor(vehicle, depositOption, settings, office);
+  const deposit = depositFor(vehicle, depositOption, settings, office, depositPayAt);
+  const washPaise = washFor(washType, settings);
 
   let deliveryInfo = null;
   if (delivery) {
@@ -98,7 +99,9 @@ export async function buildQuote({ userId, vehicleId, startAt, endAt, delivery, 
     convenienceFeePaise: office?.waiveConvenienceFee ? 0 : settings.fees.convenienceFeePaise,
     discountPaise,
     gstBps: settings.tax.rentalGstBps,
-    depositPaise: deposit.paise,
+    depositPaise: deposit.payAt === 'office' ? 0 : deposit.paise,
+    washPaise,
+    washGstBps: settings.wash.gstBps,
     walletBalancePaise: user?.walletBalancePaise || 0,
     useWallet: Boolean(useWallet) && !wantsAdvance && !office, // wallet credit can't be split across advance + balance
     maxRedeemBps: settings.wallet.maxRedeemBps,
@@ -109,16 +112,30 @@ export async function buildQuote({ userId, vehicleId, startAt, endAt, delivery, 
   }
   if (wantsAdvance) quote.advancePaise = advance.advancePaise;
   if (unlimitedKm) Object.assign(quote, { unlimitedKm: true, unlimitedKmPaise: rental.unlimitedKmPaise });
+  quote.washType = washPaise ? washType : 'none';
+  quote.depositAtPickupPaise = deposit.payAt === 'office' ? deposit.paise : 0;
   return { vehicle, window, quote, coupon, deliveryInfo, settings, advance, deposit, hubs };
 }
 
-/** Money deposit (at least the platform minimum) or a bike / laptop handed over at pickup instead. */
-export function depositFor(vehicle, option, settings, office) {
+/**
+ * Money deposit (at least the platform minimum) or a bike / laptop handed over at pickup instead.
+ * A money deposit is paid online with the booking, or (payAt 'office') at the office at pickup.
+ */
+export function depositFor(vehicle, option, settings, office, payAt = 'online') {
   const d = settings.deposit;
   if (option === 'bike' && !d.allowBike) throw badRequest('A bike is not accepted as a deposit right now.', undefined, 'DEPOSIT_OPTION_UNAVAILABLE');
   if (option === 'laptop' && !d.allowLaptop) throw badRequest('A laptop is not accepted as a deposit right now.', undefined, 'DEPOSIT_OPTION_UNAVAILABLE');
-  if (option !== 'cash') return { option, paise: 0 };
-  return { option, paise: office?.depositPaise ?? Math.max(vehicle.pricing.securityDepositPaise, d.minCashPaise) };
+  if (option !== 'cash') return { option, paise: 0, payAt: undefined };
+  if (payAt === 'office' && (office || !d.allowPayAtOffice)) throw badRequest('The deposit must be paid with the booking right now.', undefined, 'DEPOSIT_OPTION_UNAVAILABLE');
+  return { option, paise: office?.depositPaise ?? Math.max(vehicle.pricing.securityDepositPaise, d.minCashPaise), payAt };
+}
+
+export const WASH_TYPES = ['none', 'water', 'foam'];
+/** GST-inclusive price of the car wash chosen at checkout (0 for none). */
+export function washFor(type, settings) {
+  if (!type || type === 'none') return 0;
+  if (!settings.wash.enabled) throw badRequest('Car wash is not available right now.', undefined, 'WASH_UNAVAILABLE');
+  return type === 'foam' ? settings.wash.foamPaise : settings.wash.waterPaise;
 }
 
 /** Checks the bike / laptop a renter offers as the deposit against the platform rules. */
@@ -163,7 +180,7 @@ export function bookingSnapshot({ vehicle, owner, quote, settings, coupon, depos
     ownership: company ? 'company' : 'host',
     pickup,
     dropoff: hubs?.dropoff ? hubPlace(hubs.dropoff) : pickup,
-    deposit: { type: deposit.option, collateral, status: deposit.option === 'cash' ? 'none' : 'awaiting' },
+    deposit: { type: deposit.option, collateral, payAt: deposit.payAt, status: deposit.option === 'cash' && deposit.payAt !== 'office' ? 'none' : 'awaiting' },
     pricing: {
       ...quote,
       extraKmChargePaise: vehicle.pricing.extraKmChargePaise,
@@ -204,7 +221,10 @@ export function serializeQuote({ quote, coupon, deliveryInfo, window, vehicle, a
       cashPaise: Math.max(vehicle.pricing.securityDepositPaise, settings.deposit.minCashPaise),
       bike: settings.deposit.allowBike ? { minYear: settings.deposit.bikeMinYear } : null,
       laptop: settings.deposit.allowLaptop ? { minYear: settings.deposit.laptopMinYear } : null,
+      payAtOffice: Boolean(settings.deposit.allowPayAtOffice),
+      payAt: deposit?.payAt || 'online',
     } : null,
+    washOptions: settings?.wash?.enabled ? { selected: quote.washType || 'none', waterPaise: settings.wash.waterPaise, foamPaise: settings.wash.foamPaise } : null,
     pickupLocation: hubs?.pickup ? { id: hubs.pickup._id, name: hubs.pickup.name, address: hubs.pickup.address } : null,
     dropoffLocation: hubs?.dropoff ? { id: hubs.dropoff._id, name: hubs.dropoff.name, address: hubs.dropoff.address } : null,
     ownership: vehicle.ownership || 'host',

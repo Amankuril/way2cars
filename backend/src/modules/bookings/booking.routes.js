@@ -48,10 +48,11 @@ const tripOptions = {
   unlimitedKm: z.boolean().default(false),
   depositOption: z.enum(['cash', 'bike', 'laptop']).default('cash'),
   collateral: collateral.optional(),
+  washType: z.enum(['none', 'water', 'foam']).default('none'),
   pickupLocationId: objectId.optional(),
   dropoffLocationId: objectId.optional(),
 };
-const quoteBody = z.object({ ...tripWindow, delivery, couponCode: z.string().trim().toUpperCase().max(20).optional(), useWallet: z.boolean().default(false), paymentPlan: z.enum(['full', 'advance']).default('full'), ...tripOptions }).strict();
+const quoteBody = z.object({ ...tripWindow, delivery, couponCode: z.string().trim().toUpperCase().max(20).optional(), useWallet: z.boolean().default(false), paymentPlan: z.enum(['full', 'advance']).default('full'), depositPayAt: z.enum(['online', 'office']).default('online'), ...tripOptions }).strict();
 const officeMethod = z.enum(['cash', 'upi', 'card', 'bank_transfer']);
 const officeRef = z.string().trim().max(60).optional();
 const TABS = {
@@ -60,7 +61,7 @@ const TABS = {
   completed: ['completed'],
   cancelled: ['cancelled', 'rejected', 'expired'],
 };
-const collateralBody = z.object({ action: z.enum(['received', 'returned']), note: z.string().trim().max(300).optional() }).strict();
+const collateralBody = z.object({ action: z.enum(['received', 'returned']), method: officeMethod.optional(), note: z.string().trim().max(300).optional() }).strict();
 const listQuery = z.object({ ...paginationQuery, tab: z.enum(Object.keys(TABS)).optional() });
 const checkoutBody = z.object({ razorpayOrderId: z.string().regex(/^order_[A-Za-z0-9]{6,30}$/), razorpayPaymentId: z.string().regex(/^pay_[A-Za-z0-9]{6,30}$/), razorpaySignature: z.string().regex(/^[a-f0-9]{64}$/) }).strict();
 
@@ -335,7 +336,7 @@ adminBookingRouter.post('/:id/deposit-review', requirePermission('trips.manage')
     extraCharges: z.array(z.object({ label: z.string().trim().min(2).max(60), amountPaise: z.number().int().min(100).max(50_000_000), note: z.string().trim().max(200).optional() }).strict()).max(10).default([]),
     refundAt: z.coerce.date().optional(),
     note: z.string().trim().max(500).optional(),
-    refundTo,
+    refundTo: z.enum(['source', 'wallet', 'counter']).optional(), // counter: office deposits handed back at the office
   }).strict(),
 }), async (req, res) => {
   await reviewDeposit(req, req.valid.params.id, req.valid.body);
@@ -424,7 +425,7 @@ adminBookingRouter.get('/offline/available-cars', requirePermission('bookings.ma
 });
 
 /** Price + availability for an office booking before staff confirm it. */
-adminBookingRouter.post('/offline/quote', requirePermission('bookings.manage'), validate({ body: officeBooking.pick({ vehicleId: true, startAt: true, endAt: true, pricing: true, unlimitedKm: true, depositOption: true, pickupLocationId: true, dropoffLocationId: true }) }), async (req, res) => {
+adminBookingRouter.post('/offline/quote', requirePermission('bookings.manage'), validate({ body: officeBooking.pick({ vehicleId: true, startAt: true, endAt: true, pricing: true, unlimitedKm: true, depositOption: true, washType: true, pickupLocationId: true, dropoffLocationId: true }) }), async (req, res) => {
   const { vehicleId, startAt, endAt, pricing, ...options } = req.valid.body;
   try {
     const q = await buildQuote({ vehicleId, startAt, endAt, ...options }, { office: { ...pricing } });

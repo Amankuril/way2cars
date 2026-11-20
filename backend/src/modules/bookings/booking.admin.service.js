@@ -71,7 +71,7 @@ export async function createOfflineBooking(req, input) {
     const { vehicleId: _ignored, ...overlap } = overlapFilter(locked._id, new Date(input.startAt), new Date(input.endAt), 0);
     if (await Booking.exists({ ...overlap, userId: account._id }).session(session)) throw conflict('This customer already has a trip during these times.', 'USER_OVERLAP');
     const office = { rentalPaise: input.pricing?.rentalPaise, depositPaise: input.pricing?.depositPaise, discountPaise: input.pricing?.discountPaise, waiveConvenienceFee: input.pricing?.waiveConvenienceFee };
-    const { vehicle, window, quote, deposit, hubs } = await buildQuote({ userId: account._id, vehicleId: input.vehicleId, startAt: input.startAt, endAt: input.endAt, unlimitedKm: input.unlimitedKm, depositOption: input.depositOption, pickupLocationId: input.pickupLocationId, dropoffLocationId: input.dropoffLocationId }, { session, office });
+    const { vehicle, window, quote, deposit, hubs } = await buildQuote({ userId: account._id, vehicleId: input.vehicleId, startAt: input.startAt, endAt: input.endAt, unlimitedKm: input.unlimitedKm, depositOption: input.depositOption, washType: input.washType, pickupLocationId: input.pickupLocationId, dropoffLocationId: input.dropoffLocationId }, { session, office });
     const collateral = validateCollateral(deposit.option, input.collateral, settings);
     const owner = await Vendor.findById(vehicle.vendorId).select('isCompany commissionBps').session(session).lean();
     const snap = bookingSnapshot({ vehicle, owner, quote, settings, deposit, collateral, hubs });

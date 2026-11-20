@@ -21,7 +21,9 @@ export function bookingTerms(b, settings) {
   const t = settings.trip;
   const deposit = b.deposit?.type && b.deposit.type !== 'cash'
     ? `${b.deposit.type === 'bike' ? 'Bike' : 'Laptop'} (${[b.deposit.collateral?.make, b.deposit.collateral?.model, b.deposit.collateral?.year].filter(Boolean).join(' ')}) handed over at pickup, returned after the car is handed back`
-    : `${rupees(p.depositPaise)} refundable, returned after the car is inspected`;
+    : b.deposit?.payAt === 'office'
+      ? `${rupees(p.depositAtPickupPaise)} refundable, paid at the office at pickup and returned after the car is inspected`
+      : `${rupees(p.depositPaise)} refundable, returned after the car is inspected`;
   return {
     speedLimitKmph: settings.bookingTerms.speedLimitKmph,
     kmAllowance: p.unlimitedKm ? 'Unlimited km' : `${p.includedKm} km included`,
@@ -50,6 +52,8 @@ export function bookingConfirmationText(b, user, settings) {
     `Pickup at: ${placeText(b)}`,
     ...(b.dropoff?.type === 'hub' ? [`Drop-off at: ${b.dropoff.name}, ${b.dropoff.address}`] : []),
     `Paid: ${rupees(paid)}${b.balance?.status === 'due' ? ` · Balance ${rupees(b.balance.duePaise)} due by ${formatIst(b.balance.dueAt)}` : ''}`,
+    ...(b.deposit?.payAt === 'office' && b.deposit.status === 'awaiting' ? [`Security deposit to pay at pickup: ${rupees(b.pricing?.depositAtPickupPaise)}`] : []),
+    ...(b.pricing?.washPaise ? [`Car wash: ${b.pricing.washType === 'foam' ? 'Foam wash' : 'Water wash'} (${rupees(b.pricing.washPaise)})`] : []),
     '',
     'Trip rules & charges:',
     `• Speed limit: ${terms.speedLimitKmph} km/h`,

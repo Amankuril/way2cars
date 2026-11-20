@@ -59,6 +59,15 @@ describe('assembleQuote', () => {
     expect(q.walletAppliedPaise).toBe(48000); // 20% of rental, below balance
     expect(q.payablePaise).toBe(q.totalPaise - 48000);
   });
+  it('adds the car wash at its GST-inclusive price', () => {
+    const rental = computeRental({ startAt: wed10, endAt: h(24), pricing });
+    const base = assembleQuote({ rental, gstBps: 1800, depositPaise: 0 });
+    const q = assembleQuote({ rental, gstBps: 1800, depositPaise: 0, washPaise: 19900, washGstBps: 1800 });
+    expect(q.chargesPaise - base.chargesPaise).toBe(19900); // renter pays exactly ₹199 more
+    expect(q.washGstPaise).toBe(19900 - Math.round(19900 / 1.18));
+    expect(q.gstPaise - base.gstPaise).toBe(q.washGstPaise);
+    expect(q.taxablePaise + q.gstPaise).toBe(q.chargesPaise);
+  });
 });
 
 describe('coupons, cancellation, delivery', () => {

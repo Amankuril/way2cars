@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Plus, Trash2, PackageCheck, PackageOpen, MessageCircle, Copy, Send, ShieldCheck } from 'lucide-react';
 import { api, ADMIN } from '@/admin/lib/api.js';
 import { money, dateTime, dateLong } from '@shared/lib/format.js';
-import { DEPOSIT_TYPE, COLLATERAL_STATUS, DEPOSIT_REFUND_STATUS, MESSAGE_STATUS } from '@/admin/lib/labels.js';
+import { DEPOSIT_TYPE, COLLATERAL_STATUS, DEPOSIT_REFUND_STATUS, MESSAGE_STATUS, OFFICE_METHOD } from '@/admin/lib/labels.js';
 import { useAction } from '@/admin/lib/hooks.js';
 import { cn, errorMessage, toPaise, istDateInput } from '@/admin/lib/utils.js';
 import { useAuth } from '@/admin/auth/AuthContext.jsx';
@@ -11,8 +11,8 @@ import { useToast } from '@/admin/components/Toast.jsx';
 import { Panel, KeyValue, AmountRows } from '@/admin/components/Panel.jsx';
 import { StatusPill } from '@/admin/components/StatusPill.jsx';
 import { Button, IconButton, classes as buttonClasses } from '@/admin/components/Button.jsx';
-import { ConfirmDialog } from '@/admin/components/Modal.jsx';
-import { Field, Input, MoneyInput, Textarea, Checkbox } from '@/admin/components/Form.jsx';
+import { ConfirmDialog, Modal } from '@/admin/components/Modal.jsx';
+import { Field, Input, MoneyInput, Textarea, Checkbox, Select } from '@/admin/components/Form.jsx';
 import { RefundDestination } from './adjustOps.jsx';
 
 /**
@@ -27,33 +27,41 @@ export function DepositPanel({ b }) {
   const [action, setAction] = useState(null);
   const d = b.depositDetail || b.deposit || { type: 'cash' };
   const collateral = d.type !== 'cash';
+  const office = d.type === 'cash' && d.payAt === 'office';
+  const tracked = collateral || office; // something is handed over at pickup
   const mark = useAction((body) => api.post(`${ADMIN}/bookings/${b.id}/collateral`, body), {
-    success: (_d, body) => `${DEPOSIT_TYPE[d.type]} marked ${body.action}`, invalidate: [['booking', b.id], ['bookings']], toastError: false,
+    success: (_d, body) => `${office ? 'Deposit' : DEPOSIT_TYPE[d.type]} marked ${body.action}`, invalidate: [['booking', b.id], ['bookings']], toastError: false,
   });
   const st = b.settlement;
-  const canReceive = collateral && d.status === 'awaiting' && ['confirmed', 'ongoing'].includes(b.status);
-  const canReturn = collateral && d.status === 'received' && ['return_pending', 'completed', 'cancelled', 'rejected'].includes(b.status);
+  const canReceive = tracked && d.status === 'awaiting' && ['confirmed', 'ongoing'].includes(b.status);
+  // After a trip, an office deposit goes back through the deposit inspection (charges deducted first).
+  const canReturn = tracked && d.status === 'received' && (office ? ['cancelled', 'rejected'] : ['return_pending', 'completed', 'cancelled', 'rejected']).includes(b.status);
+  const officeAmount = b.pricing?.depositAtPickupPaise || 0;
   return (
-    <Panel title="Security deposit" actions={collateral ? <StatusPill map={COLLATERAL_STATUS} value={d.status} /> : st?.depositRefundStatus ? <StatusPill map={DEPOSIT_REFUND_STATUS} value={st.depositRefundStatus} /> : null}>
+    <Panel title="Security deposit" actions={tracked && !(office && st?.depositRefundStatus) ? <StatusPill map={office ? OFFICE_DEPOSIT_STATUS : COLLATERAL_STATUS} value={d.status} /> : st?.depositRefundStatus ? <StatusPill map={DEPOSIT_REFUND_STATUS} value={st.depositRefundStatus} /> : null}>
       <KeyValue columns={1} items={[
-        ['Type', DEPOSIT_TYPE[d.type] || 'Money deposit'],
-        collateral ? ['Item', collateralText(d.collateral)] : ['Amount', money(b.pricing?.depositPaise || 0)],
+        ['Type', office ? 'Money deposit · pay at office' : DEPOSIT_TYPE[d.type] || 'Money deposit'],
+        collateral ? ['Item', collateralText(d.collateral)] : ['Amount', money(office ? officeAmount : b.pricing?.depositPaise || 0)],
+        office && d.method ? ['Paid by', OFFICE_METHOD[d.method] || d.method] : null,
         collateral && d.collateral?.registrationNumber ? ['Registration no.', <span className="num">{d.collateral.registrationNumber}</span>] : null,
         collateral && d.collateral?.serialNumber ? ['Serial no.', <span className="num">{d.collateral.serialNumber}</span>] : null,
         d.receivedAt ? ['Received', `${dateTime(d.receivedAt)}${d.receivedBy?.realm ? ` · by ${d.receivedBy.realm === 'vendor' ? 'host' : 'operations'}` : ''}`] : null,
         d.returnedAt ? ['Returned', dateTime(d.returnedAt)] : null,
         d.note ? ['Note', d.note] : null,
-        !collateral && st?.depositRefundAt ? [st.depositRefundStatus === 'refunded' ? 'Refunded on' : 'Refund date', dateLong(st.depositRefundAt)] : null,
+        !collateral && st?.depositRefundAt ? [st.depositRefundStatus === 'refunded' ? 'Refunded on' : 'Refund date', `${dateLong(st.depositRefundAt)}${st.depositRefundTo ? ` · ${REFUND_TO[st.depositRefundTo]}` : ''}`] : null,
       ]} />
       {can('trips.manage') && (canReceive || canReturn) ? (
         <div className="mt-4">
-          {canReceive ? <Button size="sm" variant="primary" icon={PackageCheck} onClick={() => setAction('received')}>Mark {d.type} received</Button> : null}
-          {canReturn ? <Button size="sm" icon={PackageOpen} onClick={() => setAction('returned')}>Mark {d.type} returned</Button> : null}
-          <p className="mt-2 text-caption text-ink-500">{canReceive ? 'The renter cannot start the trip until the item is received.' : 'Return it once the car has been handed back.'}</p>
+          {canReceive ? <Button size="sm" variant="primary" icon={PackageCheck} onClick={() => setAction('received')}>{office ? `Mark ${money(officeAmount)} received` : `Mark ${d.type} received`}</Button> : null}
+          {canReturn ? <Button size="sm" icon={PackageOpen} onClick={() => setAction('returned')}>{office ? 'Mark deposit handed back' : `Mark ${d.type} returned`}</Button> : null}
+          <p className="mt-2 text-caption text-ink-500">{canReceive ? `The renter cannot start the trip until the ${office ? 'deposit' : 'item'} is received.` : office ? 'The booking was called off: give the deposit back in full.' : 'Return it once the car has been handed back.'}</p>
         </div>
       ) : null}
+      {office ? (
+        <OfficeDepositDialog open={Boolean(action)} action={action} amount={officeAmount} onClose={() => setAction(null)} onConfirm={(body) => mark.mutateAsync({ action, ...body })} />
+      ) : null}
       <ConfirmDialog
-        open={Boolean(action)}
+        open={Boolean(action) && !office}
         onClose={() => setAction(null)}
         title={action === 'received' ? `Received the ${d.type}?` : `Returned the ${d.type}?`}
         description={action === 'received' ? `Check it matches: ${collateralText(d.collateral)}${d.collateral?.registrationNumber ? ` (${d.collateral.registrationNumber})` : ''}${d.collateral?.serialNumber ? ` (S/N ${d.collateral.serialNumber})` : ''}.` : 'The renter is notified that their item was returned.'}
@@ -65,16 +73,63 @@ export function DepositPanel({ b }) {
   );
 }
 
+/** Records the deposit paid at the office at pickup (with how it was paid), or handed back after a cancellation. */
+function OfficeDepositDialog({ open, action, amount, onClose, onConfirm }) {
+  const [method, setMethod] = useState('cash');
+  const [note, setNote] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(null);
+  const submit = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      await onConfirm({ ...(action === 'received' ? { method } : {}), ...(note.trim() ? { note: note.trim() } : {}) });
+      setNote('');
+      onClose();
+    } catch (e) {
+      setError(errorMessage(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <Modal open={open} onClose={onClose} title={action === 'received' ? `Received ${money(amount)} deposit?` : `Handed back ${money(amount)}?`}
+      footer={<><Button variant="ghost" onClick={onClose}>Cancel</Button><Button variant="primary" loading={busy} onClick={submit}>{action === 'received' ? 'Mark received' : 'Mark handed back'}</Button></>}>
+      <div className="space-y-3">
+        <p className="text-body text-ink-700">{action === 'received' ? 'Collect the full amount before handing over the keys. The renter can start the trip once you confirm.' : 'Give the full deposit back; the booking was called off before the trip.'}</p>
+        {action === 'received' ? (
+          <Field label="Paid by" htmlFor="od-method">
+            <Select id="od-method" value={method} onChange={(e) => setMethod(e.target.value)}>
+              {['cash', 'upi', 'card', 'bank_transfer'].map((m) => <option key={m} value={m}>{OFFICE_METHOD[m]}</option>)}
+            </Select>
+          </Field>
+        ) : null}
+        <Field label="Note (receipt no., UPI ref…)" htmlFor="od-note"><Input id="od-note" maxLength={300} value={note} onChange={(e) => setNote(e.target.value)} /></Field>
+        {error ? <p className="text-caption font-semibold text-danger-600" role="alert">{error}</p> : null}
+      </div>
+    </Modal>
+  );
+}
+
+const OFFICE_DEPOSIT_STATUS = {
+  awaiting: { label: 'To collect at pickup', tone: 'warning' },
+  received: { label: 'Received', tone: 'info' },
+  returned: { label: 'Handed back', tone: 'success' },
+};
+const REFUND_TO = { source: 'original payment method', wallet: 'WAY2CARS wallet', counter: 'handed back at the office' };
+
 /** After the trip settles: inspect the car, add charges, and approve the refund for a date. */
 export function DepositReviewPanel({ b }) {
   const { can } = useAuth();
   const st = b.settlement;
-  const collateral = (b.depositDetail?.type || b.deposit?.type) && (b.depositDetail?.type || b.deposit?.type) !== 'cash';
+  const dd = b.depositDetail || b.deposit || {};
+  const collateral = dd.type && dd.type !== 'cash';
+  const office = dd.type === 'cash' && dd.payAt === 'office';
   const open = st && b.status === 'completed' && (['pending_review', 'scheduled'].includes(st.depositRefundStatus) || (collateral && !st.depositReview?.at));
   const prevExtra = (st?.extraCharges || []).reduce((t, c) => t + c.amountPaise, 0);
   const [rows, setRows] = useState(() => (st?.extraCharges || []).map((c) => ({ label: c.label, amount: String(c.amountPaise / 100), note: c.note || '' })));
   const [refundNow, setRefundNow] = useState(false);
-  const [refundTo, setRefundTo] = useState(st?.depositRefundTo || 'source');
+  const [refundTo, setRefundTo] = useState(st?.depositRefundTo || (office ? 'counter' : 'source'));
   const [date, setDate] = useState(() => istDateInput(new Date(Date.now() + (b.depositDefaultRefundDays ?? 7) * 86400000)));
   const [note, setNote] = useState('');
   const [error, setError] = useState(null);
@@ -82,7 +137,8 @@ export function DepositReviewPanel({ b }) {
   const review = useAction((body) => api.post(`${ADMIN}/bookings/${b.id}/deposit-review`, body), { success: 'Deposit review saved', invalidate: [['booking', b.id], ['bookings']], toastError: false });
   if (!open || !can('trips.manage')) return null;
 
-  const deposit = b.pricing?.depositPaise || 0;
+  const deposit = office ? (['received', 'returned'].includes(dd.status) ? b.pricing?.depositAtPickupPaise || 0 : 0) : b.pricing?.depositPaise || 0;
+  const now = refundNow || (office && refundTo === 'counter'); // counter refunds happen right away
   const baseDeductions = (st.totalDeductionsPaise || 0) - prevExtra;
   const parsed = rows.map((r) => ({ label: r.label.trim(), amountPaise: toPaise(r.amount), note: r.note.trim() }));
   const extra = parsed.reduce((t, r) => t + (r.amountPaise || 0), 0);
@@ -100,7 +156,7 @@ export function DepositReviewPanel({ b }) {
       if (r.label.length < 2) return setError('Name every charge (or remove the empty row).');
       if (!r.amountPaise || r.amountPaise < 100) return setError('Each charge must be at least ₹1.');
     }
-    if (!refundNow && !date) return setError('Choose the refund date.');
+    if (!now && !date) return setError('Choose the refund date.');
     return setConfirm(true);
   };
   return (
@@ -130,26 +186,27 @@ export function DepositReviewPanel({ b }) {
           collateral ? null : { label: 'Refund to renter', value: money(refund), strong: true, tone: 'success' },
           dues ? { label: 'Renter must pay', value: money(dues), tone: 'danger', strong: true } : null,
         ]} />
-        {!collateral && refund > 0 ? (
+        {office && refund > 0 ? <OfficeRefundDestination value={refundTo} onChange={setRefundTo} /> : null}
+        {!collateral && refund > 0 && !(office && refundTo === 'counter') ? (
           <div className="grid gap-3 sm:grid-cols-2">
             <Checkbox label="Refund now" description="Send the refund as soon as you approve." checked={refundNow} onChange={(e) => setRefundNow(e.target.checked)} />
             {!refundNow ? <Field label="Refund on" htmlFor="dr-date" hint="The refund is sent automatically on this date."><Input id="dr-date" type="date" min={istDateInput(new Date())} value={date} onChange={(e) => setDate(e.target.value)} className="num" /></Field> : null}
           </div>
         ) : null}
-        {!collateral && refund > 0 ? <RefundDestination value={refundTo} onChange={setRefundTo} offline={b.source === 'offline'} /> : null}
+        {!collateral && !office && refund > 0 ? <RefundDestination value={refundTo} onChange={setRefundTo} offline={b.source === 'offline'} /> : null}
         <Field label="Inspection note" htmlFor="dr-note"><Textarea id="dr-note" rows={2} maxLength={500} value={note} onChange={(e) => setNote(e.target.value)} placeholder="e.g. Minor scratch on rear bumper — existing; interior needed cleaning" /></Field>
         {error ? <p className="text-caption font-semibold text-danger-600" role="alert">{error}</p> : null}
-        <Button variant="primary" icon={ShieldCheck} onClick={submit}>{collateral ? 'Save inspection' : refund > 0 ? (refundNow ? `Approve refund of ${money(refund)} now` : 'Approve and schedule refund') : 'Save inspection'}</Button>
+        <Button variant="primary" icon={ShieldCheck} onClick={submit}>{collateral ? 'Save inspection' : refund > 0 ? (office && refundTo === 'counter' ? `Hand back ${money(refund)} at the counter` : now ? `Approve refund of ${money(refund)} now` : 'Approve and schedule refund') : 'Save inspection'}</Button>
       </div>
       <ConfirmDialog
         open={confirm}
         onClose={() => setConfirm(false)}
-        title={collateral ? 'Save the inspection?' : refund > 0 ? `Refund ${money(refund)} ${refundNow ? 'now' : `on ${date}`}?` : 'No refund is left — save the inspection?'}
+        title={collateral ? 'Save the inspection?' : refund > 0 ? (office && refundTo === 'counter' ? `Have you handed ${money(refund)} back to the renter?` : `Refund ${money(refund)} ${now ? 'now' : `on ${date}`}?`) : 'No refund is left — save the inspection?'}
         description={dues ? `The renter will owe ${money(dues)}; they are notified and can pay in the app.` : 'The renter is notified with the charges and the refund date.'}
         confirmLabel="Confirm"
         onConfirm={async () => {
           try {
-            await review.mutateAsync({ extraCharges: parsed.map((r) => ({ label: r.label, amountPaise: r.amountPaise, ...(r.note ? { note: r.note } : {}) })), ...(refundNow || collateral ? {} : { refundAt: new Date(`${date}T10:00:00+05:30`).toISOString() }), ...(note.trim() ? { note: note.trim() } : {}), refundTo });
+            await review.mutateAsync({ extraCharges: parsed.map((r) => ({ label: r.label, amountPaise: r.amountPaise, ...(r.note ? { note: r.note } : {}) })), ...(now || collateral ? {} : { refundAt: new Date(`${date}T10:00:00+05:30`).toISOString() }), ...(note.trim() ? { note: note.trim() } : {}), refundTo });
           } catch (e) {
             setError(errorMessage(e));
             throw e;
@@ -157,6 +214,28 @@ export function DepositReviewPanel({ b }) {
         }}
       />
     </Panel>
+  );
+}
+
+/** Where a deposit paid at the office goes back: by hand at the counter, or to the wallet. */
+function OfficeRefundDestination({ value, onChange }) {
+  const opts = [
+    { v: 'counter', title: 'Hand back at the counter', sub: 'Cash / UPI given back now by staff' },
+    { v: 'wallet', title: 'WAY2CARS wallet', sub: 'Credited on the refund date; usable on the next booking' },
+  ];
+  return (
+    <fieldset>
+      <legend className="mb-1.5 text-label text-ink-800">Refund to <span className="font-normal text-ink-500">(deposit was paid at the office)</span></legend>
+      <div className="grid gap-2 sm:grid-cols-2" role="radiogroup">
+        {opts.map((o) => (
+          <button key={o.v} type="button" role="radio" aria-checked={value === o.v} onClick={() => onChange(o.v)}
+            className={cn('rounded-md border p-3 text-left', value === o.v ? 'border-brand-500 bg-brand-50' : 'border-line hover:bg-ink-50')}>
+            <span className="block text-label text-ink-900">{o.title}</span>
+            <span className="block text-caption text-ink-500">{o.sub}</span>
+          </button>
+        ))}
+      </div>
+    </fieldset>
   );
 }
 

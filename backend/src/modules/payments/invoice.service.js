@@ -42,6 +42,8 @@ export async function issueInvoice({ booking, payment, type }, session) {
       ...(p.discountPaise ? [{ description: `Discount${p.couponCode ? ` (${p.couponCode})` : ''}`, sac, amountPaise: -p.discountPaise }] : []),
       ...(p.deliveryFeePaise ? [{ description: 'Doorstep delivery', sac, amountPaise: p.deliveryFeePaise }] : []),
       ...(p.convenienceFeePaise ? [{ description: 'Convenience fee', sac, amountPaise: p.convenienceFeePaise }] : []),
+      // GST-inclusive wash price: the line shows its taxable value; its GST is in the GST total.
+      ...(p.washPaise ? [{ description: p.washType === 'foam' ? 'Car wash — foam' : 'Car wash — water', sac, amountPaise: p.washPaise - (p.washGstPaise || 0) }] : []),
     ];
     taxable = p.taxablePaise;
     gst = p.gstPaise;

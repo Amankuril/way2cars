@@ -113,7 +113,7 @@ export function TripDetailScreen({ route, navigation }) {
     queryKey: ['trip', id],
     queryFn: () => api.get(`/api/v1/user/bookings/${id}`),
     // Also poll while staff still have to verify the driving licence, so "Start trip" unlocks by itself.
-    refetchInterval: (query) => (['pending_payment', 'pending_vendor_approval', 'return_pending'].includes(query.state.data?.status) || (query.state.data?.status === 'confirmed' && query.state.data?.dlCheck?.status === 'pending') ? 15000 : false),
+    refetchInterval: (query) => (['pending_payment', 'pending_vendor_approval', 'return_pending'].includes(query.state.data?.status) || (query.state.data?.status === 'confirmed' && (query.state.data?.dlCheck?.status === 'pending' || query.state.data?.deposit?.status === 'awaiting')) ? 15000 : false),
   });
   const preview = useQuery({ queryKey: ['cancel-preview', id], queryFn: () => api.get(`/api/v1/user/bookings/${id}/cancellation-preview`), enabled: sheet === 'cancel' });
   const holdLeft = useCountdown(q.data?.holdExpiresAt);
@@ -176,6 +176,8 @@ export function TripDetailScreen({ route, navigation }) {
   const pickupOpensAt = new Date(new Date(b.startAt).getTime() - (config.data?.booking?.pickupWindowMinutesBefore ?? 30) * 60000);
   const canStart = b.status === 'confirmed' && now >= pickupOpensAt.getTime();
   const dlPending = b.status === 'confirmed' && config.data?.booking?.dlCheckAtPickup === true && b.dlCheck?.status !== 'verified';
+  const officeDeposit = b.deposit?.type === 'cash' && b.deposit?.payAt === 'office';
+  const depositPending = b.status === 'confirmed' && b.deposit?.status === 'awaiting';
   const pendingExt = b.extensions?.find((e) => e.status === 'pending_payment' && new Date(e.holdExpiresAt) > new Date());
   const requestedExt = b.extensions?.find((e) => e.status === 'pending_approval');
   const dueExt = b.extensions?.find((e) => e.status === 'approved' && e.chargeStatus === 'due');
@@ -195,6 +197,7 @@ export function TripDetailScreen({ route, navigation }) {
   if (b.status === 'pending_payment' && holdLeft > 0) primary = <Button title={`Complete payment · ${mmss(holdLeft)}`} size="lg" block loading={busy} onPress={() => runPayment(() => api.post(`/api/v1/user/bookings/${id}/payment-order`))} />;
   else if (balanceDue) primary = <Button title={`Pay balance ${money(balanceDue.duePaise)}`} icon={Wallet} size="lg" block loading={busy} onPress={() => runPayment(() => api.post(`/api/v1/user/bookings/${id}/balance-payment-order`))} />;
   else if (b.status === 'confirmed' && canStart && dlPending) primary = <Button title="Waiting for licence check" icon={ShieldCheck} size="lg" block disabled />;
+  else if (b.status === 'confirmed' && canStart && depositPending) primary = <Button title={officeDeposit ? 'Waiting for deposit payment' : `Waiting for ${b.deposit.type} handover`} icon={ShieldCheck} size="lg" block disabled />;
   else if (b.status === 'confirmed') primary = <Button title={canStart ? 'Start trip' : `Pickup opens ${timeLabel(pickupOpensAt)}`} icon={KeyRound} size="lg" block disabled={!canStart} onPress={() => navigation.navigate('Pickup', { id })} />;
   else if (b.status === 'ongoing') primary = <Button title="End trip & return car" size="lg" block onPress={() => navigation.navigate('Return', { id })} />;
   else if (b.status === 'completed' && st?.outstandingStatus === 'due') primary = <Button title={`Pay dues ${money(st.outstandingPaise)}`} size="lg" block loading={busy} onPress={() => runPayment(() => api.post(`/api/v1/user/bookings/${id}/settlement-payment-order`))} />;
@@ -295,7 +298,7 @@ export function TripDetailScreen({ route, navigation }) {
               <View className="mt-3 flex-row flex-wrap items-center">
                 <Pill label={DEPOSIT_REFUND_STATUS[st.depositRefundStatus].label} tone={DEPOSIT_REFUND_STATUS[st.depositRefundStatus].tone} />
                 <T variant="caption" tone="muted" className="ml-2 flex-1">
-                  {st.depositRefundStatus === 'pending_review' ? 'Our team is inspecting the car. You’ll be told the refund amount and date.' : st.depositRefundStatus === 'scheduled' ? `Refund on ${dateLong(st.depositRefundAt)}` : st.depositRefundAt ? `Sent ${dateLong(st.depositRefundAt)}` : ''}
+                  {st.depositRefundStatus === 'pending_review' ? 'Our team is inspecting the car. You’ll be told the refund amount and date.' : st.depositRefundStatus === 'scheduled' ? `Refund on ${dateLong(st.depositRefundAt)}` : st.depositRefundAt ? (st.depositRefundTo === 'counter' ? `Handed back at the office ${dateLong(st.depositRefundAt)}` : st.depositRefundTo === 'wallet' ? `Added to your wallet ${dateLong(st.depositRefundAt)}` : `Sent ${dateLong(st.depositRefundAt)}`) : ''}
                 </T>
               </View>
             ) : null}
@@ -323,6 +326,25 @@ export function TripDetailScreen({ route, navigation }) {
               <Stat label="Est. deposit refund" value={money(b.settlementPreview.depositRefundPaise)} tone="success" />
             </View>
             <KeyValue label="Estimated deductions" value={money(b.settlementPreview.totalDeductionsPaise)} className="mt-2" />
+          </Card>
+        </FadeInView>
+      ) : null}
+
+      {officeDeposit && b.deposit.status && !['cancelled', 'rejected', 'expired'].includes(b.status) ? (
+        <FadeInView index={next()} className="mt-7">
+          <SectionHeader title="Security deposit" />
+          <Card className="mx-4 p-4">
+            <View className="flex-row items-center">
+              <IconTile icon={ShieldCheck} tone="brand" size={38} />
+              <View className="ml-3 flex-1">
+                <T variant="label">{money(b.pricing.depositAtPickupPaise)} refundable</T>
+                <T variant="caption" tone="subtle">Paid at our office at pickup</T>
+              </View>
+              <Pill label={b.deposit.status === 'awaiting' ? 'Pay at pickup' : b.deposit.status === 'received' ? 'Paid' : 'Returned'} tone={b.deposit.status === 'awaiting' ? 'warning' : b.deposit.status === 'received' ? 'info' : 'success'} />
+            </View>
+            <T variant="caption" tone="muted" className="mt-3">
+              {b.deposit.status === 'awaiting' ? 'Pay it by cash or UPI when you collect the car. You can start the trip once our team marks it received.' : b.deposit.status === 'received' ? `Paid ${b.deposit.receivedAt ? dateTime(b.deposit.receivedAt) : ''}. Refunded after the car is returned and inspected, minus any extra charges.` : `Settled ${b.deposit.returnedAt ? dateTime(b.deposit.returnedAt) : ''}.`}
+            </T>
           </Card>
         </FadeInView>
       ) : null}

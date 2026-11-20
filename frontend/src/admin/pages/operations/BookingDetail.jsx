@@ -335,6 +335,7 @@ export default function BookingDetail() {
                     ['Pickup', b.pickup?.type === 'doorstep' ? `Doorstep delivery${b.pickup.distanceKm ? ` · ${b.pickup.distanceKm} km` : ''}` : b.pickup?.type === 'hub' ? `Pickup point · ${b.pickup.name}` : 'Car location'],
                     { label: 'Address', value: b.pickup?.address, wide: true },
                     b.dropoff ? { label: 'Drop-off', value: `${b.dropoff.name} · ${b.dropoff.address}`, wide: true } : null,
+                    b.pricing?.washPaise ? ['Car wash before pickup', b.pricing.washType === 'foam' ? 'Foam wash' : 'Water wash'] : null,
                     b.holdExpiresAt ? ['Payment hold expires', dateTime(b.holdExpiresAt)] : null,
                     b.vendorDecisionDueAt ? ['Host must respond by', dateTime(b.vendorDecisionDueAt)] : null,
                     b.trip?.startedAt ? ['Trip started', dateTime(b.trip.startedAt)] : null,
@@ -355,9 +356,12 @@ export default function BookingDetail() {
                 p.discountPaise ? { label: `Discount${p.couponCode ? ` (${p.couponCode})` : ''}`, value: `−${money(p.discountPaise)}`, tone: 'success' } : null,
                 p.deliveryFeePaise ? { label: 'Doorstep delivery', value: money(p.deliveryFeePaise) } : null,
                 { label: 'Convenience fee', value: money(p.convenienceFeePaise) },
-                { label: `GST (${(p.gstBps || 0) / 100}%)`, value: money(p.gstPaise) },
+                p.washPaise ? { label: `Car wash · ${p.washType === 'foam' ? 'foam' : 'water'}`, hint: `incl. GST ${money(p.washGstPaise)}`, value: money(p.washPaise) } : null,
+                { label: `GST (${(p.gstBps || 0) / 100}%)`, hint: p.washGstPaise ? 'excl. GST inside the wash price' : undefined, value: money(p.gstPaise - (p.washGstPaise || 0)) },
                 { label: 'Trip charges', value: money(p.chargesPaise), strong: true },
-                { label: b.depositDetail?.type && b.depositDetail.type !== 'cash' ? `Deposit: ${b.depositDetail.type} at pickup` : 'Refundable deposit', value: money(p.depositPaise) },
+                p.depositAtPickupPaise
+                  ? { label: 'Deposit: pay at office at pickup', hint: 'Not in the online total', value: money(p.depositAtPickupPaise) }
+                  : { label: b.depositDetail?.type && b.depositDetail.type !== 'cash' ? `Deposit: ${b.depositDetail.type} at pickup` : 'Refundable deposit', value: money(p.depositPaise) },
                 { label: 'Total', value: money(p.totalPaise), strong: true },
                 p.walletAppliedPaise ? { label: 'Paid from wallet', value: `−${money(p.walletAppliedPaise)}` } : null,
                 { label: 'Payable via gateway', value: money(p.payablePaise) },

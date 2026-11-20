@@ -10,10 +10,13 @@ export function PriceBreakdown({ p, showPayable = true }) {
       {p.discountPaise ? <KeyValue label={`Discount${p.coupon?.code ? ` (${p.coupon.code})` : p.couponCode ? ` (${p.couponCode})` : ''}`} value={money(-p.discountPaise)} tone="success" /> : null}
       {p.deliveryFeePaise ? <KeyValue label={`Doorstep delivery${p.delivery?.km ? ` · ${p.delivery.km} km` : ''}`} value={money(p.deliveryFeePaise)} /> : null}
       {p.convenienceFeePaise ? <KeyValue label="Convenience fee" value={money(p.convenienceFeePaise)} /> : null}
-      <KeyValue label={`GST (${percent(p.gstBps)})`} value={money(p.gstPaise, { exact: true })} />
+      {p.washPaise ? <KeyValue label={`Car wash · ${p.washType === 'foam' ? 'Foam' : 'Water'}`} hint="Incl. GST" value={money(p.washPaise)} /> : null}
+      <KeyValue label={`GST (${percent(p.gstBps)})`} value={money(p.gstPaise - (p.washGstPaise || 0), { exact: true })} />
       <DashedDivider className="my-2.5" />
       <KeyValue label="Trip total" value={money(p.chargesPaise, { exact: true })} />
-      <KeyValue label="Security deposit" hint={p.depositOptions?.selected && p.depositOptions.selected !== 'cash' ? `Your ${p.depositOptions.selected} is held instead — hand it over at pickup` : 'Refunded after the car is inspected, minus any extra charges'} value={money(p.depositPaise)} />
+      {p.depositAtPickupPaise
+        ? <KeyValue label="Security deposit" hint="Pay at our office at pickup — not charged now" value={money(p.depositAtPickupPaise)} tone="subtle" />
+        : <KeyValue label="Security deposit" hint={p.depositOptions?.selected && p.depositOptions.selected !== 'cash' ? `Your ${p.depositOptions.selected} is held instead — hand it over at pickup` : 'Refunded after the car is inspected, minus any extra charges'} value={money(p.depositPaise)} />}
       {p.walletAppliedPaise ? <KeyValue label="WAY2CARS wallet" value={money(-p.walletAppliedPaise, { exact: true })} tone="success" /> : null}
       {showPayable ? (
         <>
@@ -23,7 +26,8 @@ export function PriceBreakdown({ p, showPayable = true }) {
             <T variant="body" className="font-bold">{p.advancePaise ? 'Advance to pay now' : 'To pay now'}</T>
             <AnimatedNumber value={money(p.advancePaise || p.payablePaise, { exact: true })} variant="headline" className="font-extrabold text-brand-700" />
           </View>
-          {p.advancePaise ? <KeyValue label="Balance before pickup" hint="Includes the security deposit" value={money(p.payablePaise - p.advancePaise, { exact: true })} /> : null}
+          {p.advancePaise ? <KeyValue label="Balance before pickup" hint={p.depositPaise ? 'Includes the security deposit' : undefined} value={money(p.payablePaise - p.advancePaise, { exact: true })} /> : null}
+          {p.depositAtPickupPaise ? <KeyValue label="Deposit to pay at pickup" hint="Refundable" value={money(p.depositAtPickupPaise)} /> : null}
         </>
       ) : null}
       <View className="mt-3 rounded-xl bg-ink-50 px-3 py-2.5">

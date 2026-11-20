@@ -47,6 +47,15 @@ const schema = new mongoose.Schema(
       // Operations inspect the returned car and approve the deposit refund (with a refund date).
       requireRefundApproval: { type: Boolean, default: true },
       defaultRefundDays: { type: Number, default: 7, min: 0, max: 60 },
+      // The renter may choose to pay the money deposit at the office at pickup instead of online.
+      allowPayAtOffice: { type: Boolean, default: true },
+    },
+    // Optional car wash chosen at checkout. Prices are GST-inclusive; the charge stays with Way2Cars.
+    wash: {
+      enabled: { type: Boolean, default: true },
+      waterPaise: { type: Number, default: 19900, min: 0 },
+      foamPaise: { type: Number, default: 39900, min: 0 },
+      gstBps: { type: Number, default: 1800, min: 0, max: 5000 },
     },
     // Rules sent with every booking confirmation (WhatsApp) and shown on the trip page.
     bookingTerms: {

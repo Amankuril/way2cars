@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { View, Image, Pressable, Switch, Linking } from '@/mobile/rn';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { MapPin, Truck, TicketPercent, Wallet, ShieldCheck, Lock, Users, Cog, Fuel, Zap, Clock, Check, ReceiptText, X, IndianRupee, CalendarCheck, Gauge, Infinity as InfinityIcon, Bike, Laptop, Banknote, Phone, Building2 } from 'lucide-react';
+import { MapPin, Truck, TicketPercent, Wallet, ShieldCheck, Lock, Users, Cog, Fuel, Zap, Clock, Check, ReceiptText, X, IndianRupee, CalendarCheck, Gauge, Infinity as InfinityIcon, Bike, Laptop, Banknote, Phone, Building2, Droplets, Sparkles, Ban, CreditCard } from 'lucide-react';
 import { Screen, Header, T, Button, Field, Notice, ErrorState, useToast, cn, Card, SectionHeader, SpecChip, TripRoute, IconTile, AnimatedNumber, FadeInView, PressableScale, Skeleton, SkeletonCard, Chip } from '@/mobile/ui';
 import { colors } from '@shared/theme/tokens';
 import { FUEL, TRANSMISSION } from '@shared/lib/labels';
@@ -55,6 +55,9 @@ export function CheckoutScreen({ route, navigation }) {
   const [paymentPlan, setPaymentPlan] = useState('full');
   const [unlimitedKm, setUnlimitedKm] = useState(false);
   const [depositOption, setDepositOption] = useState('cash');
+  // Money deposit: paid at the office at pickup by default (when allowed), or online with the booking.
+  const [depositPayAt, setDepositPayAt] = useState('office');
+  const [washType, setWashType] = useState('none');
   const [collateral, setCollateral] = useState({ make: '', model: '', year: '', registrationNumber: '', serialNumber: '' });
   const [collateralError, setCollateralError] = useState(null);
   const [pickupHub, setPickupHub] = useState(null);
@@ -78,8 +81,9 @@ export function CheckoutScreen({ route, navigation }) {
     vehicleId, startAt: plan.startAt?.toISOString(), endAt: plan.endAt?.toISOString(),
     delivery: delivery ? { address: delivery.address, lat: delivery.lat, lng: delivery.lng, placeId: delivery.placeId } : undefined,
     couponCode: coupon || undefined, useWallet: useWallet && paymentPlan === 'full', paymentPlan,
-    unlimitedKm, depositOption, pickupLocationId: delivery ? undefined : pickupHub || undefined, dropoffLocationId: dropoffHub || undefined,
-  }), [vehicleId, plan.startAt, plan.endAt, delivery, coupon, useWallet, paymentPlan, unlimitedKm, depositOption, pickupHub, dropoffHub]);
+    unlimitedKm, depositOption, depositPayAt: depositOption === 'cash' && config.data?.deposit?.allowPayAtOffice !== false ? depositPayAt : 'online', washType,
+    pickupLocationId: delivery ? undefined : pickupHub || undefined, dropoffLocationId: dropoffHub || undefined,
+  }), [vehicleId, plan.startAt, plan.endAt, delivery, coupon, useWallet, paymentPlan, unlimitedKm, depositOption, depositPayAt, washType, pickupHub, dropoffHub, config.data?.deposit?.allowPayAtOffice]);
 
   const quote = useQuery({
     queryKey: ['quote', body],
@@ -101,6 +105,10 @@ export function CheckoutScreen({ route, navigation }) {
       setDelivery(null);
     } else if (e.code === 'UNLIMITED_KM_UNAVAILABLE') {
       setUnlimitedKm(false);
+    } else if (e.code === 'DEPOSIT_OPTION_UNAVAILABLE' && depositPayAt === 'office') {
+      setDepositPayAt('online');
+    } else if (e.code === 'WASH_UNAVAILABLE') {
+      setWashType('none');
     } else if (e.code?.startsWith('HUB_')) {
       toast(e.message, 'danger');
       setPickupHub(null);
@@ -341,10 +349,23 @@ export function CheckoutScreen({ route, navigation }) {
         <View className="mt-7">
           <SectionHeader title="Security deposit" />
           <View className="flex-row px-4" accessibilityRole="radiogroup">
-            <Option selected={depositOption === 'cash'} icon={Banknote} title={money(q.depositOptions.cashPaise)} subtitle="Paid with your booking, refunded after the car is inspected" onPress={() => setDepositOption('cash')} testID="deposit-cash" />
+            <Option selected={depositOption === 'cash'} icon={Banknote} title={money(q.depositOptions.cashPaise)} subtitle="Refundable money deposit, returned after the car is inspected" onPress={() => setDepositOption('cash')} testID="deposit-cash" />
             {q.depositOptions.bike ? <><View className="w-3" /><Option selected={depositOption === 'bike'} icon={Bike} title="My bike" subtitle={`${q.depositOptions.bike.minYear} or newer, good condition`} onPress={() => setDepositOption('bike')} testID="deposit-bike" /></> : null}
             {q.depositOptions.laptop ? <><View className="w-3" /><Option selected={depositOption === 'laptop'} icon={Laptop} title="My laptop" subtitle={`${q.depositOptions.laptop.minYear} or newer model`} onPress={() => setDepositOption('laptop')} testID="deposit-laptop" /></> : null}
           </View>
+          {depositOption === 'cash' && q.depositOptions.payAtOffice ? (
+            <>
+              <T variant="caption" tone="muted" className="mx-4 mb-2 mt-4">When do you want to pay the deposit?</T>
+              <View className="flex-row px-4" accessibilityRole="radiogroup">
+                <Option selected={q.depositOptions.payAt === 'office'} icon={Building2} title="At pickup" subtitle="Pay at our office when you collect the car. Not charged now." onPress={() => setDepositPayAt('office')} testID="deposit-pay-office" />
+                <View className="w-3" />
+                <Option selected={q.depositOptions.payAt !== 'office'} icon={CreditCard} title="Online now" subtitle="Added to today’s payment" onPress={() => setDepositPayAt('online')} testID="deposit-pay-online" />
+              </View>
+              {q.depositOptions.payAt === 'office' ? (
+                <T variant="caption" tone="subtle" className="mx-4 mt-3">Pay {money(q.depositAtPickupPaise)} by cash or UPI at pickup. You can start the trip once our team receives it.</T>
+              ) : null}
+            </>
+          ) : null}
           {depositOption !== 'cash' ? (
             <Card className="mx-4 mt-3 p-4">
               <T variant="caption" tone="muted" className="mb-3">Bring your {depositOption} to pickup — our team checks it and you can start the trip once it’s received. It’s returned as soon as you hand back the car.</T>
@@ -356,6 +377,21 @@ export function CheckoutScreen({ route, navigation }) {
                 : <Field label="Serial number" placeholder="On the bottom of the laptop" autoCapitalize="characters" value={collateral.serialNumber} onChangeText={(t) => setCollateral((c) => ({ ...c, serialNumber: t }))} error={collateralError} />}
             </Card>
           ) : null}
+        </View>
+      ) : null}
+
+      {/* Car wash (optional, GST-inclusive price) */}
+      {q?.washOptions ? (
+        <View className="mt-7">
+          <SectionHeader title="Car wash" />
+          <View className="flex-row px-4" accessibilityRole="radiogroup">
+            <Option selected={washType === 'none'} icon={Ban} title="No wash" subtitle="Skip it" onPress={() => setWashType('none')} testID="wash-none" />
+            <View className="w-3" />
+            <Option selected={washType === 'water'} icon={Droplets} title="Water wash" subtitle={money(q.washOptions.waterPaise)} onPress={() => setWashType('water')} testID="wash-water" />
+            <View className="w-3" />
+            <Option selected={washType === 'foam'} icon={Sparkles} title="Foam wash" subtitle={money(q.washOptions.foamPaise)} onPress={() => setWashType('foam')} testID="wash-foam" />
+          </View>
+          {washType !== 'none' ? <T variant="caption" tone="subtle" className="mx-4 mt-3">Added to your booking amount. Price includes GST.</T> : null}
         </View>
       ) : null}
 
