@@ -2,10 +2,15 @@
 
 | File | App | Package |
 |---|---|---|
-| `way2cars-user-v1.2.4.apk` | Renter app (latest) | `in.way2cars.user` |
+| `way2cars-user-v1.2.5.apk` | Renter app (latest) | `in.way2cars.user` |
 | `way2cars-host-v1.2.1.apk` | Host (vendor) app (latest) | `in.way2cars.host` |
 
 Older APKs were removed from this folder; each new version installs over the previous one.
+
+v1.2.5 renter (versionCode 9): security deposit can be paid at the office at pickup (default) or online; the trip
+starts once staff mark it received in admin. Optional car wash at checkout: Water ₹199 / Foam ₹399 (GST-inclusive,
+prices and on/off in admin Settings → Car wash). **Needs the backend from commit 56193ce or later deployed first** —
+an older backend rejects this app's checkout request.
 
 v1.2.4 renter (versionCode 8): pay without an approved driving licence (when admin setting "Require online DL
 approval before payment" is off); "Start trip" waits until staff verify the original licence in the admin panel.
